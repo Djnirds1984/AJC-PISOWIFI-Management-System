@@ -30,9 +30,10 @@ app.get('/api/network/wireless', async (req, res) => {
 app.post('/api/network/wireless', async (req, res) => {
   try {
     const config = req.body;
+    // Updated query to include bridge field persistence
     await db.run(
-      'INSERT OR REPLACE INTO wireless_settings (interface, ssid, password, channel, hw_mode) VALUES (?, ?, ?, ?, ?)',
-      [config.interface, config.ssid, config.password, config.channel, config.hw_mode]
+      'INSERT OR REPLACE INTO wireless_settings (interface, ssid, password, channel, hw_mode, bridge) VALUES (?, ?, ?, ?, ?, ?)',
+      [config.interface, config.ssid, config.password, config.channel, config.hw_mode, config.bridge]
     );
     await network.configureWifiAP(config);
     res.json({ success: true });

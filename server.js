@@ -1,18 +1,27 @@
-
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const fs = require('fs');
 const db = require('./lib/db');
 const { initGPIO, updateGPIO } = require('./lib/gpio');
 const network = require('./lib/network');
-const updater = require('./lib/updater');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.json());
+
+// Ensure dist directory exists (prevent 404 on build artifacts)
+const distPath = path.join(__dirname, 'dist');
+if (!fs.existsSync(distPath)) {
+  fs.mkdirSync(distPath, { recursive: true });
+}
+
+// Serve static files from the root and dist folders
+app.use(express.static(__dirname));
+app.use('/dist', express.static(distPath));
 
 // API Routes
 app.get('/api/rates', async (req, res) => {
@@ -24,7 +33,6 @@ app.get('/api/rates', async (req, res) => {
   }
 });
 
-// Create a new rate record
 app.post('/api/rates', async (req, res) => {
   const { pesos, minutes } = req.body;
   try {
@@ -35,7 +43,6 @@ app.post('/api/rates', async (req, res) => {
   }
 });
 
-// Delete a rate record
 app.delete('/api/rates/:id', async (req, res) => {
   try {
     await db.run('DELETE FROM rates WHERE id = ?', [req.params.id]);
@@ -45,7 +52,6 @@ app.delete('/api/rates/:id', async (req, res) => {
   }
 });
 
-// Retrieve hardware configuration from persistence layer
 app.get('/api/config', async (req, res) => {
   try {
     const boardType = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
@@ -59,13 +65,11 @@ app.get('/api/config', async (req, res) => {
   }
 });
 
-// Update hardware configuration and refresh GPIO mappings
 app.post('/api/config', async (req, res) => {
   const { boardType, coinPin } = req.body;
   try {
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['boardType', boardType]);
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['coinPin', coinPin.toString()]);
-    // Notify GPIO module to update physical pin mapping
     updateGPIO(boardType, coinPin);
     res.json({ success: true });
   } catch (err) {
@@ -92,55 +96,24 @@ app.post('/api/network/status', async (req, res) => {
   }
 });
 
-app.post('/api/network/wan', async (req, res) => {
-  try {
-    await network.configureWan(req.body);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/network/vlan', async (req, res) => {
-  const { parent, id, name } = req.body;
-  try {
-    await network.createVlan(parent, id, name);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/network/bridge', async (req, res) => {
-  const { name, members, stp } = req.body;
-  try {
-    const output = await network.createBridge(name, members, stp);
-    res.json({ output });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.use(express.static(__dirname));
-
+// SPA Support: Redirect all unknown routes to index.html
 app.get('*', (req, res) => {
-  if (req.path.startsWith('/api')) {
-    return res.status(404).json({ error: 'API route not found' });
+  if (req.path.startsWith('/api') || req.path.startsWith('/dist')) {
+    return res.status(404).json({ error: 'Not found' });
   }
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 io.on('connection', (socket) => {
-  socket.on('disconnect', () => {});
+  console.log('Client connected:', socket.id);
 });
 
-// Initialize GPIO listener on startup with stored configuration
+// Start hardware listener
 (async () => {
   try {
     const boardType = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
     const coinPin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
     initGPIO((pesos) => {
-      // Broadcast hardware coin insertion events to all socket clients
       io.emit('coin-pulse', { pesos });
     }, boardType?.value || 'none', parseInt(coinPin?.value || '3'));
   } catch (e) {

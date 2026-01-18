@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}==============================================${NC}"
-echo -e "${BLUE}   AJC PISOWIFI SYSTEM INSTALLER v2.6.0      ${NC}"
+echo -e "${BLUE}   AJC PISOWIFI SYSTEM INSTALLER v2.7.0      ${NC}"
 echo -e "${BLUE}==============================================${NC}"
 
 # Check for root
@@ -39,9 +39,9 @@ apt-get install -y \
     pkg-config
 
 # Check for Node.js
-if ! command -v node &> /dev/null; then
-    echo -e "${BLUE}Node.js not found. Installing Node.js LTS...${NC}"
-    curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+if ! command -v node &> /dev/null || [[ $(node -v | cut -d'.' -f1) != "v20" ]]; then
+    echo -e "${BLUE}Installing/Upgrading to Node.js v20 (LTS)...${NC}"
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     apt-get install -y nodejs
 else
     echo -e "${BLUE}Node.js $(node -v) is already installed.${NC}"
@@ -88,5 +88,6 @@ echo -e "${BLUE}==============================================${NC}"
 echo -e "Portal Address: http://$(hostname -I | awk '{print $1}'):3000"
 echo -e "Process Manager: pm2 status"
 echo -e "Monitor Logs: pm2 logs ajc-pisowifi"
+echo -e "Node Version: $(node -v)"
 echo -e "System will now auto-start on every reboot via PM2."
 echo -e "${BLUE}==============================================${NC}"

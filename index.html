@@ -2,23 +2,47 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AJC PISOWIFI - Admin & Portal</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>AJC PISOWIFI - Access Portal</title>
     <style>
-      body {
-        font-family: 'Inter', sans-serif;
-        background-color: #f8fafc;
+      /* OFFLINE-FIRST CSS SYSTEM - Mimics Tailwind without external CDN */
+      :root {
+        --bg: #f8fafc;
+        --primary: #2563eb;
+        --primary-dark: #1e40af;
+        --text: #0f172a;
+        --text-muted: #64748b;
+        --white: #ffffff;
       }
-      .glass-card {
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(226, 232, 240, 0.8);
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+      
+      .gradient-bg { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; }
+      .glass-card { background: var(--white); border-radius: 24px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); border: 1px solid rgba(226, 232, 240, 0.8); }
+      
+      /* Essential Utility Classes (Mimic Tailwind) */
+      .p-8 { padding: 2rem; }
+      .text-center { text-align: center; }
+      .font-black { font-weight: 900; }
+      .tracking-tighter { letter-spacing: -0.05em; }
+      .mb-8 { margin-bottom: 2rem; }
+      .rounded-3xl { border-radius: 1.5rem; }
+      .shadow-xl { box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
+      
+      button { 
+        cursor: pointer; 
+        border: none; 
+        border-radius: 16px; 
+        font-weight: 900; 
+        transition: transform 0.1s;
+        display: block;
+        width: 100%;
+        text-transform: uppercase;
       }
-      .gradient-bg {
-        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-      }
+      button:active { transform: scale(0.98); }
+      
+      /* Force display elements for LandingPage.tsx components */
+      #root { min-height: 100vh; }
     </style>
   <script type="importmap">
 {
@@ -34,7 +58,7 @@
 </head>
   <body>
     <div id="root"></div>
-    <!-- Load the bundled application -->
+    <!-- Load the LOCAL bundle containing React and all logic -->
     <script type="module" src="/dist/bundle.js"></script>
   </body>
 </html>

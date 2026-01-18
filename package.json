@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "build": "esbuild index.tsx --bundle --outfile=dist/bundle.js --format=esm --minify --sourcemap --loader:.tsx=tsx --loader:.ts=ts --jsx=automatic",
+    "build": "esbuild index.tsx --bundle --outfile=dist/bundle.js --format=esm --minify --sourcemap --loader:.tsx=tsx --loader:.ts=ts --jsx=automatic --define:process.env.NODE_ENV='\"production\"'",
     "dev": "node --watch server.js"
   },
   "dependencies": {

@@ -22,8 +22,6 @@ app.use(express.static(__dirname));
 // 2. Captive Portal Detection Middleware
 app.use((req, res, next) => {
   const host = req.headers.host || '';
-  const userAgent = req.headers['user-agent'] || '';
-  
   const portalProbes = [
     '/generate_204',               // Android / Chrome
     '/hotspot-detect.html',        // iOS / macOS
@@ -31,9 +29,7 @@ app.use((req, res, next) => {
     '/connecttest.txt'             // Windows
   ];
 
-  if (portalProbes.some(path => req.url.includes(path))) {
-    console.log(`[PORTAL] Detection probe from ${userAgent} on ${req.url}`);
-    // Redirect probe to the actual portal home page (Port 80)
+  if (portalProbes.some(p => req.url.includes(p))) {
     return res.redirect(`http://${host}/`);
   }
   next();
@@ -42,12 +38,10 @@ app.use((req, res, next) => {
 // SYSTEM API
 app.post('/api/system/reset', async (req, res) => {
   try {
-    console.log('[SYSTEM] Factory Reset Request Received');
     await network.cleanupAllNetworkSettings();
     await db.factoryResetDB();
     res.json({ success: true, message: 'System restored to factory defaults.' });
   } catch (err) {
-    console.error('[SYSTEM] Reset Error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -57,28 +51,19 @@ app.get('/api/network/wireless', async (req, res) => {
   try {
     const rows = await db.all('SELECT * FROM wireless_settings');
     res.json(Array.isArray(rows) ? rows : []);
-  } catch (err) { 
-    console.error('[API] Wireless Fetch Error:', err);
-    res.json([]); 
-  }
+  } catch (err) { res.json([]); }
 });
 
 app.post('/api/network/wireless', async (req, res) => {
   try {
     const config = req.body;
-    if (!config.interface || !config.ssid) {
-      return res.status(400).json({ error: 'Interface and SSID are required' });
-    }
     await db.run(
       'INSERT OR REPLACE INTO wireless_settings (interface, ssid, password, channel, hw_mode, bridge) VALUES (?, ?, ?, ?, ?, ?)',
       [config.interface, config.ssid, config.password, config.channel || 1, config.hw_mode || 'g', config.bridge]
     );
     await network.configureWifiAP(config);
     res.json({ success: true });
-  } catch (err) { 
-    console.error('[API] Wireless POST Error:', err);
-    res.status(500).json({ error: err.message }); 
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // HOTSPOT API
@@ -90,8 +75,8 @@ app.get('/api/hotspots', async (req, res) => {
 });
 
 app.post('/api/hotspots', async (req, res) => {
-  const config = req.body;
   try {
+    const config = req.body;
     await db.run(
       'INSERT OR REPLACE INTO hotspots (interface, ip_address, dhcp_range, bandwidth_limit, enabled) VALUES (?, ?, ?, ?, ?)',
       [config.interface, config.ip_address, config.dhcp_range, config.bandwidth_limit || 0, 1]
@@ -114,8 +99,7 @@ app.get('/api/rates', async (req, res) => {
   try { 
     const rates = await db.all('SELECT * FROM rates'); 
     res.json(Array.isArray(rates) ? rates : []); 
-  }
-  catch (err) { res.json([]); }
+  } catch (err) { res.json([]); }
 });
 
 app.post('/api/rates', async (req, res) => {
@@ -160,8 +144,7 @@ app.post('/api/network/bridge', async (req, res) => {
   try { 
     const output = await network.createBridge(req.body.name, req.body.members, req.body.stp);
     res.json({ success: true, output }); 
-  }
-  catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('*', (req, res) => {
@@ -176,8 +159,29 @@ io.on('connection', (socket) => console.log('Client connected:', socket.id));
     const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
     const pin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
     initGPIO((pesos) => io.emit('coin-pulse', { pesos }), board?.value || 'none', parseInt(pin?.value || '2'));
-  } catch (e) { console.error('[AJC] Startup Error:', e.message); }
+  } catch (e) { console.error('[AJC] Hardware Init Warning:', e.message); }
 })();
 
-// Running on Port 80 for production captive portal efficiency
-server.listen(80, '0.0.0.0', () => console.log(`AJC PISOWIFI Server running on http://0.0.0.0 (Port 80)`));
+// STARTUP WRAPPER FOR PORT 80
+const startServer = (port) => {
+  server.listen(port, '0.0.0.0')
+    .on('listening', () => {
+      console.log(`[AJC] SUCCESS: Portal running on http://0.0.0.0:${port}`);
+    })
+    .on('error', (err) => {
+      if (err.code === 'EACCES') {
+        console.error(`[AJC] ERROR: Permission denied for Port ${port}.`);
+        console.error(`[AJC] FIX: Run with 'sudo' or use: sudo setcap 'cap_net_bind_service=+ep' $(which node)`);
+        process.exit(1);
+      } else if (err.code === 'EADDRINUSE') {
+        console.error(`[AJC] ERROR: Port ${port} is already in use by another service.`);
+        console.error(`[AJC] FIX: Run 'sudo systemctl stop apache2 nginx lighttpd' and try again.`);
+        process.exit(1);
+      } else {
+        console.error(`[AJC] FATAL ERROR:`, err);
+        process.exit(1);
+      }
+    });
+};
+
+startServer(80);

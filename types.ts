@@ -1,4 +1,3 @@
-
 export type BoardType = 'raspberry_pi' | 'orange_pi' | 'x64_pc' | 'none';
 
 export interface SystemConfig {
@@ -21,27 +20,28 @@ export interface NetworkInterface {
   isLoopback?: boolean;
 }
 
+export interface WirelessConfig {
+  interface: string;
+  ssid: string;
+  password?: string;
+  channel: number;
+  hw_mode: 'g' | 'a';
+}
+
+export interface HotspotInstance {
+  interface: string;
+  ip_address: string;
+  dhcp_range: string;
+  bandwidth_limit: number;
+  enabled: number;
+}
+
 export interface WanConfig {
   proto: 'static' | 'dhcp';
   ipaddr: string;
   netmask: string;
   gateway: string;
   dns: string[];
-}
-
-export interface WlanConfig {
-  ssid: string;
-  encryption: 'psk2' | 'none' | 'wpa3';
-  key: string;
-  channel: number;
-  power: number;
-}
-
-export interface HotspotConfig {
-  name: string;
-  maxClients: number;
-  bandwidthLimit: number; // in Mbps
-  enabled: boolean;
 }
 
 export interface VlanConfig {

@@ -13,126 +13,104 @@ const io = new Server(server);
 
 app.use(express.json());
 
-// Ensure dist directory exists
-const distPath = path.join(__dirname, 'dist');
-if (!fs.existsSync(distPath)) {
-  fs.mkdirSync(distPath, { recursive: true });
-}
-
 // Serve static files
+const distPath = path.join(__dirname, 'dist');
+if (!fs.existsSync(distPath)) fs.mkdirSync(distPath, { recursive: true });
 app.use('/dist', express.static(distPath));
 app.use(express.static(__dirname));
 
-// API Routes
-app.get('/api/rates', async (req, res) => {
+// WIRELESS API
+app.get('/api/network/wireless', async (req, res) => {
   try {
-    const rates = await db.all('SELECT * FROM rates');
-    res.json(rates || []);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    const rows = await db.all('SELECT * FROM wireless_settings');
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/network/wireless', async (req, res) => {
+  try {
+    const config = req.body;
+    await db.run(
+      'INSERT OR REPLACE INTO wireless_settings (interface, ssid, password, channel, hw_mode) VALUES (?, ?, ?, ?, ?)',
+      [config.interface, config.ssid, config.password, config.channel, config.hw_mode]
+    );
+    await network.configureWifiAP(config);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// HOTSPOT API
+app.get('/api/hotspots', async (req, res) => {
+  try {
+    const rows = await db.all('SELECT * FROM hotspots');
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/hotspots', async (req, res) => {
+  const config = req.body;
+  try {
+    await db.run(
+      'INSERT OR REPLACE INTO hotspots (interface, ip_address, dhcp_range, bandwidth_limit, enabled) VALUES (?, ?, ?, ?, ?)',
+      [config.interface, config.ip_address, config.dhcp_range, config.bandwidth_limit, 1]
+    );
+    await network.setupHotspot(config);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/hotspots/:interface', async (req, res) => {
+  try {
+    await network.removeHotspot(req.params.interface);
+    await db.run('DELETE FROM hotspots WHERE interface = ?', [req.params.interface]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// EXISTING API
+app.get('/api/rates', async (req, res) => {
+  try { const rates = await db.all('SELECT * FROM rates'); res.json(rates || []); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/rates', async (req, res) => {
-  const { pesos, minutes } = req.body;
-  try {
-    await db.run('INSERT INTO rates (pesos, minutes) VALUES (?, ?)', [pesos, minutes]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/rates/:id', async (req, res) => {
-  try {
-    await db.run('DELETE FROM rates WHERE id = ?', [req.params.id]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  try { await db.run('INSERT INTO rates (pesos, minutes) VALUES (?, ?)', [req.body.pesos, req.body.minutes]); res.json({ success: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/config', async (req, res) => {
   try {
     const boardType = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
     const coinPin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
-    res.json({
-      boardType: boardType?.value || 'none',
-      coinPin: parseInt(coinPin?.value || '3')
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/config', async (req, res) => {
-  const { boardType, coinPin } = req.body;
-  try {
-    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['boardType', boardType]);
-    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['coinPin', coinPin.toString()]);
-    updateGPIO(boardType, coinPin);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    res.json({ boardType: boardType?.value || 'none', coinPin: parseInt(coinPin?.value || '2') });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/interfaces', async (req, res) => {
-  try {
-    const ifaces = await network.getInterfaces();
-    res.json(ifaces);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  try { res.json(await network.getInterfaces()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/network/status', async (req, res) => {
-  const { name, status } = req.body;
-  try {
-    await network.setInterfaceStatus(name, status);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+app.post('/api/network/vlan', async (req, res) => {
+  try { await network.createVlan(req.body.parent, req.body.id, req.body.name); res.json({ success: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Explicit Admin Route Handling
-app.get(['/admin', '/admin/*'], (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// SPA Support
 app.get('*', (req, res) => {
-  if (req.path.startsWith('/api') || req.path.startsWith('/dist')) {
-    return res.status(404).json({ error: 'Not found' });
-  }
+  if (req.path.startsWith('/api') || req.path.startsWith('/dist')) return res.status(404).json({ error: 'Not found' });
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
-});
+// Socket.io
+io.on('connection', (socket) => console.log('Client connected:', socket.id));
 
-// Start hardware listener
+// Startup
 (async () => {
   try {
-    const boardTypeRow = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
-    const coinPinRow = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
-    
-    const boardType = boardTypeRow?.value || 'none';
-    const coinPin = parseInt(coinPinRow?.value || '3');
-
-    console.log(`[AJC-CORE] Starting with Board=${boardType}, BCM=${coinPin}`);
-    
-    initGPIO((pesos) => {
-      io.emit('coin-pulse', { pesos });
-    }, boardType, coinPin);
-  } catch (e) {
-    console.error('[AJC-CORE] Hardware Startup Failed:', e.message);
-  }
+    const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
+    const pin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
+    initGPIO((pesos) => io.emit('coin-pulse', { pesos }), board?.value || 'none', parseInt(pin?.value || '2'));
+  } catch (e) { console.error('[AJC] Startup Error:', e.message); }
 })();
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`AJC PISOWIFI Server running on http://0.0.0.0:${PORT}`);
-});
+server.listen(3000, '0.0.0.0', () => console.log(`AJC PISOWIFI Server running on http://0.0.0.0:3000`));

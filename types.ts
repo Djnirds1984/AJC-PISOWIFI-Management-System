@@ -1,5 +1,5 @@
 
-export type BoardType = 'raspberry_pi' | 'orange_pi' | 'none';
+export type BoardType = 'raspberry_pi' | 'orange_pi' | 'x64_pc' | 'none';
 
 export interface SystemConfig {
   boardType: BoardType;

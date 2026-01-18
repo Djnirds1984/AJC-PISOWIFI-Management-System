@@ -116,6 +116,11 @@ const NetworkSettings: React.FC = () => {
     }));
   };
 
+  // Helper to identify potential wireless interfaces
+  const isPotentialWifi = (iface: NetworkInterface) => {
+    return iface.type === 'wifi' || iface.name.startsWith('wlan') || iface.name.startsWith('ap');
+  };
+
   return (
     <div className="space-y-12 pb-32 animate-in fade-in slide-in-from-bottom-4 duration-700">
       
@@ -159,7 +164,7 @@ const NetworkSettings: React.FC = () => {
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold"
               >
                 <option value="">Select WiFi Link...</option>
-                {interfaces.filter(i => i.type === 'wifi').map(i => <option key={i.name} value={i.name}>{i.name}</option>)}
+                {interfaces.filter(isPotentialWifi).map(i => <option key={i.name} value={i.name}>{i.name}</option>)}
               </select>
             </div>
             <div>
@@ -250,7 +255,7 @@ const NetworkSettings: React.FC = () => {
               onChange={e => setVlan({...vlan, parentInterface: e.target.value, name: `${e.target.value}.${vlan.id}`})}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold"
             >
-              {interfaces.filter(i => i.type === 'ethernet' || i.name === 'wlan0').map(i => <option key={i.name} value={i.name}>{i.name}</option>)}
+              {interfaces.filter(i => i.type === 'ethernet' || i.name.startsWith('wlan')).map(i => <option key={i.name} value={i.name}>{i.name}</option>)}
             </select>
           </div>
           <div>

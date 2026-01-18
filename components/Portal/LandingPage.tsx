@@ -54,8 +54,8 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
   };
 
   const handleGoToInternet = () => {
-    // This is the definitive way to exit a captive portal browser window
-    window.location.href = 'http://www.google.com/generate_204';
+    // Navigate to success page which will trigger captive portal exit
+    window.location.href = '/success';
   };
 
   return (
@@ -151,10 +151,10 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
           onSuccess={(pesos, minutes) => {
             onSessionStart({
               mac: myMac,
-              ip: 'unknown',
               remainingSeconds: minutes * 60,
               totalPaid: pesos,
               connectedAt: Date.now()
+              // Don't send IP - server will detect it
             });
             setShowModal(false);
           }}

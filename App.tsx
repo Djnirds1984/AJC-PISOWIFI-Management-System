@@ -91,9 +91,9 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mac: session.mac,
-          ip: session.ip,
           minutes: Math.ceil(session.remainingSeconds / 60),
           pesos: session.totalPaid
+          // Don't send IP - server will detect it
         })
       });
       const data = await res.json();

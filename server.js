@@ -42,6 +42,234 @@ async function getMacFromIp(ip) {
 app.use('/dist', express.static(path.join(__dirname, 'dist')));
 app.use(express.static(__dirname));
 
+// SUCCESS PAGE TO TRIGGER CAPTIVE PORTAL EXIT
+app.get('/success', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Internet Connected</title>
+      <meta http-equiv="refresh" content="3;url=http://www.google.com">
+      <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+        .check { color: #4CAF50; font-size: 48px; }
+        h1 { color: #333; }
+      </style>
+    </head>
+    <body>
+      <div class="check">✓</div>
+      <h1>Internet Connected Successfully!</h1>
+      <p>Redirecting to Google in 3 seconds...</p>
+      <script>
+        // Try to trigger OS captive portal detection
+        setTimeout(() => {
+          fetch('http://www.google.com/generate_204')
+            .then(() => window.location.href = 'http://www.google.com')
+            .catch(() => window.location.href = 'http://www.google.com');
+        }, 1000);
+      </script>
+    </body>
+    </html>
+  `);
+});
+
+// CAPTIVE PORTAL DETECTION ENDPOINTS
+app.get('/generate_204', async (req, res) => {
+  const clientIp = req.ip.replace('::ffff:', '');
+  const mac = await getMacFromIp(clientIp);
+  
+  if (mac) {
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    if (session) {
+      return res.status(204).send();
+    }
+  }
+  
+  // Not authorized - redirect to portal
+  return res.redirect(302, `http://${req.headers.host}/`);
+});
+
+app.get('/hotspot-detect.html', async (req, res) => {
+  const clientIp = req.ip.replace('::ffff:', '');
+  const mac = await getMacFromIp(clientIp);
+  
+  if (mac) {
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    if (session) {
+      return res.status(204).send();
+    }
+  }
+  
+  // Not authorized - redirect to portal
+  return res.redirect(302, `http://${req.headers.host}/`);
+});
+
+app.get('/ncsi.txt', async (req, res) => {
+  const clientIp = req.ip.replace('::ffff:', '');
+  const mac = await getMacFromIp(clientIp);
+  
+  if (mac) {
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    if (session) {
+      return res.type('text/plain').send('Microsoft NCSI');
+    }
+  }
+  
+  // Not authorized - redirect to portal
+  return res.redirect(302, `http://${req.headers.host}/`);
+});
+
+app.get('/connecttest.txt', async (req, res) => {
+  const clientIp = req.ip.replace('::ffff:', '');
+  const mac = await getMacFromIp(clientIp);
+  
+  if (mac) {
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    if (session) {
+      return res.type('text/plain').send('Success');
+    }
+  }
+  
+  // Not authorized - redirect to portal
+  return res.redirect(302, `http://${req.headers.host}/`);
+});
+
+app.get('/success.txt', async (req, res) => {
+  const clientIp = req.ip.replace('::ffff:', '');
+  const mac = await getMacFromIp(clientIp);
+  
+  if (mac) {
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    if (session) {
+      return res.type('text/plain').send('Success');
+    }
+  }
+  
+  // Not authorized - redirect to portal
+  return res.redirect(302, `http://${req.headers.host}/`);
+});
+
+// Apple-specific captive portal detection
+app.get('/library/test/success.html', async (req, res) => {
+  const clientIp = req.ip.replace('::ffff:', '');
+  const mac = await getMacFromIp(clientIp);
+  
+  if (mac) {
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    if (session) {
+      return res.status(204).send();
+    }
+  }
+  
+  // Not authorized - redirect to portal
+  return res.redirect(302, `http://${req.headers.host}/`);
+});
+
+// CAPTIVE PORTAL DETECTION ENDPOINTS
+app.get('/generate_204', async (req, res) => {
+  const clientIp = req.ip.replace('::ffff:', '');
+  const mac = await getMacFromIp(clientIp);
+  
+  if (mac) {
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    if (session) {
+      return res.status(204).send();
+    }
+  }
+  
+  // Not authorized - redirect to portal
+  return res.redirect(302, `http://${req.headers.host}/`);
+});
+
+app.get('/hotspot-detect.html', async (req, res) => {
+  const clientIp = req.ip.replace('::ffff:', '');
+  const mac = await getMacFromIp(clientIp);
+  
+  if (mac) {
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    if (session) {
+      return res.status(204).send();
+    }
+  }
+  
+  // Not authorized - redirect to portal
+  return res.redirect(302, `http://${req.headers.host}/`);
+});
+
+app.get('/ncsi.txt', async (req, res) => {
+  const clientIp = req.ip.replace('::ffff:', '');
+  const mac = await getMacFromIp(clientIp);
+  
+  if (mac) {
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    if (session) {
+      return res.type('text/plain').send('Microsoft NCSI');
+    }
+  }
+  
+  // Not authorized - redirect to portal
+  return res.redirect(302, `http://${req.headers.host}/`);
+});
+
+app.get('/connecttest.txt', async (req, res) => {
+  const clientIp = req.ip.replace('::ffff:', '');
+  const mac = await getMacFromIp(clientIp);
+  
+  if (mac) {
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    if (session) {
+      return res.type('text/plain').send('Success');
+    }
+  }
+  
+  // Not authorized - redirect to portal
+  return res.redirect(302, `http://${req.headers.host}/`);
+});
+
+app.get('/success.txt', async (req, res) => {
+  const clientIp = req.ip.replace('::ffff:', '');
+  const mac = await getMacFromIp(clientIp);
+  
+  if (mac) {
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    if (session) {
+      return res.type('text/plain').send('Success');
+    }
+  }
+  
+  // Not authorized - redirect to portal
+  return res.redirect(302, `http://${req.headers.host}/`);
+});
+
+// DNS REDIRECT HANDLING FOR CAPTIVE PORTAL
+app.use(async (req, res, next) => {
+  const host = req.headers.host || '';
+  const url = req.url.toLowerCase();
+  const clientIp = req.ip.replace('::ffff:', '');
+
+  // Check if this is a DNS-based captive portal probe
+  if (host === 'captive.apple.com' || host === 'www.msftconnecttest.com' || host === 'connectivitycheck.gstatic.com') {
+    const mac = await getMacFromIp(clientIp);
+    if (mac) {
+      const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+      if (session) {
+        // Authorized client - return success
+        if (url.includes('/generate_204') || url.includes('/connecttest.txt')) {
+          return res.status(204).send();
+        }
+        if (url.includes('/redirect')) {
+          return res.redirect('http://www.apple.com');
+        }
+        return res.status(204).send();
+      }
+    }
+    // Not authorized - redirect to portal
+    return res.redirect(302, `http://${req.headers.host}/`);
+  }
+  
+  next();
+});
+
 // CAPTIVE PORTAL REDIRECTION MIDDLEWARE
 app.use(async (req, res, next) => {
   const host = req.headers.host || '';
@@ -69,6 +297,20 @@ app.use(async (req, res, next) => {
         await network.whitelistMAC(mac, clientIp);
         await db.run('UPDATE sessions SET ip = ? WHERE mac = ?', [clientIp, mac]);
       }
+      
+      // Handle captive portal probe requests for authorized clients
+      if (isProbe) {
+        if (url.includes('/generate_204')) {
+          return res.status(204).send();
+        }
+        if (url.includes('/success.txt') || url.includes('/connecttest.txt')) {
+          return res.type('text/plain').send('Success');
+        }
+        if (url.includes('/ncsi.txt')) {
+          return res.type('text/plain').send('Microsoft NCSI');
+        }
+      }
+      
       return next();
     }
   }

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AdminTab, UserSession, Rate } from './types';
 import LandingPage from './components/Portal/LandingPage';
@@ -10,7 +9,8 @@ import SystemUpdater from './components/Admin/SystemUpdater';
 import { apiClient } from './lib/api';
 
 const App: React.FC = () => {
-  const [isAdmin, setIsAdmin] = useState(false);
+  // Initialize state based on the current URL path
+  const [isAdmin, setIsAdmin] = useState(window.location.pathname === '/admin');
   const [activeTab, setActiveTab] = useState<AdminTab>(AdminTab.Analytics);
   const [rates, setRates] = useState<Rate[]>([]);
   const [activeSessions, setActiveSessions] = useState<UserSession[]>([]);
@@ -32,6 +32,13 @@ const App: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    // Listen for browser back/forward buttons to sync isAdmin state
+    const handleLocationChange = () => {
+      setIsAdmin(window.location.pathname === '/admin');
+    };
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
   useEffect(() => {
@@ -45,6 +52,14 @@ const App: React.FC = () => {
     }, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleToggleAdmin = () => {
+    const nextState = !isAdmin;
+    setIsAdmin(nextState);
+    // Update the browser URL without a page reload
+    const newPath = nextState ? '/admin' : '/';
+    window.history.pushState({}, '', newPath);
+  };
 
   const handleAddSession = (session: UserSession) => {
     setActiveSessions(prev => [...prev, session]);
@@ -89,7 +104,7 @@ const App: React.FC = () => {
     <div className="min-h-screen">
       <div className="fixed bottom-4 right-4 z-50 flex gap-2">
         <button 
-          onClick={() => setIsAdmin(!isAdmin)}
+          onClick={handleToggleAdmin}
           className="bg-black/80 text-white px-4 py-2 rounded-full text-xs font-bold hover:bg-black transition-colors shadow-lg border border-white/10"
         >
           {isAdmin ? 'PORTAL VIEW' : 'ADMIN LOGIN'}
@@ -101,7 +116,7 @@ const App: React.FC = () => {
           <aside className="w-64 bg-slate-950 text-white flex flex-col">
             <div className="p-6 border-b border-white/5">
               <h1 className="text-xl font-black tracking-tighter text-blue-500">AJC PISOWIFI</h1>
-              <p className="text-[9px] text-slate-500 mt-1 uppercase tracking-[0.2em] font-bold">Enterprise Build v2.5.0</p>
+              <p className="text-[9px] text-slate-500 mt-1 uppercase tracking-[0.2em] font-bold">Enterprise Build v3.3.0</p>
             </div>
             <nav className="flex-1 p-4 space-y-1.5">
               <SidebarItem active={activeTab === AdminTab.Analytics} onClick={() => setActiveTab(AdminTab.Analytics)} icon="📊" label="Dashboard" />

@@ -13,11 +13,23 @@ const io = new Server(server);
 
 app.use(express.json());
 
-// Serve static files
 const distPath = path.join(__dirname, 'dist');
 if (!fs.existsSync(distPath)) fs.mkdirSync(distPath, { recursive: true });
 app.use('/dist', express.static(distPath));
 app.use(express.static(__dirname));
+
+// SYSTEM API
+app.post('/api/system/reset', async (req, res) => {
+  try {
+    console.log('[SYSTEM] Factory Reset Request Received');
+    await network.cleanupAllNetworkSettings();
+    await db.factoryResetDB();
+    res.json({ success: true, message: 'System restored to factory defaults.' });
+  } catch (err) {
+    console.error('[SYSTEM] Reset Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // WIRELESS API
 app.get('/api/network/wireless', async (req, res) => {
@@ -30,7 +42,6 @@ app.get('/api/network/wireless', async (req, res) => {
 app.post('/api/network/wireless', async (req, res) => {
   try {
     const config = req.body;
-    // Updated query to include bridge field persistence
     await db.run(
       'INSERT OR REPLACE INTO wireless_settings (interface, ssid, password, channel, hw_mode, bridge) VALUES (?, ?, ?, ?, ?, ?)',
       [config.interface, config.ssid, config.password, config.channel, config.hw_mode, config.bridge]
@@ -68,7 +79,7 @@ app.delete('/api/hotspots/:interface', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// EXISTING API
+// RATES API
 app.get('/api/rates', async (req, res) => {
   try { const rates = await db.all('SELECT * FROM rates'); res.json(rates || []); }
   catch (err) { res.status(500).json({ error: err.message }); }
@@ -79,11 +90,26 @@ app.post('/api/rates', async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.delete('/api/rates/:id', async (req, res) => {
+  try { await db.run('DELETE FROM rates WHERE id = ?', [req.params.id]); res.json({ success: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// CONFIG API
 app.get('/api/config', async (req, res) => {
   try {
     const boardType = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
     const coinPin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
     res.json({ boardType: boardType?.value || 'none', coinPin: parseInt(coinPin?.value || '2') });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/config', async (req, res) => {
+  try {
+    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['boardType', req.body.boardType]);
+    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['coinPin', req.body.coinPin]);
+    updateGPIO(req.body.boardType, req.body.coinPin);
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -110,10 +136,8 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Socket.io
 io.on('connection', (socket) => console.log('Client connected:', socket.id));
 
-// Startup
 (async () => {
   try {
     const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);

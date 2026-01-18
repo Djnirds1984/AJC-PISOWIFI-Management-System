@@ -26,7 +26,6 @@ export interface WirelessConfig {
   password?: string;
   channel: number;
   hw_mode: 'g' | 'a';
-  // Added bridge property to support aggregation of wireless interfaces
   bridge?: string;
 }
 
@@ -71,6 +70,7 @@ export enum AdminTab {
   Rates = 'rates',
   Network = 'network',
   Hardware = 'hardware',
+  System = 'system',
   Updater = 'updater'
 }
 

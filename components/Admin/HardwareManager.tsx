@@ -49,8 +49,16 @@ const HardwareManager: React.FC = () => {
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500">
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-8 border-b border-slate-100 bg-slate-50/50">
-          <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Hardware Architecture</h3>
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Select the Single Board Computer (SBC) or PC bridge</p>
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Hardware Architecture</h3>
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Select the Single Board Computer (SBC) or PC bridge</p>
+            </div>
+            <div className="bg-white px-3 py-1.5 rounded-xl border border-slate-200 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+              <span className="text-[10px] font-black text-slate-700 uppercase tracking-tighter">Bus Active</span>
+            </div>
+          </div>
         </div>
 
         <div className="p-8 space-y-8">
@@ -64,11 +72,11 @@ const HardwareManager: React.FC = () => {
           <div className={`${board === 'none' ? 'opacity-40 pointer-events-none' : ''}`}>
             <div className="flex justify-between items-end mb-4">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                {board === 'x64_pc' ? 'Serial Communication' : 'BCM Pin Assignment (GPIO)'}
+                {board === 'x64_pc' ? 'Serial Communication' : 'SOC Pin Assignment (BCM)'}
               </label>
               <div className="flex gap-2">
-                 <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-md uppercase">I2C conflict on 2/3</span>
-                 <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-md uppercase tracking-tighter">Current BCM: {pin}</span>
+                 {board === 'raspberry_pi' && <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-md uppercase">Auto-calculating Offset</span>}
+                 <span className="text-[10px] font-black text-slate-900 bg-slate-100 px-2 py-1 rounded-md uppercase tracking-tighter">Selected BCM: {pin}</span>
               </div>
             </div>
             
@@ -92,28 +100,34 @@ const HardwareManager: React.FC = () => {
             )}
 
             {board === 'x64_pc' && (
-              <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 text-center">
+              <div className="p-10 bg-slate-50 rounded-[2rem] border border-slate-200 text-center">
+                <div className="text-3xl mb-3">📡</div>
                 <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">
-                  Listening on <code className="bg-slate-200 px-2 py-0.5 rounded">/dev/ttyUSB0</code>.
+                  Listening on <code className="bg-slate-200 px-2 py-1 rounded">/dev/ttyUSB0</code>.
                 </p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Connect your Arduino/NodeMCU via USB</p>
               </div>
             )}
 
             <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="p-5 rounded-2xl bg-blue-50 border border-blue-100">
-                <p className="text-[10px] font-black text-blue-800 uppercase tracking-tight mb-2">Recommended Pins (BCM)</p>
+                <div className="flex justify-between items-start mb-2">
+                  <p className="text-[10px] font-black text-blue-800 uppercase tracking-tight">Standard Pins</p>
+                  <span className="text-[8px] bg-blue-600 text-white px-1.5 py-0.5 rounded uppercase font-black">Recommended</span>
+                </div>
                 <div className="flex gap-2">
                   <PinBadge bcm={4} phys={7} desc="Safe" />
                   <PinBadge bcm={17} phys={11} desc="Safe" />
                   <PinBadge bcm={27} phys={13} desc="Safe" />
                 </div>
               </div>
-              <div className="p-5 rounded-2xl bg-amber-50 border border-amber-100">
-                <p className="text-[10px] font-black text-amber-800 uppercase tracking-tight mb-2">Reserved Pins (Avoid)</p>
-                <div className="flex gap-2">
-                  <PinBadge bcm={2} phys={3} desc="I2C" danger />
-                  <PinBadge bcm={3} phys={5} desc="I2C" danger />
-                </div>
+              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200">
+                <p className="text-[10px] font-black text-slate-600 uppercase tracking-tight mb-2">Diagnostic Notes</p>
+                <ul className="text-[9px] font-bold text-slate-500 uppercase space-y-1">
+                  <li>• Raspberry Pi 4/5 uses a +512 offset for sysfs.</li>
+                  <li>• Pin 3 is hardware I2C; ensure it's disabled.</li>
+                  <li>• System automatically detects the GPIO base.</li>
+                </ul>
               </div>
             </div>
           </div>
@@ -122,9 +136,10 @@ const HardwareManager: React.FC = () => {
         <div className="p-8 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {success && (
-              <span className="text-[10px] font-black text-green-600 uppercase animate-in slide-in-from-left-2">
-                ✓ Hardware Stack Re-initialized
-              </span>
+              <div className="flex items-center gap-2 text-[10px] font-black text-green-600 uppercase animate-in slide-in-from-left-2">
+                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                Hardware Kernel Stack Updated
+              </div>
             )}
           </div>
           <button
@@ -132,7 +147,7 @@ const HardwareManager: React.FC = () => {
             disabled={saving}
             className="px-10 py-4 rounded-2xl bg-slate-900 text-white font-black text-xs uppercase tracking-[0.2em] hover:bg-black transition-all shadow-xl shadow-slate-900/10 active:scale-95 disabled:opacity-50"
           >
-            {saving ? 'UPDATING...' : 'COMMIT CHANGES'}
+            {saving ? 'CONFIGURING KERNEL...' : 'COMMIT SYSTEM CHANGES'}
           </button>
         </div>
       </div>

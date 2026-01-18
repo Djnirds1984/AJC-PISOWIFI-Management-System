@@ -5,6 +5,7 @@ import LandingPage from './components/Portal/LandingPage';
 import Analytics from './components/Admin/Analytics';
 import RatesManager from './components/Admin/RatesManager';
 import NetworkSettings from './components/Admin/NetworkSettings';
+import HardwareManager from './components/Admin/HardwareManager';
 import SystemUpdater from './components/Admin/SystemUpdater';
 import { apiClient } from './lib/api';
 
@@ -100,12 +101,13 @@ const App: React.FC = () => {
           <aside className="w-64 bg-slate-950 text-white flex flex-col">
             <div className="p-6 border-b border-white/5">
               <h1 className="text-xl font-black tracking-tighter text-blue-500">AJC PISOWIFI</h1>
-              <p className="text-[9px] text-slate-500 mt-1 uppercase tracking-[0.2em] font-bold">Enterprise Build v2.4.2</p>
+              <p className="text-[9px] text-slate-500 mt-1 uppercase tracking-[0.2em] font-bold">Enterprise Build v2.5.0</p>
             </div>
             <nav className="flex-1 p-4 space-y-1.5">
               <SidebarItem active={activeTab === AdminTab.Analytics} onClick={() => setActiveTab(AdminTab.Analytics)} icon="📊" label="Dashboard" />
               <SidebarItem active={activeTab === AdminTab.Rates} onClick={() => setActiveTab(AdminTab.Rates)} icon="💰" label="Pricing Setup" />
               <SidebarItem active={activeTab === AdminTab.Network} onClick={() => setActiveTab(AdminTab.Network)} icon="🌐" label="Network Stack" />
+              <SidebarItem active={activeTab === AdminTab.Hardware} onClick={() => setActiveTab(AdminTab.Hardware)} icon="🔌" label="Hardware" />
               <SidebarItem active={activeTab === AdminTab.Updater} onClick={() => setActiveTab(AdminTab.Updater)} icon="🚀" label="Updater" />
             </nav>
             <div className="p-4 border-t border-white/5 text-slate-600 text-[10px] font-bold text-center uppercase tracking-widest">
@@ -116,7 +118,7 @@ const App: React.FC = () => {
           <main className="flex-1 overflow-y-auto p-8 bg-slate-50">
             <header className="mb-8 flex justify-between items-center">
               <div>
-                <h2 className="text-2xl font-black text-slate-900 capitalize tracking-tight">{activeTab}</h2>
+                <h2 className="text-2xl font-black text-slate-900 capitalize tracking-tight">{activeTab === AdminTab.Hardware ? 'Hardware Configuration' : activeTab}</h2>
                 <p className="text-slate-500 text-sm">Real-time system monitoring and control.</p>
               </div>
               <div className="flex items-center gap-4 bg-white p-2 pr-4 rounded-full border border-slate-200 shadow-sm">
@@ -134,6 +136,7 @@ const App: React.FC = () => {
             {activeTab === AdminTab.Analytics && <Analytics sessions={activeSessions} />}
             {activeTab === AdminTab.Rates && <RatesManager rates={rates} setRates={updateRates} />}
             {activeTab === AdminTab.Network && <NetworkSettings />}
+            {activeTab === AdminTab.Hardware && <HardwareManager />}
             {activeTab === AdminTab.Updater && <SystemUpdater />}
           </main>
         </div>

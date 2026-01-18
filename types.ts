@@ -68,6 +68,7 @@ export enum AdminTab {
   Analytics = 'analytics',
   Rates = 'rates',
   Network = 'network',
+  Hardware = 'hardware',
   Updater = 'updater'
 }
 

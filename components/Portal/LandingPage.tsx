@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { Rate, UserSession } from '../../types';
 import CoinModal from './CoinModal';
-import HardwareSetup from './HardwareSetup';
 
 interface Props {
   rates: Rate[];
@@ -12,7 +11,6 @@ interface Props {
 
 const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
   const [showModal, setShowModal] = useState(false);
-  const [showSetup, setShowSetup] = useState(false);
   const [myMac, setMyMac] = useState('00:00:00:00:00:00');
 
   useEffect(() => {
@@ -27,14 +25,8 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
       <header className="gradient-bg text-white p-8 pt-12 rounded-b-[40px] shadow-2xl relative overflow-hidden">
-        <button 
-          onClick={() => setShowSetup(true)}
-          className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all text-xl"
-        >
-          ⚙️
-        </button>
         <div className="relative z-10 text-center">
-          <h1 className="text-3xl font-black tracking-tighter mb-1">AJC PISOWIFI</h1>
+          <h1 className="text-3xl font-black tracking-tighter mb-1 text-white">AJC PISOWIFI</h1>
           <p className="text-blue-100 text-sm font-medium opacity-80 uppercase tracking-widest">Enterprise Internet Gateway</p>
         </div>
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
@@ -130,15 +122,6 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
             setShowModal(false);
           }}
           rates={rates}
-        />
-      )}
-
-      {showSetup && (
-        <HardwareSetup 
-          onClose={() => setShowSetup(false)} 
-          onSaved={() => {
-            // Re-sync logic if needed
-          }}
         />
       )}
     </div>

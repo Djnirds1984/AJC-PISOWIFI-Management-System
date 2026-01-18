@@ -2,6 +2,7 @@
 
 # AJC PISOWIFI - Automated Installation Script
 # Supports Raspberry Pi and Orange Pi (Debian/Ubuntu based)
+# Uses PM2 for process management and auto-reboot persistence
 
 set -e
 
@@ -12,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}==============================================${NC}"
-echo -e "${BLUE}   AJC PISOWIFI SYSTEM INSTALLER v2.5.0      ${NC}"
+echo -e "${BLUE}   AJC PISOWIFI SYSTEM INSTALLER v2.6.0      ${NC}"
 echo -e "${BLUE}==============================================${NC}"
 
 # Check for root
@@ -21,10 +22,10 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-echo -e "${GREEN}[1/5] Updating system repositories...${NC}"
+echo -e "${GREEN}[1/6] Updating system repositories...${NC}"
 apt-get update
 
-echo -e "${GREEN}[2/5] Installing system dependencies...${NC}"
+echo -e "${GREEN}[2/6] Installing system dependencies...${NC}"
 apt-get install -y \
     git \
     curl \
@@ -46,7 +47,10 @@ else
     echo -e "${BLUE}Node.js $(node -v) is already installed.${NC}"
 fi
 
-echo -e "${GREEN}[3/5] Cloning AJC PISOWIFI Repository...${NC}"
+echo -e "${GREEN}[3/6] Installing PM2 Globally...${NC}"
+npm install -g pm2
+
+echo -e "${GREEN}[4/6] Cloning AJC PISOWIFI Repository...${NC}"
 INSTALL_DIR="/opt/ajc-pisowifi"
 if [ -d "$INSTALL_DIR" ]; then
     echo -e "${BLUE}Target directory exists. Backing up...${NC}"
@@ -56,37 +60,33 @@ fi
 git clone https://github.com/Djnirds1984/AJC-PISOWIFI-Management-System.git "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
-echo -e "${GREEN}[4/5] Installing application dependencies...${NC}"
+echo -e "${GREEN}[5/6] Installing application dependencies...${NC}"
 npm install --production
 
-echo -e "${GREEN}[5/5] Configuring system services...${NC}"
+echo -e "${GREEN}[6/6] Configuring PM2 Startup & Persistence...${NC}"
 
-# Create Systemd Service
-cat <<EOF > /etc/systemd/system/pisowifi.service
-[Unit]
-Description=AJC PISOWIFI Management System
-After=network.target
+# Start the application with PM2
+pm2 start server.js --name "ajc-pisowifi"
 
-[Service]
-Type=simple
-User=root
-WorkingDirectory=$INSTALL_DIR
-ExecStart=/usr/bin/node server.js
-Restart=always
-RestartSec=10
+# Save the current PM2 process list
+pm2 save
 
-[Install]
-WantedBy=multi-user.target
-EOF
+# Setup PM2 to run on reboot
+# This command detects the init system and executes the necessary setup
+PM2_STARTUP=$(pm2 startup systemd -u root --hp /root | grep "sudo env")
+if [ -n "$PM2_STARTUP" ]; then
+    echo -e "${BLUE}Executing PM2 startup command...${NC}"
+    eval "$PM2_STARTUP"
+fi
 
-systemctl daemon-reload
-systemctl enable pisowifi
-systemctl start pisowifi
+# Double check save
+pm2 save
 
 echo -e "${BLUE}==============================================${NC}"
 echo -e "${GREEN} INSTALLATION COMPLETE! ${NC}"
 echo -e "${BLUE}==============================================${NC}"
 echo -e "Portal Address: http://$(hostname -I | awk '{print $1}'):3000"
-echo -e "Service Status: sudo systemctl status pisowifi"
-echo -e "Admin Login: Accessible via the Portal UI"
+echo -e "Process Manager: pm2 status"
+echo -e "Monitor Logs: pm2 logs ajc-pisowifi"
+echo -e "System will now auto-start on every reboot via PM2."
 echo -e "${BLUE}==============================================${NC}"

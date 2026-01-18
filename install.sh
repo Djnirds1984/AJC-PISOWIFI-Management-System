@@ -125,12 +125,13 @@ fi
 pm2 save
 
 echo -e "${GREEN}[8/8] Setting Kernel Capabilities...${NC}"
-setcap 'cap_net_admin,cap_net_raw+ep' $(eval readlink -f $(which node))
+# cap_net_bind_service allows binding to port 80 without being root
+setcap 'cap_net_bind_service,cap_net_admin,cap_net_raw+ep' $(eval readlink -f $(which node))
 
 echo -e "${BLUE}==============================================${NC}"
 echo -e "${GREEN} INSTALLATION COMPLETE! ${NC}"
 echo -e "${BLUE}==============================================${NC}"
 echo -e "Hardware:         ${BOARD}"
-echo -e "Portal:           http://$(hostname -I | awk '{print $1}'):3000"
+echo -e "Portal:           http://$(hostname -I | awk '{print $1}')"
 echo -e "Check Logs:       pm2 logs ajc-pisowifi"
 echo -e "${BLUE}==============================================${NC}"

@@ -52,7 +52,7 @@ curl -sSL https://raw.githubusercontent.com/Djnirds1984/AJC-PISOWIFI-Management-
 
 ## ⚙️ Configuration
 
-- **Default Port**: 3000
+- **Default Port**: 80 (Standard HTTP)
 - **Admin Login**: Click the "ADMIN LOGIN" button in the bottom right of the portal.
 - **GPIO**: Configure the board type and pin number via the "System Configuration" gear icon in the portal (Simulation mode available).
 

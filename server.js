@@ -14,19 +14,16 @@ const io = new Server(server);
 app.use(express.json());
 
 // 1. Static file serving (Dist contains bundle.js)
-// Critical: This MUST come before any redirection logic
 const distPath = path.join(__dirname, 'dist');
 if (!fs.existsSync(distPath)) fs.mkdirSync(distPath, { recursive: true });
 app.use('/dist', express.static(distPath));
 app.use(express.static(__dirname));
 
 // 2. Captive Portal Detection Middleware
-// Handles probes from Android, iOS, and Windows to trigger the portal login screen
 app.use((req, res, next) => {
   const host = req.headers.host || '';
   const userAgent = req.headers['user-agent'] || '';
   
-  // Detection paths for various OSs
   const portalProbes = [
     '/generate_204',               // Android / Chrome
     '/hotspot-detect.html',        // iOS / macOS
@@ -36,7 +33,7 @@ app.use((req, res, next) => {
 
   if (portalProbes.some(path => req.url.includes(path))) {
     console.log(`[PORTAL] Detection probe from ${userAgent} on ${req.url}`);
-    // Redirect probe to the actual portal home page
+    // Redirect probe to the actual portal home page (Port 80)
     return res.redirect(`http://${host}/`);
   }
   next();
@@ -182,4 +179,5 @@ io.on('connection', (socket) => console.log('Client connected:', socket.id));
   } catch (e) { console.error('[AJC] Startup Error:', e.message); }
 })();
 
-server.listen(3000, '0.0.0.0', () => console.log(`AJC PISOWIFI Server running on http://0.0.0.0:3000`));
+// Running on Port 80 for production captive portal efficiency
+server.listen(80, '0.0.0.0', () => console.log(`AJC PISOWIFI Server running on http://0.0.0.0 (Port 80)`));

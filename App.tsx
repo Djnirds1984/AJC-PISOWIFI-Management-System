@@ -26,8 +26,12 @@ const App: React.FC = () => {
   const loadData = async () => {
     try {
       setError(null);
-      const fetchedRates = await apiClient.getRates();
+      const [fetchedRates, sessions] = await Promise.all([
+        apiClient.getRates(),
+        fetch('/api/sessions').then(r => r.json()).catch(() => [])
+      ]);
       setRates(fetchedRates);
+      setActiveSessions(sessions);
     } catch (err: any) {
       console.error('Backend connection failed:', err);
       setError(err.message || 'Connection to AJC Hardware failed');
@@ -46,14 +50,23 @@ const App: React.FC = () => {
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
+  // Sync state with backend timer
   useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveSessions(prev => 
-        prev.map(s => ({
-          ...s,
-          remainingSeconds: Math.max(0, s.remainingSeconds - 1)
-        })).filter(s => s.remainingSeconds > 0)
-      );
+    const interval = setInterval(async () => {
+      // Periodic refresh from server to ensure sync
+      try {
+        const res = await fetch('/api/sessions');
+        const sessions = await res.json();
+        setActiveSessions(sessions);
+      } catch (e) {
+        // Local decrement as fallback for smooth UI
+        setActiveSessions(prev => 
+          prev.map(s => ({
+            ...s,
+            remainingSeconds: Math.max(0, s.remainingSeconds - 1)
+          })).filter(s => s.remainingSeconds > 0)
+        );
+      }
     }, 1000);
     return () => clearInterval(interval);
   }, []);
@@ -70,8 +83,30 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAddSession = (session: UserSession) => {
-    setActiveSessions(prev => [...prev, session]);
+  const handleAddSession = async (session: UserSession) => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/sessions/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mac: session.mac,
+          ip: session.ip,
+          minutes: Math.ceil(session.remainingSeconds / 60),
+          pesos: session.totalPaid
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadData();
+      } else {
+        alert('Failed to authorize session: ' + data.error);
+      }
+    } catch (e) {
+      alert('Network error authorizing connection.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const updateRates = async () => {

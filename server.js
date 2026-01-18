@@ -35,6 +35,37 @@ app.use((req, res, next) => {
   next();
 });
 
+// SESSIONS API
+app.get('/api/sessions', async (req, res) => {
+  try {
+    const rows = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt FROM sessions');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sessions/start', async (req, res) => {
+  const { mac, ip, minutes, pesos } = req.body;
+  if (!mac) return res.status(400).json({ error: 'MAC address required' });
+  
+  try {
+    const seconds = minutes * 60;
+    // Insert or update session
+    await db.run(
+      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid) VALUES (?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?',
+      [mac, ip, seconds, pesos, seconds, pesos]
+    );
+    
+    // Apply network whitelist
+    await network.whitelistMAC(mac);
+    
+    res.json({ success: true, message: 'Session started and whitelisted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // SYSTEM API
 app.post('/api/system/reset', async (req, res) => {
   try {
@@ -154,6 +185,24 @@ app.get('*', (req, res) => {
 
 io.on('connection', (socket) => console.log('Client connected:', socket.id));
 
+// Background Session Manager
+setInterval(async () => {
+  try {
+    const active = await db.all('SELECT mac FROM sessions WHERE remaining_seconds > 0');
+    if (active.length > 0) {
+      await db.run('UPDATE sessions SET remaining_seconds = remaining_seconds - 1 WHERE remaining_seconds > 0');
+      // Find sessions that just expired
+      const expired = await db.all('SELECT mac FROM sessions WHERE remaining_seconds <= 0');
+      for (const s of expired) {
+        await network.blockMAC(s.mac);
+        await db.run('DELETE FROM sessions WHERE mac = ?', [s.mac]);
+      }
+    }
+  } catch (e) {
+    console.error('[AJC] Session Timer Error:', e.message);
+  }
+}, 1000);
+
 // REBOOT PERSISTENCE: Restore all saved settings from DB
 async function bootupRestore() {
   console.log('[AJC] RESTORATION ENGINE: Starting Persistence Recovery...');
@@ -175,6 +224,13 @@ async function bootupRestore() {
     for (const hs of hotspots) {
       console.log(`[AJC] Auto-Restoring Portal Segment: ${hs.interface} @ ${hs.ip_address}`);
       await network.setupHotspot(hs).catch(e => console.error(`[AJC] Hotspot Restore Failed:`, e.message));
+    }
+
+    // 4. Restore Active Sessions Whitelisting
+    const sessions = await db.all('SELECT mac FROM sessions WHERE remaining_seconds > 0');
+    for (const s of sessions) {
+      console.log(`[AJC] Auto-Restoring Whitelist for: ${s.mac}`);
+      await network.whitelistMAC(s.mac);
     }
     
     console.log('[AJC] RESTORATION ENGINE: Complete.');

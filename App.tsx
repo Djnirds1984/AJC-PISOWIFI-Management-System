@@ -103,21 +103,22 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen">
-      <div className="fixed bottom-4 right-4 z-50">
-        <button onClick={handleToggleAdmin} className="bg-black/90 text-white px-5 py-2.5 rounded-full text-[10px] font-black tracking-widest uppercase hover:bg-blue-600 shadow-2xl border border-white/10 active:scale-95 transition-all">
+    <div className="min-h-screen bg-slate-50">
+      <div className="fixed bottom-4 right-4 z-[999]">
+        <button onClick={handleToggleAdmin} className="bg-slate-950 text-white px-5 py-3 rounded-full text-[10px] font-black tracking-widest uppercase hover:bg-blue-600 shadow-2xl border border-white/10 active:scale-95 transition-all flex items-center gap-2">
+          <span>{isAdmin ? '🚪' : '🔐'}</span>
           {isAdmin ? 'Exit Admin' : 'Admin Login'}
         </button>
       </div>
 
       {isAdmin ? (
-        <div className="flex h-screen overflow-hidden animate-in fade-in duration-500">
-          <aside className="w-64 bg-slate-950 text-white flex flex-col">
-            <div className="p-6 border-b border-white/5">
-              <h1 className="text-xl font-black tracking-tighter text-blue-500">AJC PISOWIFI</h1>
-              <p className="text-[9px] text-slate-500 mt-1 uppercase tracking-[0.2em] font-bold">MANAGEMENT PANEL</p>
+        <div className="flex h-screen overflow-hidden animate-in fade-in duration-500 bg-slate-50">
+          <aside className="w-72 bg-slate-950 text-white flex flex-col shrink-0">
+            <div className="p-8 border-b border-white/5">
+              <h1 className="text-2xl font-black tracking-tighter text-blue-500 italic">AJC PISOWIFI</h1>
+              <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-[0.3em] font-black">SYSTEM ENGINE</p>
             </div>
-            <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto">
+            <nav className="flex-1 p-6 space-y-2 overflow-y-auto">
               <SidebarItem active={activeTab === AdminTab.Analytics} onClick={() => setActiveTab(AdminTab.Analytics)} icon="📊" label="Dashboard" />
               <SidebarItem active={activeTab === AdminTab.Rates} onClick={() => setActiveTab(AdminTab.Rates)} icon="💰" label="Pricing" />
               <SidebarItem active={activeTab === AdminTab.Network} onClick={() => setActiveTab(AdminTab.Network)} icon="🌐" label="Network" />
@@ -125,33 +126,42 @@ const App: React.FC = () => {
               <SidebarItem active={activeTab === AdminTab.System} onClick={() => setActiveTab(AdminTab.System)} icon="⚙️" label="System" />
               <SidebarItem active={activeTab === AdminTab.Updater} onClick={() => setActiveTab(AdminTab.Updater)} icon="🚀" label="Updater" />
             </nav>
-            <div className="p-4 border-t border-white/5 text-slate-600 text-[10px] font-bold text-center uppercase tracking-widest">v3.3.0 WAN SECURED</div>
+            <div className="p-6 border-t border-white/5 bg-black/20">
+               <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">v3.3.0 WAN ONLINE</span>
+               </div>
+            </div>
           </aside>
 
-          <main className="flex-1 overflow-y-auto p-8 bg-slate-50">
-            <header className="mb-8 flex justify-between items-center">
-              <div>
-                <h2 className="text-2xl font-black text-slate-900 capitalize tracking-tight">{activeTab}</h2>
-                <p className="text-slate-500 text-sm">System Management Interface.</p>
-              </div>
-              <div className="flex items-center gap-4 bg-white p-2 pr-4 rounded-full border border-slate-200 shadow-sm">
-                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">A</div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-black text-slate-800 uppercase">Administrator</span>
-                  <span className="text-[10px] text-green-500 font-bold flex items-center gap-1 uppercase">
-                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                    VERIFIED
-                  </span>
+          <main className="flex-1 overflow-y-auto bg-slate-50">
+            <div className="p-10 max-w-7xl mx-auto">
+              <header className="mb-10 flex justify-between items-center">
+                <div>
+                  <h2 className="text-4xl font-black text-slate-900 capitalize tracking-tighter">{activeTab}</h2>
+                  <p className="text-slate-500 text-sm font-medium mt-1">Management Interface & System Control.</p>
                 </div>
-              </div>
-            </header>
+                <div className="flex items-center gap-4 bg-white p-2.5 pr-6 rounded-full border border-slate-200 shadow-sm">
+                  <div className="w-11 h-11 bg-blue-600 rounded-full flex items-center justify-center text-white font-black shadow-lg shadow-blue-600/20">A</div>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-black text-slate-900 uppercase tracking-tight">System Admin</span>
+                    <span className="text-[9px] text-green-500 font-black flex items-center gap-1.5 uppercase tracking-widest">
+                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                      VERIFIED ACCESS
+                    </span>
+                  </div>
+                </div>
+              </header>
 
-            {activeTab === AdminTab.Analytics && <Analytics sessions={activeSessions} />}
-            {activeTab === AdminTab.Rates && <RatesManager rates={rates} setRates={updateRates} />}
-            {activeTab === AdminTab.Network && <NetworkSettings />}
-            {activeTab === AdminTab.Hardware && <HardwareManager />}
-            {activeTab === AdminTab.System && <SystemSettings />}
-            {activeTab === AdminTab.Updater && <SystemUpdater />}
+              <div className="pb-20">
+                {activeTab === AdminTab.Analytics && <Analytics sessions={activeSessions} />}
+                {activeTab === AdminTab.Rates && <RatesManager rates={rates} setRates={updateRates} />}
+                {activeTab === AdminTab.Network && <NetworkSettings />}
+                {activeTab === AdminTab.Hardware && <HardwareManager />}
+                {activeTab === AdminTab.System && <SystemSettings />}
+                {activeTab === AdminTab.Updater && <SystemUpdater />}
+              </div>
+            </div>
           </main>
         </div>
       ) : (
@@ -162,9 +172,16 @@ const App: React.FC = () => {
 };
 
 const SidebarItem: React.FC<{ active: boolean; onClick: () => void; icon: string; label: string }> = ({ active, onClick, icon, label }) => (
-  <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${active ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20' : 'text-slate-500 hover:bg-white/5 hover:text-white'}`}>
-    <span className="text-lg">{icon}</span>
-    {label}
+  <button 
+    onClick={onClick} 
+    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-sm font-black transition-all duration-200 ${
+      active 
+        ? 'bg-blue-600 text-white shadow-2xl shadow-blue-600/40 scale-[1.02]' 
+        : 'text-slate-400 hover:bg-white/5 hover:text-white'
+    }`}
+  >
+    <span className="text-xl">{icon}</span>
+    <span className="uppercase tracking-widest text-[11px]">{label}</span>
   </button>
 );
 

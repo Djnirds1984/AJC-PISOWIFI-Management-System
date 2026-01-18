@@ -65,6 +65,11 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  async whoAmI(): Promise<{ ip: string; mac: string }> {
+    const res = await fetch(`${API_BASE}/whoami`);
+    return handleResponse(res);
+  },
+
   // Toggle interface up/down status
   async setInterfaceStatus(name: string, status: 'up' | 'down'): Promise<void> {
     const res = await fetch(`${API_BASE}/network/status`, {

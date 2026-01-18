@@ -13,9 +13,17 @@ const io = new Server(server);
 
 app.use(express.json());
 
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
+
 // Helper: Get MAC from IP using ARP table
 async function getMacFromIp(ip) {
   if (ip === '::1' || ip === '127.0.0.1' || !ip) return null;
+  
+  // Try to ping the IP to ensure it's in the ARP table
+  try { await execPromise(`ping -c 1 -W 1 ${ip}`); } catch (e) {}
+
   try {
     const arpData = fs.readFileSync('/proc/net/arp', 'utf8');
     const lines = arpData.split('\n');
@@ -52,8 +60,17 @@ app.use(async (req, res, next) => {
 
   const mac = await getMacFromIp(clientIp);
   if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
-    if (session) return next();
+    const session = await db.get('SELECT mac, ip, remaining_seconds FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    if (session) {
+      // If IP has changed, update the whitelist rule
+      if (session.ip !== clientIp) {
+        console.log(`[NET] Client ${mac} changed IP from ${session.ip} to ${clientIp}. Updating whitelist.`);
+        await network.blockMAC(mac, session.ip);
+        await network.whitelistMAC(mac, clientIp);
+        await db.run('UPDATE sessions SET ip = ? WHERE mac = ?', [clientIp, mac]);
+      }
+      return next();
+    }
   }
 
   if (isProbe || !host.match(/^\d+\.\d+\.\d+\.\d+$/)) {
@@ -64,6 +81,12 @@ app.use(async (req, res, next) => {
 });
 
 // SESSIONS API
+app.get('/api/whoami', async (req, res) => {
+  const clientIp = req.ip.replace('::ffff:', '');
+  const mac = await getMacFromIp(clientIp);
+  res.json({ ip: clientIp, mac: mac || 'unknown' });
+});
+
 app.get('/api/sessions', async (req, res) => {
   try {
     const rows = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt FROM sessions');
@@ -72,16 +95,23 @@ app.get('/api/sessions', async (req, res) => {
 });
 
 app.post('/api/sessions/start', async (req, res) => {
-  const { mac, ip, minutes, pesos } = req.body;
-  if (!mac) return res.status(400).json({ error: 'MAC address required' });
+  const { minutes, pesos } = req.body;
+  const clientIp = req.ip.replace('::ffff:', '');
+  const mac = await getMacFromIp(clientIp);
+
+  if (!mac) {
+    console.error(`[AUTH] Failed to resolve MAC for IP: ${clientIp}`);
+    return res.status(400).json({ error: 'Could not identify your device MAC. Please try reconnecting.' });
+  }
+
   try {
     const seconds = minutes * 60;
     await db.run(
-      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid) VALUES (?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?',
-      [mac, ip, seconds, pesos, seconds, pesos]
+      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid) VALUES (?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?',
+      [mac, clientIp, seconds, pesos, seconds, pesos, clientIp]
     );
-    await network.whitelistMAC(mac);
-    res.json({ success: true });
+    await network.whitelistMAC(mac, clientIp);
+    res.json({ success: true, mac });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -187,9 +217,9 @@ app.get('*', (req, res) => {
 // Background Timer
 setInterval(async () => {
   try {
-    const expired = await db.all('SELECT mac FROM sessions WHERE remaining_seconds <= 0');
+    const expired = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds <= 0');
     for (const s of expired) {
-      await network.blockMAC(s.mac);
+      await network.blockMAC(s.mac, s.ip);
       await db.run('DELETE FROM sessions WHERE mac = ?', [s.mac]);
     }
     await db.run('UPDATE sessions SET remaining_seconds = remaining_seconds - 1 WHERE remaining_seconds > 0');
@@ -201,8 +231,8 @@ async function bootupRestore() {
   const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
   const pin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
   initGPIO((pesos) => io.emit('coin-pulse', { pesos }), board?.value || 'none', parseInt(pin?.value || '2'));
-  const sessions = await db.all('SELECT mac FROM sessions WHERE remaining_seconds > 0');
-  for (const s of sessions) await network.whitelistMAC(s.mac);
+  const sessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds > 0');
+  for (const s of sessions) await network.whitelistMAC(s.mac, s.ip);
 }
 
 server.listen(80, '0.0.0.0', async () => {

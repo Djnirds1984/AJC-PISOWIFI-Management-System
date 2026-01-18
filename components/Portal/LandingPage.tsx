@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Rate, UserSession } from '../../types';
 import CoinModal from './CoinModal';
+import { apiClient } from '../../lib/api';
 
 interface Props {
   rates: Rate[];
@@ -22,17 +23,27 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
   const activeRates = (rates && rates.length > 0) ? rates : defaultRates;
 
   useEffect(() => {
-    // In a real captive portal, the MAC is detected by the backend.
-    // For the UI, we try to get a persistent ID or wait for server session sync.
-    const storageKey = 'ajc_client_id';
-    let id = localStorage.getItem(storageKey);
-    if (!id) {
-      id = 'ID-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-      localStorage.setItem(storageKey, id);
-    }
-    setMyMac(id);
+    const fetchWhoAmI = async () => {
+      try {
+        const data = await apiClient.whoAmI();
+        if (data.mac && data.mac !== 'unknown') {
+          setMyMac(data.mac);
+        } else {
+          // Fallback to local ID if server can't resolve MAC yet
+          const storageKey = 'ajc_client_id';
+          let id = localStorage.getItem(storageKey);
+          if (!id) {
+            id = 'DEV-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+            localStorage.setItem(storageKey, id);
+          }
+          setMyMac(id);
+        }
+      } catch (e) {
+        console.error('Failed to identify client');
+      }
+    };
     
-    // Attempt to probe backend for "Who am I?" if implemented, or rely on sessions prop
+    fetchWhoAmI();
   }, []);
 
   const mySession = sessions.find(s => s.mac === myMac);

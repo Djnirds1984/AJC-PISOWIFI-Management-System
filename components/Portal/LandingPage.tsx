@@ -12,15 +12,18 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
   const [showModal, setShowModal] = useState(false);
   const [myMac, setMyMac] = useState('00:00:00:00:00:00');
 
+  // Hardcoded default rates in case the API fetch returns nothing
   const defaultRates: Rate[] = [
     { id: '1', pesos: 1, minutes: 10 },
     { id: '5', pesos: 5, minutes: 60 },
     { id: '10', pesos: 10, minutes: 180 }
   ];
 
-  const activeRates = rates.length > 0 ? rates : defaultRates;
+  // Logic to prioritize custom rates from the database
+  const activeRates = (rates && rates.length > 0) ? rates : defaultRates;
 
   useEffect(() => {
+    // Generate or fetch a semi-permanent client ID
     const storageKey = 'ajc_client_id';
     let id = localStorage.getItem(storageKey);
     if (!id) {
@@ -32,9 +35,16 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
 
   const mySession = sessions.find(s => s.mac === myMac);
 
+  const handleOpenModal = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('[PORTAL] Activating Coin Modal...');
+    setShowModal(true);
+  };
+
   return (
-    <div className="portal-container min-h-screen bg-slate-50 pb-20 font-sans">
-      <header className="portal-header text-white p-8 pt-12 rounded-b-[40px] shadow-2xl relative overflow-hidden text-center">
+    <div className="portal-container min-h-screen">
+      <header className="portal-header">
         <div className="relative z-10">
           <h1 className="text-3xl font-black tracking-tighter mb-1 uppercase">AJC PISOWIFI</h1>
           <p className="text-blue-100 text-xs font-bold opacity-80 uppercase tracking-widest">Enterprise Internet Gateway</p>
@@ -43,7 +53,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
 
       <main className="relative z-20">
         {mySession ? (
-          <div className="portal-card glass-card p-8 shadow-xl mb-8 text-center" style={{borderColor: '#3b82f6'}}>
+          <div className="portal-card">
             <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Authenticated Session</p>
             <h2 className="text-6xl font-black text-blue-600 mb-4 tracking-tighter">
               {Math.floor(mySession.remainingSeconds / 60)}<span className="text-2xl">m</span> {mySession.remainingSeconds % 60}<span className="text-2xl">s</span>
@@ -54,26 +64,26 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
             </div>
           </div>
         ) : (
-          <div className="portal-card glass-card p-10 shadow-xl mb-8 text-center">
+          <div className="portal-card">
             <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">📡</div>
             <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Access Restricted</h2>
             <p className="text-slate-500 text-sm mb-8 font-medium">Please authenticate by dropping coins into the system.</p>
             <button 
-              onClick={() => setShowModal(true)}
-              className="portal-btn gradient-bg text-white py-5 shadow-xl font-black text-xl"
+              onClick={handleOpenModal}
+              className="portal-btn"
             >
               INSERT COIN
             </button>
           </div>
         )}
 
-        <div className="mb-10 px-6">
-          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 px-2">Access Rates</h3>
-          <div className="rates-grid grid grid-cols-2 gap-4">
+        <div className="mb-10">
+          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-5 px-8">Available Access Rates</h3>
+          <div className="rates-grid">
             {activeRates.sort((a,b) => a.pesos - b.pesos).map(rate => (
-              <div key={rate.id} className="rate-item bg-white p-6 rounded-3xl shadow-sm border border-slate-100 text-center">
-                <span className="text-3xl font-black text-slate-900 block">₱{rate.pesos}</span>
-                <span className="text-[10px] font-black text-blue-600 uppercase mt-2 tracking-widest block">
+              <div key={rate.id} className="rate-item">
+                <span className="rate-pesos">₱{rate.pesos}</span>
+                <span className="rate-time">
                   {rate.minutes >= 60 
                     ? `${Math.floor(rate.minutes / 60)}h ${rate.minutes % 60 > 0 ? (rate.minutes % 60) + 'm' : ''}`
                     : `${rate.minutes} Minutes`}
@@ -85,18 +95,18 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
 
         <div className="mx-6 bg-slate-900 text-white p-8 rounded-[40px] shadow-2xl relative overflow-hidden">
           <div className="relative z-10">
-            <h4 className="font-black text-lg mb-4 uppercase tracking-tight">🚀 Express Access</h4>
-            <ul className="text-xs text-slate-400 space-y-4 font-bold uppercase tracking-widest list-none">
-              <li className="flex gap-3">
-                <span className="bg-white/10 w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0">1</span>
+            <h4 className="font-black text-lg mb-4 uppercase tracking-tight italic text-blue-400">🚀 Express Access</h4>
+            <ul className="text-[10px] text-slate-400 space-y-4 font-bold uppercase tracking-widest list-none">
+              <li className="flex gap-4 items-center">
+                <span className="bg-white/10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] shrink-0 text-white">1</span>
                 Tap 'Insert Coin' to activate slot.
               </li>
-              <li className="flex gap-3">
-                <span className="bg-white/10 w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0">2</span>
+              <li className="flex gap-4 items-center">
+                <span className="bg-white/10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] shrink-0 text-white">2</span>
                 Drop coins for validation.
               </li>
-              <li className="flex gap-3">
-                <span className="bg-white/10 w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0">3</span>
+              <li className="flex gap-4 items-center">
+                <span className="bg-white/10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] shrink-0 text-white">3</span>
                 Instant connection.
               </li>
             </ul>
@@ -110,7 +120,10 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
 
       {showModal && (
         <CoinModal 
-          onClose={() => setShowModal(false)} 
+          onClose={() => {
+            console.log('[PORTAL] Closing Modal');
+            setShowModal(false);
+          }} 
           onSuccess={(pesos, minutes) => {
             onSessionStart({
               mac: myMac,

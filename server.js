@@ -40,26 +40,22 @@ app.use(async (req, res, next) => {
   const url = req.url.toLowerCase();
   const clientIp = req.ip.replace('::ffff:', '');
 
-  // Internal routes
   if (url.startsWith('/api') || url.startsWith('/dist') || host.includes('localhost') || host.includes('127.0.0.1')) {
     return next();
   }
 
-  // Detection Probes
   const portalProbes = [
     '/generate_204', '/hotspot-detect.html', '/ncsi.txt', 
     '/connecttest.txt', '/success.txt', '/kindle-wifi'
   ];
   const isProbe = portalProbes.some(p => url.includes(p));
 
-  // Check if authenticated
   const mac = await getMacFromIp(clientIp);
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
-    if (session) return next(); // Already paid, allow internet
+    if (session) return next();
   }
 
-  // If not authenticated and hitting a probe or non-IP domain, redirect to portal
   if (isProbe || !host.match(/^\d+\.\d+\.\d+\.\d+$/)) {
     return res.redirect(302, `http://${req.headers.host}/`);
   }
@@ -104,7 +100,7 @@ app.delete('/api/rates/:id', async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// CONFIG API
+// SYSTEM & CONFIG API
 app.get('/api/config', async (req, res) => {
   try {
     const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
@@ -122,8 +118,27 @@ app.post('/api/config', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.post('/api/system/reset', async (req, res) => {
+  try {
+    await db.factoryResetDB();
+    await network.cleanupAllNetworkSettings();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// NETWORK API
 app.get('/api/interfaces', async (req, res) => {
   try { res.json(await network.getInterfaces()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/hotspots', async (req, res) => {
+  try { res.json(await db.all('SELECT * FROM hotspots')); } catch (err) { res.json([]); }
+});
+
+app.get('/api/network/wireless', async (req, res) => {
+  try { res.json(await db.all('SELECT * FROM wireless_settings')); } catch (err) { res.json([]); }
 });
 
 app.post('/api/network/wireless', async (req, res) => {
@@ -147,6 +162,20 @@ app.delete('/api/hotspots/:interface', async (req, res) => {
     await network.removeHotspot(req.params.interface);
     await db.run('DELETE FROM hotspots WHERE interface = ?', [req.params.interface]);
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/network/vlan', async (req, res) => {
+  try {
+    await network.createVlan(req.body);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/network/bridge', async (req, res) => {
+  try {
+    const output = await network.createBridge(req.body);
+    res.json({ success: true, output });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

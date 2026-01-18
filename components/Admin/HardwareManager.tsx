@@ -4,7 +4,7 @@ import { apiClient } from '../../lib/api';
 
 const HardwareManager: React.FC = () => {
   const [board, setBoard] = useState<BoardType>('none');
-  const [pin, setPin] = useState(3);
+  const [pin, setPin] = useState(2);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -46,7 +46,7 @@ const HardwareManager: React.FC = () => {
   );
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500">
+    <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-8 border-b border-slate-100 bg-slate-50/50">
           <div className="flex justify-between items-center">
@@ -69,65 +69,67 @@ const HardwareManager: React.FC = () => {
             <BoardCard active={board === 'none'} onClick={() => setBoard('none')} title="Simulated" sub="No Hardware" icon="💻" />
           </div>
 
-          <div className={`${board === 'none' ? 'opacity-40 pointer-events-none' : ''}`}>
-            <div className="flex justify-between items-end mb-4">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                {board === 'x64_pc' ? 'Serial Communication' : 'SOC Pin Assignment (BCM)'}
-              </label>
-              <div className="flex gap-2">
-                 {board === 'raspberry_pi' && <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-md uppercase">Auto-calculating Offset</span>}
-                 <span className="text-[10px] font-black text-slate-900 bg-slate-100 px-2 py-1 rounded-md uppercase tracking-tighter">Selected BCM: {pin}</span>
-              </div>
-            </div>
-            
-            {board !== 'x64_pc' && (
-              <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
-                {[2, 3, 4, 17, 27, 22, 10, 9, 11, 5, 6, 13, 19, 26, 14, 15].map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setPin(p)}
-                    className={`py-4 rounded-xl border text-xs font-black transition-all flex flex-col items-center justify-center ${
-                      pin === p 
-                        ? 'bg-blue-600 border-blue-600 text-white shadow-xl shadow-blue-500/20 scale-105' 
-                        : 'border-slate-200 text-slate-400 hover:border-slate-400 bg-white'
-                    }`}
-                  >
-                    <span>{p}</span>
-                    <span className="text-[7px] opacity-60">BCM</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {board === 'x64_pc' && (
-              <div className="p-10 bg-slate-50 rounded-[2rem] border border-slate-200 text-center">
-                <div className="text-3xl mb-3">📡</div>
-                <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">
-                  Listening on <code className="bg-slate-200 px-2 py-1 rounded">/dev/ttyUSB0</code>.
-                </p>
-                <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Connect your Arduino/NodeMCU via USB</p>
-              </div>
-            )}
-
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-5 rounded-2xl bg-blue-50 border border-blue-100">
-                <div className="flex justify-between items-start mb-2">
-                  <p className="text-[10px] font-black text-blue-800 uppercase tracking-tight">Standard Pins</p>
-                  <span className="text-[8px] bg-blue-600 text-white px-1.5 py-0.5 rounded uppercase font-black">Recommended</span>
-                </div>
+          <div className={`${board === 'none' ? 'opacity-40 pointer-events-none' : ''} grid grid-cols-1 lg:grid-cols-3 gap-8`}>
+            <div className="lg:col-span-2 space-y-6">
+              <div className="flex justify-between items-end">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  {board === 'x64_pc' ? 'Serial Communication' : 'Select BCM Pin'}
+                </label>
                 <div className="flex gap-2">
-                  <PinBadge bcm={4} phys={7} desc="Safe" />
-                  <PinBadge bcm={17} phys={11} desc="Safe" />
-                  <PinBadge bcm={27} phys={13} desc="Safe" />
+                   <span className="text-[10px] font-black text-slate-900 bg-slate-100 px-2 py-1 rounded-md uppercase tracking-tighter">Current BCM: {pin}</span>
                 </div>
               </div>
-              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200">
-                <p className="text-[10px] font-black text-slate-600 uppercase tracking-tight mb-2">Diagnostic Notes</p>
-                <ul className="text-[9px] font-bold text-slate-500 uppercase space-y-1">
-                  <li>• Raspberry Pi 4/5 uses a +512 offset for sysfs.</li>
-                  <li>• Pin 3 is hardware I2C; ensure it's disabled.</li>
-                  <li>• System automatically detects the GPIO base.</li>
-                </ul>
+              
+              {board !== 'x64_pc' && (
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
+                  {[2, 3, 4, 17, 27, 22, 10, 9, 11, 5, 6, 13, 19, 26, 14, 15].map(p => (
+                    <button
+                      key={p}
+                      onClick={() => setPin(p)}
+                      className={`py-4 rounded-xl border text-xs font-black transition-all flex flex-col items-center justify-center ${
+                        pin === p 
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-xl shadow-blue-500/20 scale-105' 
+                          : 'border-slate-200 text-slate-400 hover:border-slate-400 bg-white'
+                      }`}
+                    >
+                      <span>{p}</span>
+                      <span className="text-[7px] opacity-60">BCM</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {board === 'x64_pc' && (
+                <div className="p-10 bg-slate-50 rounded-[2rem] border border-slate-200 text-center">
+                  <div className="text-3xl mb-3">📡</div>
+                  <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">
+                    Listening on <code className="bg-slate-200 px-2 py-1 rounded">/dev/ttyUSB0</code>.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Pinout Reference Table */}
+            <div className="bg-slate-50 rounded-3xl p-6 border border-slate-200">
+              <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <span>📋</span> Pinout Reference
+              </h4>
+              <div className="space-y-2">
+                <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-tighter border-b border-slate-200 pb-2 mb-2">
+                  <span>Physical Pin</span>
+                  <span>BCM Number</span>
+                </div>
+                <MappingRow physical={3} bcm={2} label="SDA (Coin Input)" active={pin === 2} />
+                <MappingRow physical={5} bcm={3} label="SCL" active={pin === 3} />
+                <MappingRow physical={7} bcm={4} label="GPCLK0 (Safe)" active={pin === 4} />
+                <MappingRow physical={11} bcm={17} label="GPIO 17 (Safe)" active={pin === 17} />
+                <MappingRow physical={13} bcm={27} label="GPIO 27 (Safe)" active={pin === 27} />
+                <MappingRow physical={15} bcm={22} label="GPIO 22 (Safe)" active={pin === 22} />
+              </div>
+              <div className="mt-6 p-4 bg-amber-50 rounded-xl border border-amber-100">
+                <p className="text-[9px] font-bold text-amber-700 leading-relaxed uppercase">
+                  ⚠️ Note: Physical Pin 3 is BCM 2. Physical Pin 5 is BCM 3. Ensure I2C is disabled to use these pins.
+                </p>
               </div>
             </div>
           </div>
@@ -155,11 +157,13 @@ const HardwareManager: React.FC = () => {
   );
 };
 
-const PinBadge: React.FC<{ bcm: number; phys: number; desc: string; danger?: boolean }> = ({ bcm, phys, desc, danger }) => (
-  <div className={`flex flex-col items-center px-3 py-2 rounded-lg border ${danger ? 'bg-red-100 border-red-200' : 'bg-white border-blue-100 shadow-sm'}`}>
-    <span className={`text-[10px] font-black ${danger ? 'text-red-600' : 'text-blue-600'}`}>BCM {bcm}</span>
-    <span className="text-[8px] font-bold text-slate-400 uppercase">Phys {phys}</span>
-    <span className={`text-[7px] font-black uppercase tracking-widest mt-1 ${danger ? 'text-red-400' : 'text-blue-400'}`}>{desc}</span>
+const MappingRow: React.FC<{ physical: number; bcm: number; label: string; active: boolean }> = ({ physical, bcm, label, active }) => (
+  <div className={`flex justify-between items-center px-3 py-2.5 rounded-xl border transition-all ${active ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-600'}`}>
+    <div className="flex flex-col">
+      <span className="text-[11px] font-black">Pin {physical}</span>
+      <span className={`text-[8px] font-bold uppercase ${active ? 'text-blue-200' : 'text-slate-400'}`}>{label}</span>
+    </div>
+    <span className="text-sm font-black">BCM {bcm}</span>
   </div>
 );
 

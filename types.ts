@@ -14,10 +14,40 @@ export interface Rate {
 
 export interface NetworkInterface {
   name: string;
-  type: 'ethernet' | 'wifi' | 'bridge';
+  type: 'ethernet' | 'wifi' | 'bridge' | 'vlan' | 'loopback';
   status: 'up' | 'down';
   ip?: string;
   mac: string;
+  isLoopback?: boolean;
+}
+
+export interface WanConfig {
+  proto: 'static' | 'dhcp';
+  ipaddr: string;
+  netmask: string;
+  gateway: string;
+  dns: string[];
+}
+
+export interface WlanConfig {
+  ssid: string;
+  encryption: 'psk2' | 'none' | 'wpa3';
+  key: string;
+  channel: number;
+  power: number;
+}
+
+export interface HotspotConfig {
+  name: string;
+  maxClients: number;
+  bandwidthLimit: number; // in Mbps
+  enabled: boolean;
+}
+
+export interface VlanConfig {
+  id: number;
+  parentInterface: string;
+  name: string;
 }
 
 export interface UserSession {

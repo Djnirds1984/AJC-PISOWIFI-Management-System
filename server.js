@@ -24,16 +24,18 @@ app.get('/api/rates', async (req, res) => {
   }
 });
 
+// Create a new rate record
 app.post('/api/rates', async (req, res) => {
   const { pesos, minutes } = req.body;
   try {
-    const result = await db.run('INSERT INTO rates (pesos, minutes) VALUES (?, ?)', [pesos, minutes]);
-    res.json({ id: result.lastID, pesos, minutes });
+    await db.run('INSERT INTO rates (pesos, minutes) VALUES (?, ?)', [pesos, minutes]);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// Delete a rate record
 app.delete('/api/rates/:id', async (req, res) => {
   try {
     await db.run('DELETE FROM rates WHERE id = ?', [req.params.id]);
@@ -43,10 +45,11 @@ app.delete('/api/rates/:id', async (req, res) => {
   }
 });
 
+// Retrieve hardware configuration from persistence layer
 app.get('/api/config', async (req, res) => {
   try {
-    const boardType = await db.get("SELECT value FROM config WHERE key = 'boardType'");
-    const coinPin = await db.get("SELECT value FROM config WHERE key = 'coinPin'");
+    const boardType = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
+    const coinPin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
     res.json({
       boardType: boardType?.value || 'none',
       coinPin: parseInt(coinPin?.value || '3')
@@ -56,11 +59,13 @@ app.get('/api/config', async (req, res) => {
   }
 });
 
+// Update hardware configuration and refresh GPIO mappings
 app.post('/api/config', async (req, res) => {
   const { boardType, coinPin } = req.body;
   try {
-    await db.run("UPDATE config SET value = ? WHERE key = 'boardType'", [boardType]);
-    await db.run("UPDATE config SET value = ? WHERE key = 'coinPin'", [coinPin.toString()]);
+    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['boardType', boardType]);
+    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['coinPin', coinPin.toString()]);
+    // Notify GPIO module to update physical pin mapping
     updateGPIO(boardType, coinPin);
     res.json({ success: true });
   } catch (err) {
@@ -77,10 +82,39 @@ app.get('/api/interfaces', async (req, res) => {
   }
 });
 
-app.post('/api/network/bridge', async (req, res) => {
-  const { name, members } = req.body;
+app.post('/api/network/status', async (req, res) => {
+  const { name, status } = req.body;
   try {
-    const output = await network.createBridge(name, members);
+    await network.setInterfaceStatus(name, status);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/network/wan', async (req, res) => {
+  try {
+    await network.configureWan(req.body);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/network/vlan', async (req, res) => {
+  const { parent, id, name } = req.body;
+  try {
+    await network.createVlan(parent, id, name);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/network/bridge', async (req, res) => {
+  const { name, members, stp } = req.body;
+  try {
+    const output = await network.createBridge(name, members, stp);
     res.json({ output });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -97,21 +131,21 @@ app.get('*', (req, res) => {
 });
 
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
-  socket.on('start-update', (config) => {
-    updater.runUpdate(config, (log) => socket.emit('update-log', log));
-  });
-  socket.on('disconnect', () => console.log('Client disconnected'));
+  socket.on('disconnect', () => {});
 });
 
-// Initialize Hardware with loaded config
+// Initialize GPIO listener on startup with stored configuration
 (async () => {
-  const b = await db.get("SELECT value FROM config WHERE key = 'boardType'");
-  const p = await db.get("SELECT value FROM config WHERE key = 'coinPin'");
-  initGPIO((pesos) => {
-    console.log(`Coin detected: ₱${pesos}`);
-    io.emit('coin-pulse', { pesos });
-  }, b?.value || 'none', parseInt(p?.value || '3'));
+  try {
+    const boardType = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
+    const coinPin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
+    initGPIO((pesos) => {
+      // Broadcast hardware coin insertion events to all socket clients
+      io.emit('coin-pulse', { pesos });
+    }, boardType?.value || 'none', parseInt(coinPin?.value || '3'));
+  } catch (e) {
+    console.error('Failed to init GPIO on startup:', e);
+  }
 })();
 
 const PORT = process.env.PORT || 3000;

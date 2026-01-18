@@ -13,10 +13,34 @@ const io = new Server(server);
 
 app.use(express.json());
 
+// 1. Static file serving (Dist contains bundle.js)
+// Critical: This MUST come before any redirection logic
 const distPath = path.join(__dirname, 'dist');
 if (!fs.existsSync(distPath)) fs.mkdirSync(distPath, { recursive: true });
 app.use('/dist', express.static(distPath));
 app.use(express.static(__dirname));
+
+// 2. Captive Portal Detection Middleware
+// Handles probes from Android, iOS, and Windows to trigger the portal login screen
+app.use((req, res, next) => {
+  const host = req.headers.host || '';
+  const userAgent = req.headers['user-agent'] || '';
+  
+  // Detection paths for various OSs
+  const portalProbes = [
+    '/generate_204',               // Android / Chrome
+    '/hotspot-detect.html',        // iOS / macOS
+    '/ncsi.txt',                   // Windows
+    '/connecttest.txt'             // Windows
+  ];
+
+  if (portalProbes.some(path => req.url.includes(path))) {
+    console.log(`[PORTAL] Detection probe from ${userAgent} on ${req.url}`);
+    // Redirect probe to the actual portal home page
+    return res.redirect(`http://${host}/`);
+  }
+  next();
+});
 
 // SYSTEM API
 app.post('/api/system/reset', async (req, res) => {

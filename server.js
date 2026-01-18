@@ -15,59 +15,52 @@ app.use(express.json());
 
 // Helper: Get MAC from IP using ARP table
 async function getMacFromIp(ip) {
-  if (ip === '::1' || ip === '127.0.0.1') return 'LOCAL_ADMIN';
+  if (ip === '::1' || ip === '127.0.0.1' || !ip) return null;
   try {
     const arpData = fs.readFileSync('/proc/net/arp', 'utf8');
     const lines = arpData.split('\n');
     for (const line of lines) {
       if (line.includes(ip)) {
         const parts = line.split(/\s+/);
-        return parts[3].toUpperCase(); // MAC address column
+        if (parts[3] && parts[3] !== '00:00:00:00:00:00') {
+           return parts[3].toUpperCase();
+        }
       }
     }
-  } catch (e) {
-    console.error('[ARP] Error reading table:', e.message);
-  }
+  } catch (e) {}
   return null;
 }
 
 app.use('/dist', express.static(path.join(__dirname, 'dist')));
 app.use(express.static(__dirname));
 
-// AUTHENTICATION-AWARE REDIRECTION MIDDLEWARE
+// CAPTIVE PORTAL REDIRECTION MIDDLEWARE
 app.use(async (req, res, next) => {
   const host = req.headers.host || '';
   const url = req.url.toLowerCase();
   const clientIp = req.ip.replace('::ffff:', '');
 
-  // Skip for internal assets/APIs
-  if (url.startsWith('/api') || url.startsWith('/dist') || host.includes('localhost')) {
+  // Internal routes
+  if (url.startsWith('/api') || url.startsWith('/dist') || host.includes('localhost') || host.includes('127.0.0.1')) {
     return next();
   }
 
-  // Identify Client MAC
-  const mac = await getMacFromIp(clientIp);
-  
-  // Check if user is already authenticated in DB
-  let isAuth = false;
-  if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
-    if (session) isAuth = true;
-  }
-
-  // If already authenticated, allow them to pass through (don't redirect probes)
-  if (isAuth) return next();
-
-  // Redirection probes for Captive Portal Detection
+  // Detection Probes
   const portalProbes = [
     '/generate_204', '/hotspot-detect.html', '/ncsi.txt', 
     '/connecttest.txt', '/success.txt', '/kindle-wifi'
   ];
-
   const isProbe = portalProbes.some(p => url.includes(p));
-  
-  // If user is NOT authenticated and hits a probe or foreign domain, redirect to portal
-  if (isProbe || (!host.match(/^\d+\.\d+\.\d+\.\d+$/) && !url.startsWith('/api'))) {
+
+  // Check if authenticated
+  const mac = await getMacFromIp(clientIp);
+  if (mac) {
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    if (session) return next(); // Already paid, allow internet
+  }
+
+  // If not authenticated and hitting a probe or non-IP domain, redirect to portal
+  if (isProbe || !host.match(/^\d+\.\d+\.\d+\.\d+$/)) {
     return res.redirect(302, `http://${req.headers.host}/`);
   }
   
@@ -133,10 +126,26 @@ app.get('/api/interfaces', async (req, res) => {
   try { res.json(await network.getInterfaces()); } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.post('/api/network/wireless', async (req, res) => {
+  try {
+    await db.run('INSERT OR REPLACE INTO wireless_settings (interface, ssid, password, bridge) VALUES (?, ?, ?, ?)', [req.body.interface, req.body.ssid, req.body.password, req.body.bridge]);
+    await network.configureWifiAP(req.body);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/hotspots', async (req, res) => {
   try {
     await db.run('INSERT OR REPLACE INTO hotspots (interface, ip_address, dhcp_range, enabled) VALUES (?, ?, ?, 1)', [req.body.interface, req.body.ip_address, req.body.dhcp_range]);
     await network.setupHotspot(req.body);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/hotspots/:interface', async (req, res) => {
+  try {
+    await network.removeHotspot(req.params.interface);
+    await db.run('DELETE FROM hotspots WHERE interface = ?', [req.params.interface]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

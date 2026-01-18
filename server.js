@@ -122,13 +122,13 @@ io.on('connection', (socket) => {
     const boardType = boardTypeRow?.value || 'none';
     const coinPin = parseInt(coinPinRow?.value || '3');
 
-    console.log(`System Startup: Board=${boardType}, Pin=${coinPin}`);
+    console.log(`[AJC-CORE] Starting with Board=${boardType}, BCM=${coinPin}`);
     
     initGPIO((pesos) => {
       io.emit('coin-pulse', { pesos });
     }, boardType, coinPin);
   } catch (e) {
-    console.error('SYSTEM ERROR during hardware initialization:', e.message);
+    console.error('[AJC-CORE] Hardware Startup Failed:', e.message);
   }
 })();
 

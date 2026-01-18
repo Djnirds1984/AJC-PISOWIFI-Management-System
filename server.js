@@ -96,6 +96,14 @@ app.post('/api/network/vlan', async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.post('/api/network/bridge', async (req, res) => {
+  try { 
+    const output = await network.createBridge(req.body.name, req.body.members, req.body.stp);
+    res.json({ success: true, output }); 
+  }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/dist')) return res.status(404).json({ error: 'Not found' });
   res.sendFile(path.join(__dirname, 'index.html'));

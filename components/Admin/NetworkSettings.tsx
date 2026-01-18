@@ -39,27 +39,36 @@ const NetworkSettings: React.FC = () => {
       setLoading(true);
       const [ifaces, hs, wifi] = await Promise.all([
         apiClient.getInterfaces(),
-        fetch('/api/hotspots').then(r => r.json()),
-        fetch('/api/network/wireless').then(r => r.json())
+        fetch('/api/hotspots').then(r => r.json()).catch(() => []),
+        fetch('/api/network/wireless').then(r => r.json()).catch(() => [])
       ]);
       setInterfaces(ifaces.filter(i => !i.isLoopback));
-      setHotspots(hs);
-      setWirelessArr(wifi);
-    } catch (err) { console.error(err); }
+      setHotspots(Array.isArray(hs) ? hs : []);
+      setWirelessArr(Array.isArray(wifi) ? wifi : []);
+    } catch (err) { 
+      console.error('[UI] Data Load Error:', err); 
+    }
     finally { setLoading(false); }
   };
 
-  const deployWireless = async () => {
-    if (!newWifi.interface || !newWifi.ssid) return alert('Select interface and SSID!');
+  const deployWireless = async (ifaceName?: string) => {
+    const targetInterface = ifaceName || newWifi.interface;
+    if (!targetInterface || !newWifi.ssid) return alert('Select interface and SSID!');
+    
     try {
       setLoading(true);
-      await fetch('/api/network/wireless', {
+      const res = await fetch('/api/network/wireless', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newWifi)
+        body: JSON.stringify({ ...newWifi, interface: targetInterface })
       });
-      await loadData();
-      alert('Wi-Fi AP Broadcast Started!');
+      const data = await res.json();
+      if (data.success) {
+        await loadData();
+        alert('Wi-Fi AP Broadcast Started!');
+      } else {
+        alert('Failed: ' + data.error);
+      }
     } catch (e) { alert('Failed to deploy Wireless AP.'); }
     finally { setLoading(false); }
   };
@@ -68,13 +77,18 @@ const NetworkSettings: React.FC = () => {
     if (!newHS.interface || !newHS.ip_address) return alert('Select interface and IP!');
     try {
       setLoading(true);
-      await fetch('/api/hotspots', {
+      const res = await fetch('/api/hotspots', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newHS)
       });
-      await loadData();
-      alert('Hotspot Portal Segment Deployed!');
+      const data = await res.json();
+      if (data.success) {
+        await loadData();
+        alert('Hotspot Portal Segment Deployed!');
+      } else {
+        alert('Failed: ' + data.error);
+      }
     } catch (e) { alert('Failed to deploy Hotspot.'); }
     finally { setLoading(false); }
   };
@@ -82,9 +96,11 @@ const NetworkSettings: React.FC = () => {
   const deleteHotspot = async (iface: string) => {
     if (!confirm(`Stop and remove portal segment on ${iface}?`)) return;
     try {
+      setLoading(true);
       await fetch(`/api/hotspots/${iface}`, { method: 'DELETE' });
       await loadData();
     } catch (e) { alert('Failed to remove portal.'); }
+    finally { setLoading(false); }
   };
 
   const generateVlan = async () => {
@@ -134,7 +150,9 @@ const NetworkSettings: React.FC = () => {
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hardware Link Engine</h3>
             <p className="text-xs text-slate-900 font-black uppercase tracking-tight mt-1">Direct Kernel Probing</p>
           </div>
-          <button onClick={loadData} className="bg-white border border-slate-200 px-4 py-2 rounded-xl text-[9px] font-black uppercase hover:bg-slate-50 transition-all">Sync Kernel</button>
+          <button onClick={loadData} disabled={loading} className="bg-white border border-slate-200 px-4 py-2 rounded-xl text-[9px] font-black uppercase hover:bg-slate-50 transition-all disabled:opacity-50">
+            {loading ? 'Refreshing...' : 'Sync Kernel'}
+          </button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 divide-x divide-slate-100">
           {interfaces.map(iface => (
@@ -180,7 +198,6 @@ const NetworkSettings: React.FC = () => {
                 <option value="">Standalone (No Bridge)</option>
                 {interfaces.filter(i => i.type === 'bridge').map(i => <option key={i.name} value={i.name}>{i.name}</option>)}
               </select>
-              <p className="text-[8px] text-slate-400 font-bold mt-1 uppercase">Recommended for multiple APs or LAN aggregation.</p>
             </div>
             <div>
               <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Broadcast SSID</label>
@@ -188,17 +205,20 @@ const NetworkSettings: React.FC = () => {
             </div>
             <div>
               <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Secure Passkey</label>
-              <input type="password" value={newWifi.password} onChange={e => setNewWifi({...newWifi, password: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs" />
+              <input type="password" value={newWifi.password} onChange={e => setNewWifi({...newWifi, password: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs" placeholder="Leave empty for Open" />
             </div>
-            <button onClick={deployWireless} disabled={loading} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-black transition-all active:scale-95 disabled:opacity-50">Start Radio Transmission</button>
+            <button onClick={() => deployWireless()} disabled={loading} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-black transition-all active:scale-95 disabled:opacity-50">Start Radio Transmission</button>
           </div>
         </div>
 
         <div className="lg:col-span-2 bg-slate-50 rounded-[2.5rem] border border-slate-200 p-8">
-          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 px-2">Active Radio Nodes</h4>
+          <div className="flex justify-between items-center mb-6 px-2">
+            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Radio Nodes</h4>
+            <span className="text-[8px] font-bold text-slate-400 uppercase">Updates from wireless_settings table</span>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {wirelessArr.length > 0 ? wirelessArr.map(w => (
-              <div key={w.interface} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4 group">
+              <div key={w.interface} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4 group hover:border-blue-300 transition-all">
                 <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-xl group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">📶</div>
                 <div className="flex-1">
                   <p className="text-xs font-black text-slate-900 uppercase tracking-tight">{w.ssid}</p>
@@ -208,7 +228,11 @@ const NetworkSettings: React.FC = () => {
                 </div>
               </div>
             )) : (
-              <div className="col-span-full py-10 text-center text-[10px] font-black text-slate-300 uppercase italic">No Active Radio Nodes Found</div>
+              <div className="col-span-full py-20 bg-white/50 border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center gap-4">
+                <div className="text-3xl grayscale opacity-50">📡</div>
+                <p className="text-[10px] font-black text-slate-400 uppercase italic">No Active Radio Nodes Found</p>
+                <p className="text-[8px] text-slate-400 max-w-[200px] text-center font-bold uppercase tracking-widest">You must "Start Radio Transmission" above to broadcast your SSID.</p>
+              </div>
             )}
           </div>
         </div>
@@ -243,22 +267,49 @@ const NetworkSettings: React.FC = () => {
         </div>
 
         <div className="lg:col-span-2 space-y-4">
-          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 px-2">Centralized Portal Segments</h4>
-          {hotspots.length > 0 ? hotspots.map(hs => (
-            <div key={hs.interface} className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex items-center justify-between group animate-in slide-in-from-right-4">
-              <div className="flex items-center gap-5">
-                <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-2xl shadow-xl shadow-slate-900/10 transition-transform group-hover:scale-110">🏛️</div>
-                <div>
-                  <h5 className="font-black text-slate-900 text-sm flex items-center gap-2 uppercase tracking-tight">Segment: {hs.interface}</h5>
-                  <p className="text-[10px] text-slate-500 font-bold tracking-tight mt-1">
-                    IP: <span className="text-slate-900 font-mono">{hs.ip_address}</span> • DHCP: <span className="text-slate-900 font-mono">{hs.dhcp_range}</span>
-                  </p>
-                </div>
-              </div>
-              <button onClick={() => deleteHotspot(hs.interface)} className="bg-red-50 text-red-600 px-5 py-2.5 rounded-xl font-black text-[9px] uppercase hover:bg-red-100 transition-all opacity-0 group-hover:opacity-100">Terminate</button>
+          <div className="flex justify-between items-center mb-4 px-2">
+            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Centralized Portal Segments</h4>
+            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Updates from hotspots table</span>
+          </div>
+          {hotspots.length > 0 ? hotspots.map(hs => {
+             const isWifiIface = interfaces.find(i => i.name === hs.interface && isPotentialWifi(i));
+             const hasRadio = wirelessArr.some(w => w.interface === hs.interface);
+             
+             return (
+               <div key={hs.interface} className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex flex-col gap-4 group animate-in slide-in-from-right-4">
+                 <div className="flex items-center justify-between">
+                   <div className="flex items-center gap-5">
+                     <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-2xl shadow-xl shadow-slate-900/10 transition-transform group-hover:scale-110">🏛️</div>
+                     <div>
+                       <h5 className="font-black text-slate-900 text-sm flex items-center gap-2 uppercase tracking-tight">Segment: {hs.interface}</h5>
+                       <p className="text-[10px] text-slate-500 font-bold tracking-tight mt-1">
+                         IP: <span className="text-slate-900 font-mono">{hs.ip_address}</span> • DHCP: <span className="text-slate-900 font-mono">{hs.dhcp_range}</span>
+                       </p>
+                     </div>
+                   </div>
+                   <button onClick={() => deleteHotspot(hs.interface)} className="bg-red-50 text-red-600 px-5 py-2.5 rounded-xl font-black text-[9px] uppercase hover:bg-red-100 transition-all opacity-0 group-hover:opacity-100">Terminate</button>
+                 </div>
+                 
+                 {isWifiIface && !hasRadio && (
+                   <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-center justify-between animate-pulse">
+                     <p className="text-[9px] font-black text-amber-700 uppercase tracking-tight">
+                       ⚠️ Radio Transmission Missing! Users cannot see the SSID for this segment.
+                     </p>
+                     <button 
+                       onClick={() => deployWireless(hs.interface)}
+                       className="bg-amber-600 text-white px-3 py-1.5 rounded-lg text-[8px] font-black uppercase shadow-lg shadow-amber-600/20"
+                     >
+                       One-Click Start
+                     </button>
+                   </div>
+                 )}
+               </div>
+             );
+          }) : (
+            <div className="py-20 text-center border-2 border-dashed border-slate-200 rounded-[2.5rem] flex flex-col items-center gap-2">
+              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">No Active Portal Segments</span>
+              <p className="text-[8px] text-slate-300 uppercase font-bold tracking-widest">Provision a segment to activate the DHCP server.</p>
             </div>
-          )) : (
-            <div className="py-20 text-center border-2 border-dashed border-slate-200 rounded-[2.5rem] text-[10px] font-black text-slate-300 uppercase tracking-widest">No Active Portal Segments</div>
           )}
         </div>
       </section>
@@ -284,7 +335,7 @@ const NetworkSettings: React.FC = () => {
                 <input type="number" min="2" max="4094" value={vlan.id} onChange={e => setVlan({...vlan, id: parseInt(e.target.value), name: `${vlan.parentInterface}.${e.target.value}`})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono" />
               </div>
             </div>
-            <button onClick={generateVlan} className="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-[9px] uppercase tracking-widest shadow-xl hover:bg-black transition-all">Generate Virtual Link: {vlan.name}</button>
+            <button onClick={generateVlan} disabled={loading} className="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-[9px] uppercase tracking-widest shadow-xl hover:bg-black transition-all">Generate Virtual Link: {vlan.name}</button>
           </div>
         </section>
 
@@ -312,7 +363,7 @@ const NetworkSettings: React.FC = () => {
                  </button>
                ))}
             </div>
-            <button onClick={deployBridge} className="w-full border-2 border-slate-900 text-slate-900 py-4 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all">Commit Bridge Stack</button>
+            <button onClick={deployBridge} disabled={loading} className="w-full border-2 border-slate-900 text-slate-900 py-4 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all">Commit Bridge Stack</button>
           </div>
         </section>
       </div>

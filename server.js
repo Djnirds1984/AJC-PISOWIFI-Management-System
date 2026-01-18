@@ -35,28 +35,37 @@ app.post('/api/system/reset', async (req, res) => {
 app.get('/api/network/wireless', async (req, res) => {
   try {
     const rows = await db.all('SELECT * FROM wireless_settings');
-    res.json(rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    res.json(Array.isArray(rows) ? rows : []);
+  } catch (err) { 
+    console.error('[API] Wireless Fetch Error:', err);
+    res.json([]); 
+  }
 });
 
 app.post('/api/network/wireless', async (req, res) => {
   try {
     const config = req.body;
+    if (!config.interface || !config.ssid) {
+      return res.status(400).json({ error: 'Interface and SSID are required' });
+    }
     await db.run(
       'INSERT OR REPLACE INTO wireless_settings (interface, ssid, password, channel, hw_mode, bridge) VALUES (?, ?, ?, ?, ?, ?)',
-      [config.interface, config.ssid, config.password, config.channel, config.hw_mode, config.bridge]
+      [config.interface, config.ssid, config.password, config.channel || 1, config.hw_mode || 'g', config.bridge]
     );
     await network.configureWifiAP(config);
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    console.error('[API] Wireless POST Error:', err);
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 // HOTSPOT API
 app.get('/api/hotspots', async (req, res) => {
   try {
     const rows = await db.all('SELECT * FROM hotspots');
-    res.json(rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    res.json(Array.isArray(rows) ? rows : []);
+  } catch (err) { res.json([]); }
 });
 
 app.post('/api/hotspots', async (req, res) => {
@@ -64,7 +73,7 @@ app.post('/api/hotspots', async (req, res) => {
   try {
     await db.run(
       'INSERT OR REPLACE INTO hotspots (interface, ip_address, dhcp_range, bandwidth_limit, enabled) VALUES (?, ?, ?, ?, ?)',
-      [config.interface, config.ip_address, config.dhcp_range, config.bandwidth_limit, 1]
+      [config.interface, config.ip_address, config.dhcp_range, config.bandwidth_limit || 0, 1]
     );
     await network.setupHotspot(config);
     res.json({ success: true });
@@ -81,8 +90,11 @@ app.delete('/api/hotspots/:interface', async (req, res) => {
 
 // RATES API
 app.get('/api/rates', async (req, res) => {
-  try { const rates = await db.all('SELECT * FROM rates'); res.json(rates || []); }
-  catch (err) { res.status(500).json({ error: err.message }); }
+  try { 
+    const rates = await db.all('SELECT * FROM rates'); 
+    res.json(Array.isArray(rates) ? rates : []); 
+  }
+  catch (err) { res.json([]); }
 });
 
 app.post('/api/rates', async (req, res) => {

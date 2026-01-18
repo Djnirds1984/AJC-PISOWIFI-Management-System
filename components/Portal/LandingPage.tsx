@@ -12,7 +12,6 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
   const [showModal, setShowModal] = useState(false);
   const [myMac, setMyMac] = useState('00:00:00:00:00:00');
 
-  // Hardcoded fallback if database is loading or empty
   const defaultRates: Rate[] = [
     { id: '1', pesos: 1, minutes: 10 },
     { id: '5', pesos: 5, minutes: 60 },
@@ -22,7 +21,6 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
   const activeRates = rates.length > 0 ? rates : defaultRates;
 
   useEffect(() => {
-    // Attempt to get unique ID for this device
     const storageKey = 'ajc_client_id';
     let id = localStorage.getItem(storageKey);
     if (!id) {
@@ -35,17 +33,17 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
   const mySession = sessions.find(s => s.mac === myMac);
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20 font-sans">
-      <header className="gradient-bg text-white p-8 pt-12 rounded-b-[40px] shadow-2xl relative overflow-hidden text-center">
+    <div className="portal-container min-h-screen bg-slate-50 pb-20 font-sans">
+      <header className="portal-header text-white p-8 pt-12 rounded-b-[40px] shadow-2xl relative overflow-hidden text-center">
         <div className="relative z-10">
           <h1 className="text-3xl font-black tracking-tighter mb-1 uppercase">AJC PISOWIFI</h1>
           <p className="text-blue-100 text-xs font-bold opacity-80 uppercase tracking-widest">Enterprise Internet Gateway</p>
         </div>
       </header>
 
-      <main className="px-6 -mt-8 relative z-20">
+      <main className="relative z-20">
         {mySession ? (
-          <div className="glass-card p-8 shadow-xl mb-8 text-center" style={{borderColor: '#3b82f6'}}>
+          <div className="portal-card glass-card p-8 shadow-xl mb-8 text-center" style={{borderColor: '#3b82f6'}}>
             <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Authenticated Session</p>
             <h2 className="text-6xl font-black text-blue-600 mb-4 tracking-tighter">
               {Math.floor(mySession.remainingSeconds / 60)}<span className="text-2xl">m</span> {mySession.remainingSeconds % 60}<span className="text-2xl">s</span>
@@ -56,24 +54,24 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
             </div>
           </div>
         ) : (
-          <div className="glass-card p-10 shadow-xl mb-8 text-center">
+          <div className="portal-card glass-card p-10 shadow-xl mb-8 text-center">
             <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">📡</div>
             <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Access Restricted</h2>
             <p className="text-slate-500 text-sm mb-8 font-medium">Please authenticate by dropping coins into the system.</p>
             <button 
               onClick={() => setShowModal(true)}
-              className="gradient-bg text-white py-5 shadow-xl font-black text-xl"
+              className="portal-btn gradient-bg text-white py-5 shadow-xl font-black text-xl"
             >
               INSERT COIN
             </button>
           </div>
         )}
 
-        <div className="mb-10">
+        <div className="mb-10 px-6">
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 px-2">Access Rates</h3>
-          <div className="grid grid-cols-2 gap-4" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
+          <div className="rates-grid grid grid-cols-2 gap-4">
             {activeRates.sort((a,b) => a.pesos - b.pesos).map(rate => (
-              <div key={rate.id} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 text-center">
+              <div key={rate.id} className="rate-item bg-white p-6 rounded-3xl shadow-sm border border-slate-100 text-center">
                 <span className="text-3xl font-black text-slate-900 block">₱{rate.pesos}</span>
                 <span className="text-[10px] font-black text-blue-600 uppercase mt-2 tracking-widest block">
                   {rate.minutes >= 60 
@@ -85,7 +83,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
           </div>
         </div>
 
-        <div className="bg-slate-900 text-white p-8 rounded-[40px] shadow-2xl relative overflow-hidden">
+        <div className="mx-6 bg-slate-900 text-white p-8 rounded-[40px] shadow-2xl relative overflow-hidden">
           <div className="relative z-10">
             <h4 className="font-black text-lg mb-4 uppercase tracking-tight">🚀 Express Access</h4>
             <ul className="text-xs text-slate-400 space-y-4 font-bold uppercase tracking-widest list-none">

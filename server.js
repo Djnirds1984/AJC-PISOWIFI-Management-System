@@ -13,15 +13,15 @@ const io = new Server(server);
 
 app.use(express.json());
 
-// Ensure dist directory exists (prevent 404 on build artifacts)
+// Ensure dist directory exists
 const distPath = path.join(__dirname, 'dist');
 if (!fs.existsSync(distPath)) {
   fs.mkdirSync(distPath, { recursive: true });
 }
 
-// Serve static files from the root and dist folders
-app.use(express.static(__dirname));
+// Serve static files
 app.use('/dist', express.static(distPath));
+app.use(express.static(__dirname));
 
 // API Routes
 app.get('/api/rates', async (req, res) => {
@@ -96,7 +96,12 @@ app.post('/api/network/status', async (req, res) => {
   }
 });
 
-// SPA Support: Redirect all unknown routes to index.html
+// Explicit Admin Route Handling
+app.get(['/admin', '/admin/*'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// SPA Support
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/dist')) {
     return res.status(404).json({ error: 'Not found' });
@@ -111,13 +116,19 @@ io.on('connection', (socket) => {
 // Start hardware listener
 (async () => {
   try {
-    const boardType = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
-    const coinPin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
+    const boardTypeRow = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
+    const coinPinRow = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
+    
+    const boardType = boardTypeRow?.value || 'none';
+    const coinPin = parseInt(coinPinRow?.value || '3');
+
+    console.log(`System Startup: Board=${boardType}, Pin=${coinPin}`);
+    
     initGPIO((pesos) => {
       io.emit('coin-pulse', { pesos });
-    }, boardType?.value || 'none', parseInt(coinPin?.value || '3'));
+    }, boardType, coinPin);
   } catch (e) {
-    console.error('Failed to init GPIO on startup:', e);
+    console.error('SYSTEM ERROR during hardware initialization:', e.message);
   }
 })();
 

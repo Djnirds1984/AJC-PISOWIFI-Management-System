@@ -151,7 +151,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
           onSuccess={(pesos, minutes) => {
             onSessionStart({
               mac: myMac,
-              ip: 'AUTO',
+              ip: 'unknown',
               remainingSeconds: minutes * 60,
               totalPaid: pesos,
               connectedAt: Date.now()

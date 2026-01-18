@@ -227,12 +227,37 @@ setInterval(async () => {
 }, 1000);
 
 async function bootupRestore() {
+  console.log('[AJC] Starting System Restoration...');
   await network.initFirewall();
+  
+  // 1. Restore Hotspots (DNS/DHCP)
+  try {
+    const hotspots = await db.all('SELECT * FROM hotspots WHERE enabled = 1');
+    for (const h of hotspots) {
+      console.log(`[AJC] Restoring Hotspot on ${h.interface}...`);
+      await network.setupHotspot(h).catch(e => console.error(`[AJC] Hotspot Restore Failed: ${e.message}`));
+    }
+  } catch (e) { console.error('[AJC] Failed to load hotspots from DB'); }
+
+  // 2. Restore Wireless APs
+  try {
+    const wireless = await db.all('SELECT * FROM wireless_settings');
+    for (const w of wireless) {
+      console.log(`[AJC] Restoring Wi-Fi AP on ${w.interface}...`);
+      await network.configureWifiAP(w).catch(e => console.error(`[AJC] AP Restore Failed: ${e.message}`));
+    }
+  } catch (e) { console.error('[AJC] Failed to load wireless settings from DB'); }
+
+  // 3. Restore GPIO & Hardware
   const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
   const pin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
   initGPIO((pesos) => io.emit('coin-pulse', { pesos }), board?.value || 'none', parseInt(pin?.value || '2'));
+  
+  // 4. Restore Active Sessions
   const sessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds > 0');
   for (const s of sessions) await network.whitelistMAC(s.mac, s.ip);
+  
+  console.log('[AJC] System Restoration Complete.');
 }
 
 server.listen(80, '0.0.0.0', async () => {

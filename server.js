@@ -19,18 +19,28 @@ if (!fs.existsSync(distPath)) fs.mkdirSync(distPath, { recursive: true });
 app.use('/dist', express.static(distPath));
 app.use(express.static(__dirname));
 
-// 2. Captive Portal Detection Middleware
+// 2. Enhanced Captive Portal Detection Middleware
 app.use((req, res, next) => {
   const host = req.headers.host || '';
+  const url = req.url.toLowerCase();
+  
+  // Detection probes for Android, iOS, Windows, and macOS
   const portalProbes = [
     '/generate_204',               // Android / Chrome
     '/hotspot-detect.html',        // iOS / macOS
     '/ncsi.txt',                   // Windows
-    '/connecttest.txt'             // Windows
+    '/connecttest.txt',            // Windows
+    '/success.txt',                // Firefox
+    '/kindle-wifi/wifiredirect.html' // Kindle
   ];
 
-  if (portalProbes.some(p => req.url.includes(p))) {
-    return res.redirect(`http://${host}/`);
+  const isProbe = portalProbes.some(p => url.includes(p));
+  
+  // If it's a probe OR a non-static/non-api request to a foreign domain
+  if (isProbe || (host && !host.includes('localhost') && !host.match(/^\d+\.\d+\.\d+\.\d+$/) && !url.startsWith('/api') && !url.startsWith('/dist'))) {
+    // Redirect to the root of the server
+    // We use a 302 redirect which is the standard for triggering captive portals
+    return res.redirect(302, `http://${req.headers.host}/`);
   }
   next();
 });

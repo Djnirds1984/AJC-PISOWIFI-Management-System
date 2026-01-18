@@ -154,19 +154,41 @@ app.get('*', (req, res) => {
 
 io.on('connection', (socket) => console.log('Client connected:', socket.id));
 
-(async () => {
+// REBOOT PERSISTENCE: Restore all saved settings from DB
+async function bootupRestore() {
+  console.log('[AJC] RESTORATION ENGINE: Starting Persistence Recovery...');
   try {
+    // 1. Restore GPIO
     const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
     const pin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
     initGPIO((pesos) => io.emit('coin-pulse', { pesos }), board?.value || 'none', parseInt(pin?.value || '2'));
-  } catch (e) { console.error('[AJC] Hardware Init Warning:', e.message); }
-})();
+
+    // 2. Restore Wireless APs
+    const wireless = await db.all('SELECT * FROM wireless_settings');
+    for (const ap of wireless) {
+      console.log(`[AJC] Auto-Restoring Wireless AP: ${ap.ssid} on ${ap.interface}`);
+      await network.configureWifiAP(ap).catch(e => console.error(`[AJC] AP Restore Failed:`, e.message));
+    }
+
+    // 3. Restore Hotspot/Captive Portal Segments
+    const hotspots = await db.all('SELECT * FROM hotspots');
+    for (const hs of hotspots) {
+      console.log(`[AJC] Auto-Restoring Portal Segment: ${hs.interface} @ ${hs.ip_address}`);
+      await network.setupHotspot(hs).catch(e => console.error(`[AJC] Hotspot Restore Failed:`, e.message));
+    }
+    
+    console.log('[AJC] RESTORATION ENGINE: Complete.');
+  } catch (e) {
+    console.error('[AJC] FATAL: Restoration Engine Crashed:', e.message);
+  }
+}
 
 // STARTUP WRAPPER FOR PORT 80
 const startServer = (port) => {
   server.listen(port, '0.0.0.0')
-    .on('listening', () => {
+    .on('listening', async () => {
       console.log(`[AJC] SUCCESS: Portal running on http://0.0.0.0:${port}`);
+      await bootupRestore();
     })
     .on('error', (err) => {
       if (err.code === 'EACCES') {

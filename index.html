@@ -41,6 +41,30 @@
         min-height: 100vh;
       }
 
+      /* INSTANT SPLASH SCREEN */
+      #splash {
+        position: fixed;
+        inset: 0;
+        background: var(--slate-900);
+        z-index: 99999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.5s ease-out;
+      }
+      .loader {
+        width: 48px;
+        height: 48px;
+        border: 4px solid rgba(255,255,255,0.1);
+        border-top-color: var(--primary);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 1rem;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #splash p { color: white; font-weight: 900; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; }
+
       /* Core Layout Engine (Mimics Tailwind if CDN is missing) */
       .flex { display: flex; }
       .flex-col { flex-direction: column; }
@@ -156,7 +180,24 @@
 </script>
 </head>
   <body>
+    <div id="splash">
+      <div class="loader"></div>
+      <p>AJC System Engine Loading...</p>
+    </div>
+
     <div id="root"></div>
+    
+    <script type="module">
+      // Hide splash when everything is ready
+      window.addEventListener('load', () => {
+        const s = document.getElementById('splash');
+        if (s) {
+          s.style.opacity = '0';
+          setTimeout(() => s.remove(), 500);
+        }
+      });
+    </script>
+
     <!-- The local bundle.js contains everything pre-packaged by esbuild -->
     <script type="module" src="/dist/bundle.js"></script>
   </body>

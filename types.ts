@@ -1,4 +1,11 @@
 
+export type BoardType = 'raspberry_pi' | 'orange_pi' | 'none';
+
+export interface SystemConfig {
+  boardType: BoardType;
+  coinPin: number;
+}
+
 export interface Rate {
   id: string;
   pesos: number;

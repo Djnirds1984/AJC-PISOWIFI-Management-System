@@ -1,5 +1,5 @@
 
-import { Rate, NetworkInterface } from '../types';
+import { Rate, NetworkInterface, SystemConfig } from '../types';
 
 const API_BASE = '/api';
 
@@ -15,25 +15,16 @@ const handleResponse = async (res: Response) => {
     } catch (e) { /* ignore */ }
     throw new Error(errorMsg);
   }
-
   if (!contentType || !contentType.includes('application/json')) {
-    const text = await res.text();
-    console.error('Expected JSON but received:', text.substring(0, 100));
-    throw new Error('Invalid server response (Expected JSON, received HTML/Text). Is the backend server running?');
+    throw new Error('Invalid server response (Expected JSON).');
   }
-
   return res.json();
 };
 
 export const apiClient = {
   async getRates(): Promise<Rate[]> {
-    try {
-      const res = await fetch(`${API_BASE}/rates`);
-      return handleResponse(res);
-    } catch (err) {
-      console.error('apiClient.getRates error:', err);
-      throw err;
-    }
+    const res = await fetch(`${API_BASE}/rates`);
+    return handleResponse(res);
   },
 
   async addRate(pesos: number, minutes: number): Promise<Rate> {
@@ -46,8 +37,21 @@ export const apiClient = {
   },
 
   async deleteRate(id: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/rates/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Failed to delete rate');
+    await fetch(`${API_BASE}/rates/${id}`, { method: 'DELETE' });
+  },
+
+  async getConfig(): Promise<SystemConfig> {
+    const res = await fetch(`${API_BASE}/config`);
+    return handleResponse(res);
+  },
+
+  async saveConfig(config: SystemConfig): Promise<void> {
+    const res = await fetch(`${API_BASE}/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
+    });
+    await handleResponse(res);
   },
 
   async getInterfaces(): Promise<NetworkInterface[]> {

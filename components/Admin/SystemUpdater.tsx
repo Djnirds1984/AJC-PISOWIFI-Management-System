@@ -1,10 +1,9 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { UpdateLog } from '../../types';
-import { io } from 'https://esm.sh/socket.io-client@^4.7.2';
+import { io } from 'socket.io-client';
 
 const SystemUpdater: React.FC = () => {
-  const [repo, setRepo] = useState('https://github.com/ajc-piso/system');
+  const [repo, setRepo] = useState('https://github.com/Djnirds1984/AJC-PISOWIFI-Management-System');
   const [branch, setBranch] = useState('main');
   const [isUpdating, setIsUpdating] = useState(false);
   const [logs, setLogs] = useState<UpdateLog[]>([]);

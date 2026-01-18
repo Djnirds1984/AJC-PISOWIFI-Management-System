@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { Rate } from '../../types';
-import { io } from 'https://esm.sh/socket.io-client@^4.7.2';
+import { io } from 'socket.io-client';
 
 interface Props {
   onClose: () => void;
@@ -16,7 +15,6 @@ const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates }) => {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    // In a production environment, this connects to the local Node.js server
     const socket = io(window.location.origin);
 
     socket.on('connect', () => setIsConnected(true));

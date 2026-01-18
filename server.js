@@ -217,6 +217,9 @@ setInterval(async () => {
 async function bootupRestore() {
   console.log('[AJC] RESTORATION ENGINE: Starting Persistence Recovery...');
   try {
+    // 0. Init Firewall Structure first
+    await network.initFirewall();
+
     // 1. Restore GPIO
     const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
     const pin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);

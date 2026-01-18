@@ -42,6 +42,11 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
     setShowModal(true);
   };
 
+  const handleGoToInternet = () => {
+    // Standard endpoint to verify internet and trigger portal closure
+    window.location.href = 'http://www.google.com/generate_204';
+  };
+
   return (
     <div className="portal-container min-h-screen">
       <header className="portal-header">
@@ -52,30 +57,43 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
       </header>
 
       <main className="relative z-20">
-        {mySession ? (
-          <div className="portal-card">
-            <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Authenticated Session</p>
-            <h2 className="text-6xl font-black text-blue-600 mb-4 tracking-tighter">
-              {Math.floor(mySession.remainingSeconds / 60)}<span className="text-2xl">m</span> {mySession.remainingSeconds % 60}<span className="text-2xl">s</span>
-            </h2>
-            <div className="flex flex-col gap-1 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-              <span className="text-green-500 font-black">● ACTIVE CONNECTION</span>
-              <span>Client ID: {myMac}</span>
+        <div className="portal-card">
+          {mySession ? (
+            <div className="mb-6 animate-in fade-in zoom-in duration-500">
+              <p className="text-blue-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Connected Session Active</p>
+              <h2 className="text-6xl font-black text-slate-900 mb-4 tracking-tighter">
+                {Math.floor(mySession.remainingSeconds / 60)}<span className="text-2xl">m</span> {mySession.remainingSeconds % 60}<span className="text-2xl">s</span>
+              </h2>
+              <div className="flex flex-col gap-1 text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-6">
+                <span className="text-green-500 font-black flex items-center justify-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                  Internet Access Enabled
+                </span>
+                <span>Client ID: {myMac}</span>
+              </div>
+              
+              <button 
+                onClick={handleGoToInternet}
+                className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest mb-4 shadow-xl hover:bg-black transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                <span>🌍</span> CONTINUE TO INTERNET
+              </button>
             </div>
-          </div>
-        ) : (
-          <div className="portal-card">
-            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">📡</div>
-            <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Access Restricted</h2>
-            <p className="text-slate-500 text-sm mb-8 font-medium">Please authenticate by dropping coins into the system.</p>
-            <button 
-              onClick={handleOpenModal}
-              className="portal-btn"
-            >
-              INSERT COIN
-            </button>
-          </div>
-        )}
+          ) : (
+            <div className="mb-6">
+              <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">📡</div>
+              <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Access Restricted</h2>
+              <p className="text-slate-500 text-sm mb-6 font-medium">Please authenticate by dropping coins into the system.</p>
+            </div>
+          )}
+
+          <button 
+            onClick={handleOpenModal}
+            className="portal-btn"
+          >
+            {mySession ? 'ADD TIME / INSERT COIN' : 'INSERT COIN'}
+          </button>
+        </div>
 
         <div className="mb-10">
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-5 px-8">Available Access Rates</h3>

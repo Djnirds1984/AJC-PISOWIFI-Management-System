@@ -249,6 +249,11 @@ app.use(async (req, res, next) => {
 
   // Check if this is a DNS-based captive portal probe
   if (host === 'captive.apple.com' || host === 'www.msftconnecttest.com' || host === 'connectivitycheck.gstatic.com') {
+    // Allow API and static resources to pass through
+    if (url.startsWith('/api') || url.startsWith('/dist') || url.startsWith('/assets')) {
+      return next();
+    }
+
     const mac = await getMacFromIp(clientIp);
     if (mac) {
       const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);

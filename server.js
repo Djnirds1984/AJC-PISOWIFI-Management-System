@@ -455,7 +455,25 @@ app.post('/api/network/bridge', async (req, res) => {
 app.get('/api/devices', async (req, res) => {
   try {
     const devices = await db.all('SELECT * FROM wifi_devices ORDER BY connected_at DESC');
-    res.json(devices);
+    
+    // Ensure consistent data formatting
+    const formattedDevices = devices.map(device => ({
+      ...device,
+      id: device.id || '',
+      mac: device.mac || 'Unknown',
+      ip: device.ip || 'Unknown',
+      hostname: device.hostname || 'Unknown',
+      interface: device.interface || 'Unknown',
+      ssid: device.ssid || 'Unknown',
+      signal: device.signal || 0,
+      connectedAt: device.connected_at || Date.now(),
+      lastSeen: device.last_seen || Date.now(),
+      isActive: Boolean(device.is_active),
+      customName: device.custom_name || '',
+      sessionTime: device.session_time || null
+    }));
+    
+    res.json(formattedDevices);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -491,9 +509,27 @@ app.post('/api/devices/scan', async (req, res) => {
       await db.run(`UPDATE wifi_devices SET is_active = 0 WHERE mac NOT IN (${placeholders})`, scannedMacs);
     }
     
-    // Return updated device list
+    // Return updated device list with proper formatting
     const devices = await db.all('SELECT * FROM wifi_devices ORDER BY connected_at DESC');
-    res.json(devices);
+    
+    // Ensure consistent data formatting
+    const formattedDevices = devices.map(device => ({
+      ...device,
+      id: device.id || '',
+      mac: device.mac || 'Unknown',
+      ip: device.ip || 'Unknown',
+      hostname: device.hostname || 'Unknown',
+      interface: device.interface || 'Unknown',
+      ssid: device.ssid || 'Unknown',
+      signal: device.signal || 0,
+      connectedAt: device.connected_at || Date.now(),
+      lastSeen: device.last_seen || Date.now(),
+      isActive: Boolean(device.is_active),
+      customName: device.custom_name || '',
+      sessionTime: device.session_time || null
+    }));
+    
+    res.json(formattedDevices);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -604,6 +640,70 @@ app.get('/api/devices/:id/sessions', async (req, res) => {
     
     const sessions = await db.all('SELECT * FROM device_sessions WHERE device_id = ? ORDER BY start_time DESC', [req.params.id]);
     res.json(sessions);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/devices/:id/refresh', async (req, res) => {
+  try {
+    const device = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
+    if (!device) return res.status(404).json({ error: 'Device not found' });
+    
+    // Try to get updated IP and hostname
+    let newIp = device.ip;
+    let newHostname = device.hostname;
+    
+    // Get updated IP from ARP table
+    try {
+      const arpCommands = [
+        `ip neigh show | grep -i ${device.mac}`,
+        `arp -n | grep -i ${device.mac}`,
+        `cat /proc/net/arp | grep -i ${device.mac}`
+      ];
+      
+      for (const cmd of arpCommands) {
+        try {
+          const { stdout: arpOutput } = await execPromise(cmd).catch(() => ({ stdout: '' }));
+          const arpMatch = arpOutput.match(/(\d+\.\d+\.\d+\.\d+)/);
+          if (arpMatch && arpMatch[1]) {
+            newIp = arpMatch[1];
+            break;
+          }
+        } catch (e) {}
+      }
+    } catch (e) {}
+    
+    // Get updated hostname from DHCP leases
+    try {
+      const leaseFiles = ['/tmp/dhcp.leases', '/var/lib/dnsmasq/dnsmasq.leases', '/var/lib/dhcp/dhcpd.leases'];
+      for (const leaseFile of leaseFiles) {
+        if (fs.existsSync(leaseFile)) {
+          const leaseContent = fs.readFileSync(leaseFile, 'utf8');
+          const lines = leaseContent.split('\n');
+          for (const line of lines) {
+            if (line.toLowerCase().includes(device.mac.toLowerCase())) {
+              const parts = line.split(/\s+/);
+              if (parts.length >= 4) {
+                newHostname = parts[3] || device.hostname;
+                break;
+              }
+            }
+          }
+          if (newHostname !== device.hostname) break;
+        }
+      }
+    } catch (e) {}
+    
+    // Update device if information changed
+    if (newIp !== device.ip || newHostname !== device.hostname) {
+      await db.run(
+        'UPDATE wifi_devices SET ip = ?, hostname = ?, last_seen = ? WHERE id = ?',
+        [newIp, newHostname, Date.now(), req.params.id]
+      );
+    }
+    
+    // Return updated device
+    const updatedDevice = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
+    res.json(updatedDevice);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -10,6 +10,7 @@ const DeviceManager: React.FC = () => {
   const [newDeviceName, setNewDeviceName] = useState('');
   const [sessionTime, setSessionTime] = useState('');
   const [showAddDevice, setShowAddDevice] = useState(false);
+  const [refreshingDevices, setRefreshingDevices] = useState<Set<string>>(new Set());
   const [newDevice, setNewDevice] = useState({
     mac: '',
     ip: '',
@@ -22,6 +23,13 @@ const DeviceManager: React.FC = () => {
 
   useEffect(() => {
     fetchDevices();
+    
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      fetchDevices();
+    }, 30000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   const fetchDevices = async () => {
@@ -49,6 +57,28 @@ const DeviceManager: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Failed to scan devices');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const refreshDevice = async (deviceId: string) => {
+    setRefreshingDevices(prev => new Set(prev).add(deviceId));
+    try {
+      const res = await fetch(`/api/devices/${deviceId}/refresh`, { method: 'POST' });
+      if (!res.ok) throw new Error('Refresh failed');
+      const updatedDevice = await res.json();
+      
+      // Update the device in the list
+      setDevices(prev => prev.map(device => 
+        device.id === deviceId ? updatedDevice : device
+      ));
+    } catch (err) {
+      alert(`Failed to refresh device: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setRefreshingDevices(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(deviceId);
+        return newSet;
+      });
     }
   };
 
@@ -139,8 +169,15 @@ const DeviceManager: React.FC = () => {
     return `${hours}h ${minutes}m`;
   };
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString();
+  const formatDate = (timestamp: number | string | undefined) => {
+    if (!timestamp) return 'Unknown';
+    try {
+      const date = new Date(timestamp);
+      if (isNaN(date.getTime())) return 'Invalid Date';
+      return date.toLocaleString();
+    } catch (e) {
+      return 'Invalid Date';
+    }
   };
 
   if (loading) {
@@ -271,18 +308,23 @@ const DeviceManager: React.FC = () => {
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
               {devices.map((device) => (
-                <tr key={device.id} className={device.isActive ? '' : 'opacity-50'}>
+                <tr key={device.id} className={device.isActive ? 'bg-white' : 'bg-slate-50 opacity-60'}>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-slate-900">
-                        {device.customName || device.hostname || 'Unknown Device'}
+                    <div className="flex items-center">
+                      <div className={`w-3 h-3 rounded-full mr-3 ${
+                        device.isActive ? 'bg-green-500' : 'bg-slate-400'
+                      }`}></div>
+                      <div>
+                        <div className="text-sm font-medium text-slate-900">
+                          {device.customName || device.hostname || device.mac || 'Unknown Device'}
+                        </div>
+                        <div className="text-sm text-slate-500">{device.ssid || 'Unknown Network'}</div>
                       </div>
-                      <div className="text-sm text-slate-500">{device.ssid}</div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{device.mac}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{device.ip}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{device.interface}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 font-mono">{device.mac || 'Unknown'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 font-mono">{device.ip || 'Unknown'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{device.interface || 'Unknown'}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className={`w-2 h-2 rounded-full mr-2 ${
@@ -299,6 +341,13 @@ const DeviceManager: React.FC = () => {
                     {device.sessionTime ? formatTime(device.sessionTime) : 'Unlimited'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                    <button
+                      onClick={() => refreshDevice(device.id)}
+                      disabled={refreshingDevices.has(device.id)}
+                      className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {refreshingDevices.has(device.id) ? 'Refreshing...' : 'Refresh'}
+                    </button>
                     {device.isActive ? (
                       <button
                         onClick={() => handleDisconnect(device.id)}

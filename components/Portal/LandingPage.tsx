@@ -12,6 +12,7 @@ interface Props {
 const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
   const [showModal, setShowModal] = useState(false);
   const [myMac, setMyMac] = useState('');
+  const [isMacLoading, setIsMacLoading] = useState(true);
 
   // Hardcoded default rates in case the API fetch returns nothing
   const defaultRates: Rate[] = [
@@ -22,28 +23,39 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
 
   const activeRates = (rates && rates.length > 0) ? rates : defaultRates;
 
+  // Get fallback ID immediately without waiting for server
+  const getFallbackId = () => {
+    const storageKey = 'ajc_client_id';
+    let id = localStorage.getItem(storageKey);
+    if (!id) {
+      id = 'DEV-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+      localStorage.setItem(storageKey, id);
+    }
+    return id;
+  };
+
   useEffect(() => {
+    // Set fallback ID immediately so UI can render
+    const fallbackId = getFallbackId();
+    setMyMac(fallbackId);
+    setIsMacLoading(false);
+
+    // Try to get real MAC in background without blocking UI
     const fetchWhoAmI = async () => {
       try {
         const data = await apiClient.whoAmI();
         if (data.mac && data.mac !== 'unknown') {
           setMyMac(data.mac);
-        } else {
-          // Fallback to local ID if server can't resolve MAC yet
-          const storageKey = 'ajc_client_id';
-          let id = localStorage.getItem(storageKey);
-          if (!id) {
-            id = 'DEV-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-            localStorage.setItem(storageKey, id);
-          }
-          setMyMac(id);
         }
       } catch (e) {
         console.error('Failed to identify client');
       }
     };
     
-    fetchWhoAmI();
+    // Only fetch if we have a valid IP (not localhost)
+    if (!window.location.hostname.includes('localhost')) {
+      fetchWhoAmI();
+    }
   }, []);
 
   const mySession = sessions.find(s => s.mac === myMac);

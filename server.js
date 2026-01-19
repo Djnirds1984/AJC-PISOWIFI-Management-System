@@ -520,6 +520,28 @@ app.get('/api/devices', async (req, res) => {
         totalPaid: session ? session.totalPaid : 0
       };
     });
+
+    // Add devices that have active sessions but were not found in the scan/db
+    sessions.forEach(session => {
+      const sessionMac = session.mac.toUpperCase();
+      if (!formattedDevices.find(d => d.mac.toUpperCase() === sessionMac)) {
+        formattedDevices.push({
+          id: `session_${sessionMac}`,
+          mac: session.mac,
+          ip: session.ip || 'Unknown',
+          hostname: 'Unknown', // Could try to lookup in wifi_devices history if needed, but 'Unknown' is safe
+          interface: 'Unknown',
+          ssid: 'Unknown',
+          signal: 0,
+          connectedAt: session.connectedAt,
+          lastSeen: Date.now(),
+          isActive: true,
+          customName: '',
+          sessionTime: session.remainingSeconds,
+          totalPaid: session.totalPaid
+        });
+      }
+    });
     
     res.json(formattedDevices);
   } catch (err) { res.status(500).json({ error: err.message }); }

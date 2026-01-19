@@ -1,5 +1,5 @@
 
-import { Rate, NetworkInterface, SystemConfig, WanConfig, VlanConfig } from '../types';
+import { Rate, NetworkInterface, SystemConfig, WanConfig, VlanConfig, WifiDevice, DeviceSession } from '../types';
 
 const API_BASE = '/api';
 
@@ -109,5 +109,60 @@ export const apiClient = {
     });
     const data = await handleResponse(res);
     return data.output;
+  },
+
+  // Device Management APIs
+  async getWifiDevices(): Promise<WifiDevice[]> {
+    const res = await fetch(`${API_BASE}/devices`);
+    return handleResponse(res);
+  },
+
+  async getWifiDevice(id: string): Promise<WifiDevice> {
+    const res = await fetch(`${API_BASE}/devices/${id}`);
+    return handleResponse(res);
+  },
+
+  async createWifiDevice(device: Omit<WifiDevice, 'id' | 'connectedAt' | 'lastSeen'>): Promise<WifiDevice> {
+    const res = await fetch(`${API_BASE}/devices`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(device)
+    });
+    return handleResponse(res);
+  },
+
+  async updateWifiDevice(id: string, updates: Partial<WifiDevice>): Promise<WifiDevice> {
+    const res = await fetch(`${API_BASE}/devices/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    return handleResponse(res);
+  },
+
+  async deleteWifiDevice(id: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/devices/${id}`, {
+      method: 'DELETE'
+    });
+    await handleResponse(res);
+  },
+
+  async connectDevice(id: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/devices/${id}/connect`, {
+      method: 'POST'
+    });
+    await handleResponse(res);
+  },
+
+  async disconnectDevice(id: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/devices/${id}/disconnect`, {
+      method: 'POST'
+    });
+    await handleResponse(res);
+  },
+
+  async getDeviceSessions(deviceId: string): Promise<DeviceSession[]> {
+    const res = await fetch(`${API_BASE}/devices/${deviceId}/sessions`);
+    return handleResponse(res);
   }
 };

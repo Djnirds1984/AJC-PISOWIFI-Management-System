@@ -7,6 +7,7 @@ import NetworkSettings from './components/Admin/NetworkSettings';
 import HardwareManager from './components/Admin/HardwareManager';
 import SystemUpdater from './components/Admin/SystemUpdater';
 import SystemSettings from './components/Admin/SystemSettings';
+import DeviceManager from './components/Admin/DeviceManager';
 import { apiClient } from './lib/api';
 
 const App: React.FC = () => {
@@ -157,6 +158,7 @@ const App: React.FC = () => {
               <SidebarItem active={activeTab === AdminTab.Analytics} onClick={() => setActiveTab(AdminTab.Analytics)} icon="📊" label="Dashboard" />
               <SidebarItem active={activeTab === AdminTab.Rates} onClick={() => setActiveTab(AdminTab.Rates)} icon="💰" label="Pricing" />
               <SidebarItem active={activeTab === AdminTab.Network} onClick={() => setActiveTab(AdminTab.Network)} icon="🌐" label="Network" />
+              <SidebarItem active={activeTab === AdminTab.Devices} onClick={() => setActiveTab(AdminTab.Devices)} icon="📱" label="Devices" />
               <SidebarItem active={activeTab === AdminTab.Hardware} onClick={() => setActiveTab(AdminTab.Hardware)} icon="🔌" label="Hardware" />
               <SidebarItem active={activeTab === AdminTab.System} onClick={() => setActiveTab(AdminTab.System)} icon="⚙️" label="System" />
               <SidebarItem active={activeTab === AdminTab.Updater} onClick={() => setActiveTab(AdminTab.Updater)} icon="🚀" label="Updater" />
@@ -192,6 +194,7 @@ const App: React.FC = () => {
                 {activeTab === AdminTab.Analytics && <Analytics sessions={activeSessions} />}
                 {activeTab === AdminTab.Rates && <RatesManager rates={rates} setRates={updateRates} />}
                 {activeTab === AdminTab.Network && <NetworkSettings />}
+                {activeTab === AdminTab.Devices && <DeviceManager />}
                 {activeTab === AdminTab.Hardware && <HardwareManager />}
                 {activeTab === AdminTab.System && <SystemSettings />}
                 {activeTab === AdminTab.Updater && <SystemUpdater />}

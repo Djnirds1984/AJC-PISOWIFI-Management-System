@@ -71,11 +71,35 @@ export enum AdminTab {
   Network = 'network',
   Hardware = 'hardware',
   System = 'system',
-  Updater = 'updater'
+  Updater = 'updater',
+  Devices = 'devices'
 }
 
 export interface UpdateLog {
   timestamp: string;
   type: 'info' | 'error' | 'success';
   message: string;
+}
+
+export interface WifiDevice {
+  id: string;
+  mac: string;
+  ip: string;
+  hostname: string;
+  interface: string;
+  ssid: string;
+  signal: number;
+  connectedAt: number;
+  lastSeen: number;
+  sessionTime?: number;
+  isActive: boolean;
+  customName?: string;
+}
+
+export interface DeviceSession {
+  deviceId: string;
+  startTime: number;
+  endTime?: number;
+  duration: number;
+  dataUsed?: number;
 }

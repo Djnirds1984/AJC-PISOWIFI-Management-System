@@ -451,6 +451,162 @@ app.post('/api/network/bridge', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// DEVICE MANAGEMENT API ENDPOINTS
+app.get('/api/devices', async (req, res) => {
+  try {
+    const devices = await db.all('SELECT * FROM wifi_devices ORDER BY connected_at DESC');
+    res.json(devices);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/devices/scan', async (req, res) => {
+  try {
+    const scannedDevices = await network.scanWifiDevices();
+    const now = Date.now();
+    
+    // Update or insert scanned devices
+    for (const device of scannedDevices) {
+      const existingDevice = await db.get('SELECT * FROM wifi_devices WHERE mac = ?', [device.mac]);
+      
+      if (existingDevice) {
+        // Update existing device
+        await db.run(
+          'UPDATE wifi_devices SET ip = ?, hostname = ?, interface = ?, ssid = ?, signal = ?, last_seen = ?, is_active = 1 WHERE mac = ?',
+          [device.ip, device.hostname, device.interface, device.ssid, device.signal, now, device.mac]
+        );
+      } else {
+        // Insert new device
+        const id = `device_${now}_${Math.random().toString(36).substr(2, 9)}`;
+        await db.run(
+          'INSERT INTO wifi_devices (id, mac, ip, hostname, interface, ssid, signal, connected_at, last_seen, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [id, device.mac, device.ip, device.hostname, device.interface, device.ssid, device.signal, now, now, 1]
+        );
+      }
+    }
+    
+    // Mark devices that weren't found as inactive
+    const scannedMacs = scannedDevices.map(d => d.mac);
+    if (scannedMacs.length > 0) {
+      const placeholders = scannedMacs.map(() => '?').join(',');
+      await db.run(`UPDATE wifi_devices SET is_active = 0 WHERE mac NOT IN (${placeholders})`, scannedMacs);
+    }
+    
+    // Return updated device list
+    const devices = await db.all('SELECT * FROM wifi_devices ORDER BY connected_at DESC');
+    res.json(devices);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/devices/:id', async (req, res) => {
+  try {
+    const device = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
+    if (!device) return res.status(404).json({ error: 'Device not found' });
+    res.json(device);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/devices', async (req, res) => {
+  try {
+    const { mac, ip, hostname, interface, ssid, signal, customName } = req.body;
+    const id = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const now = Date.now();
+    
+    await db.run(
+      'INSERT INTO wifi_devices (id, mac, ip, hostname, interface, ssid, signal, connected_at, last_seen, is_active, custom_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, mac.toUpperCase(), ip, hostname || '', interface, ssid || '', signal || 0, now, now, 1, customName || '']
+    );
+    
+    const newDevice = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [id]);
+    res.json(newDevice);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/devices/:id', async (req, res) => {
+  try {
+    const { customName, sessionTime } = req.body;
+    const updates = [];
+    const values = [];
+    
+    if (customName !== undefined) {
+      updates.push('custom_name = ?');
+      values.push(customName);
+    }
+    if (sessionTime !== undefined) {
+      updates.push('session_time = ?');
+      values.push(sessionTime);
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+    
+    values.push(req.params.id);
+    await db.run(`UPDATE wifi_devices SET ${updates.join(', ')} WHERE id = ?`, values);
+    
+    const updatedDevice = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
+    res.json(updatedDevice);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/devices/:id', async (req, res) => {
+  try {
+    const result = await db.run('DELETE FROM wifi_devices WHERE id = ?', [req.params.id]);
+    if (result.changes === 0) return res.status(404).json({ error: 'Device not found' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/devices/:id/connect', async (req, res) => {
+  try {
+    const device = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
+    if (!device) return res.status(404).json({ error: 'Device not found' });
+    
+    // Whitelist the device MAC and IP
+    await network.whitelistMAC(device.mac, device.ip);
+    
+    // Update device status
+    await db.run('UPDATE wifi_devices SET is_active = 1, last_seen = ? WHERE id = ?', [Date.now(), req.params.id]);
+    
+    // Create or update session
+    const existingSession = await db.get('SELECT * FROM sessions WHERE mac = ?', [device.mac]);
+    if (!existingSession) {
+      const sessionTime = device.session_time || 3600; // Default 1 hour
+      await db.run(
+        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at) VALUES (?, ?, ?, ?, ?)',
+        [device.mac, device.ip, sessionTime, 0, Date.now()]
+      );
+    }
+    
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/devices/:id/disconnect', async (req, res) => {
+  try {
+    const device = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
+    if (!device) return res.status(404).json({ error: 'Device not found' });
+    
+    // Block the device MAC and IP
+    await network.blockMAC(device.mac, device.ip);
+    
+    // Update device status and remove session
+    await db.run('UPDATE wifi_devices SET is_active = 0 WHERE id = ?', [req.params.id]);
+    await db.run('DELETE FROM sessions WHERE mac = ?', [device.mac]);
+    
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/devices/:id/sessions', async (req, res) => {
+  try {
+    const device = await db.get('SELECT mac FROM wifi_devices WHERE id = ?', [req.params.id]);
+    if (!device) return res.status(404).json({ error: 'Device not found' });
+    
+    const sessions = await db.all('SELECT * FROM device_sessions WHERE device_id = ? ORDER BY start_time DESC', [req.params.id]);
+    res.json(sessions);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/dist')) return res.status(404).send('Not found');
   res.sendFile(path.join(__dirname, 'index.html'));

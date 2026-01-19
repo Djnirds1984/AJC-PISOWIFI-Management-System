@@ -337,8 +337,15 @@ const DeviceManager: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
                     {formatDate(device.connectedAt)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                    {device.sessionTime ? formatTime(device.sessionTime) : 'Unlimited'}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-slate-900">
+                      {device.sessionTime ? formatTime(device.sessionTime) : 'No Session'}
+                    </div>
+                    {device.totalPaid > 0 && (
+                      <div className="text-xs text-green-600 font-medium">
+                        ₱{device.totalPaid}
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                     <button

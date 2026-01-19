@@ -454,24 +454,39 @@ app.post('/api/network/bridge', async (req, res) => {
 // DEVICE MANAGEMENT API ENDPOINTS
 app.get('/api/devices', async (req, res) => {
   try {
+    // Get all devices with their current session information
     const devices = await db.all('SELECT * FROM wifi_devices ORDER BY connected_at DESC');
     
-    // Ensure consistent data formatting
-    const formattedDevices = devices.map(device => ({
-      ...device,
-      id: device.id || '',
-      mac: device.mac || 'Unknown',
-      ip: device.ip || 'Unknown',
-      hostname: device.hostname || 'Unknown',
-      interface: device.interface || 'Unknown',
-      ssid: device.ssid || 'Unknown',
-      signal: device.signal || 0,
-      connectedAt: device.connected_at || Date.now(),
-      lastSeen: device.last_seen || Date.now(),
-      isActive: Boolean(device.is_active),
-      customName: device.custom_name || '',
-      sessionTime: device.session_time || null
-    }));
+    // Get all active sessions
+    const sessions = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt FROM sessions WHERE remaining_seconds > 0');
+    
+    // Create a map of sessions by MAC for quick lookup
+    const sessionMap = new Map();
+    sessions.forEach(session => {
+      sessionMap.set(session.mac.toUpperCase(), session);
+    });
+    
+    // Merge device data with session data
+    const formattedDevices = devices.map(device => {
+      const deviceMac = device.mac.toUpperCase();
+      const session = sessionMap.get(deviceMac);
+      
+      return {
+        id: device.id || '',
+        mac: device.mac || 'Unknown',
+        ip: device.ip || 'Unknown',
+        hostname: device.hostname || 'Unknown',
+        interface: device.interface || 'Unknown',
+        ssid: device.ssid || 'Unknown',
+        signal: device.signal || 0,
+        connectedAt: session ? session.connectedAt : (device.connected_at || Date.now()),
+        lastSeen: device.last_seen || Date.now(),
+        isActive: Boolean(session), // Device is active if it has an active session
+        customName: device.custom_name || '',
+        sessionTime: session ? session.remainingSeconds : 0, // Real remaining time from session
+        totalPaid: session ? session.totalPaid : 0
+      };
+    });
     
     res.json(formattedDevices);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -482,52 +497,66 @@ app.post('/api/devices/scan', async (req, res) => {
     const scannedDevices = await network.scanWifiDevices();
     const now = Date.now();
     
+    // Get current active sessions to sync with
+    const activeSessions = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt FROM sessions WHERE remaining_seconds > 0');
+    const sessionMap = new Map();
+    activeSessions.forEach(session => {
+      sessionMap.set(session.mac.toUpperCase(), session);
+    });
+    
     // Update or insert scanned devices
     for (const device of scannedDevices) {
       const existingDevice = await db.get('SELECT * FROM wifi_devices WHERE mac = ?', [device.mac]);
+      const session = sessionMap.get(device.mac.toUpperCase());
       
       if (existingDevice) {
-        // Update existing device
+        // Update existing device - preserve session data if device has active session
         await db.run(
-          'UPDATE wifi_devices SET ip = ?, hostname = ?, interface = ?, ssid = ?, signal = ?, last_seen = ?, is_active = 1 WHERE mac = ?',
-          [device.ip, device.hostname, device.interface, device.ssid, device.signal, now, device.mac]
+          'UPDATE wifi_devices SET ip = ?, hostname = ?, interface = ?, ssid = ?, signal = ?, last_seen = ?, is_active = ? WHERE mac = ?',
+          [device.ip, device.hostname, device.interface, device.ssid, device.signal, now, session ? 1 : 0, device.mac]
         );
       } else {
-        // Insert new device
+        // Insert new device - mark as active if it has a session
         const id = `device_${now}_${Math.random().toString(36).substr(2, 9)}`;
         await db.run(
           'INSERT INTO wifi_devices (id, mac, ip, hostname, interface, ssid, signal, connected_at, last_seen, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [id, device.mac, device.ip, device.hostname, device.interface, device.ssid, device.signal, now, now, 1]
+          [id, device.mac, device.ip, device.hostname, device.interface, device.ssid, device.signal, session ? session.connectedAt : now, now, session ? 1 : 0]
         );
       }
     }
     
-    // Mark devices that weren't found as inactive
+    // Mark devices that weren't found as inactive, but preserve session status for active sessions
     const scannedMacs = scannedDevices.map(d => d.mac);
     if (scannedMacs.length > 0) {
       const placeholders = scannedMacs.map(() => '?').join(',');
-      await db.run(`UPDATE wifi_devices SET is_active = 0 WHERE mac NOT IN (${placeholders})`, scannedMacs);
+      // Only mark as inactive if device doesn't have an active session
+      await db.run(`UPDATE wifi_devices SET is_active = 0 WHERE mac NOT IN (${placeholders}) AND mac NOT IN (SELECT mac FROM sessions WHERE remaining_seconds > 0)`, scannedMacs);
     }
     
-    // Return updated device list with proper formatting
+    // Return updated device list with session data merged
     const devices = await db.all('SELECT * FROM wifi_devices ORDER BY connected_at DESC');
     
-    // Ensure consistent data formatting
-    const formattedDevices = devices.map(device => ({
-      ...device,
-      id: device.id || '',
-      mac: device.mac || 'Unknown',
-      ip: device.ip || 'Unknown',
-      hostname: device.hostname || 'Unknown',
-      interface: device.interface || 'Unknown',
-      ssid: device.ssid || 'Unknown',
-      signal: device.signal || 0,
-      connectedAt: device.connected_at || Date.now(),
-      lastSeen: device.last_seen || Date.now(),
-      isActive: Boolean(device.is_active),
-      customName: device.custom_name || '',
-      sessionTime: device.session_time || null
-    }));
+    // Merge with session data for accurate remaining time
+    const formattedDevices = devices.map(device => {
+      const deviceMac = device.mac.toUpperCase();
+      const session = sessionMap.get(deviceMac);
+      
+      return {
+        id: device.id || '',
+        mac: device.mac || 'Unknown',
+        ip: device.ip || 'Unknown',
+        hostname: device.hostname || 'Unknown',
+        interface: device.interface || 'Unknown',
+        ssid: device.ssid || 'Unknown',
+        signal: device.signal || 0,
+        connectedAt: session ? session.connectedAt : (device.connected_at || Date.now()),
+        lastSeen: device.last_seen || Date.now(),
+        isActive: Boolean(session), // Device is active if it has an active session
+        customName: device.custom_name || '',
+        sessionTime: session ? session.remainingSeconds : 0, // Real remaining time from session
+        totalPaid: session ? session.totalPaid : 0
+      };
+    });
     
     res.json(formattedDevices);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -597,23 +626,31 @@ app.post('/api/devices/:id/connect', async (req, res) => {
     const device = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
     if (!device) return res.status(404).json({ error: 'Device not found' });
     
-    // Whitelist the device MAC and IP
+    // Whitelist the device MAC and IP (real network operation)
     await network.whitelistMAC(device.mac, device.ip);
     
     // Update device status
     await db.run('UPDATE wifi_devices SET is_active = 1, last_seen = ? WHERE id = ?', [Date.now(), req.params.id]);
     
-    // Create or update session
+    // Create or update session - use device session_time if set, otherwise default
     const existingSession = await db.get('SELECT * FROM sessions WHERE mac = ?', [device.mac]);
-    if (!existingSession) {
-      const sessionTime = device.session_time || 3600; // Default 1 hour
+    const sessionTime = device.session_time || 3600; // Default 1 hour
+    
+    if (existingSession) {
+      // Update existing session
+      await db.run(
+        'UPDATE sessions SET remaining_seconds = remaining_seconds + ?, ip = ? WHERE mac = ?',
+        [sessionTime, device.ip, device.mac]
+      );
+    } else {
+      // Create new session
       await db.run(
         'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at) VALUES (?, ?, ?, ?, ?)',
         [device.mac, device.ip, sessionTime, 0, Date.now()]
       );
     }
     
-    res.json({ success: true });
+    res.json({ success: true, sessionTime });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -622,12 +659,17 @@ app.post('/api/devices/:id/disconnect', async (req, res) => {
     const device = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
     if (!device) return res.status(404).json({ error: 'Device not found' });
     
-    // Block the device MAC and IP
+    // Block the device MAC and IP (real network operation)
     await network.blockMAC(device.mac, device.ip);
     
-    // Update device status and remove session
+    // Update device status
     await db.run('UPDATE wifi_devices SET is_active = 0 WHERE id = ?', [req.params.id]);
-    await db.run('DELETE FROM sessions WHERE mac = ?', [device.mac]);
+    
+    // Remove session if it exists
+    const existingSession = await db.get('SELECT * FROM sessions WHERE mac = ?', [device.mac]);
+    if (existingSession) {
+      await db.run('DELETE FROM sessions WHERE mac = ?', [device.mac]);
+    }
     
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -701,9 +743,29 @@ app.post('/api/devices/:id/refresh', async (req, res) => {
       );
     }
     
-    // Return updated device
+    // Get current session data for this device
+    const session = await db.get('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt FROM sessions WHERE mac = ?', [device.mac]);
+    
+    // Return updated device with session data
     const updatedDevice = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
-    res.json(updatedDevice);
+    const deviceWithSession = {
+      ...updatedDevice,
+      id: updatedDevice.id || '',
+      mac: updatedDevice.mac || 'Unknown',
+      ip: updatedDevice.ip || 'Unknown',
+      hostname: updatedDevice.hostname || 'Unknown',
+      interface: updatedDevice.interface || 'Unknown',
+      ssid: updatedDevice.ssid || 'Unknown',
+      signal: updatedDevice.signal || 0,
+      connectedAt: session ? session.connectedAt : (updatedDevice.connected_at || Date.now()),
+      lastSeen: updatedDevice.last_seen || Date.now(),
+      isActive: Boolean(session),
+      customName: updatedDevice.custom_name || '',
+      sessionTime: session ? session.remainingSeconds : 0,
+      totalPaid: session ? session.totalPaid : 0
+    };
+    
+    res.json(deviceWithSession);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

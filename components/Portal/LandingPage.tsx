@@ -3,16 +3,26 @@ import { Rate, UserSession } from '../../types';
 import CoinModal from './CoinModal';
 import { apiClient } from '../../lib/api';
 
+// Add refreshSessions prop to Props interface
 interface Props {
   rates: Rate[];
   sessions: UserSession[];
   onSessionStart: (session: UserSession) => void;
+  refreshSessions?: () => void;
 }
 
-const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
+interface Props {
+  rates: Rate[];
+  sessions: UserSession[];
+  onSessionStart: (session: UserSession) => void;
+  refreshSessions?: () => void;
+}
+
+const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refreshSessions }) => {
   const [showModal, setShowModal] = useState(false);
   const [myMac, setMyMac] = useState('');
   const [isMacLoading, setIsMacLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Hardcoded default rates in case the API fetch returns nothing
   const defaultRates: Rate[] = [
@@ -70,6 +80,61 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
     window.location.href = '/success';
   };
 
+  const handleRefreshNetwork = async () => {
+    setIsRefreshing(true);
+    try {
+      // Client-side network refresh attempts
+      console.log('Attempting client-side network refresh...');
+      
+      // Method 1: Force browser to re-resolve DNS by clearing DNS cache
+      try {
+        // Clear browser's DNS cache by making requests to different domains
+        const testUrls = ['http://1.1.1.1', 'http://8.8.8.8', 'http://google.com'];
+        for (const url of testUrls) {
+          try {
+            await fetch(url, { mode: 'no-cors', cache: 'reload' });
+          } catch (e) {
+            // Ignore errors, just trying to force DNS resolution
+          }
+        }
+      } catch (e) {
+        console.log('DNS refresh failed:', e);
+      }
+      
+      // Method 2: Clear browser cache for this domain
+      if ('caches' in window) {
+        try {
+          const cacheNames = await caches.keys();
+          await Promise.all(cacheNames.map(name => caches.delete(name)));
+          console.log('Browser cache cleared');
+        } catch (e) {
+          console.log('Cache clear failed:', e);
+        }
+      }
+      
+      // Method 3: Force page reload with cache bypass
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+      
+      // Method 4: Server-side network refresh
+      const result = await apiClient.refreshNetworkConnection();
+      if (result.success) {
+        alert('✅ Network connection refreshed! The page will reload automatically.');
+        // Also refresh session data
+        if (refreshSessions) {
+          refreshSessions();
+        }
+      } else {
+        alert('⚠️ Network refresh failed: ' + (result.message || 'Unknown error'));
+      }
+    } catch (error) {
+      alert('❌ Network refresh error: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   return (
     <div className="portal-container min-h-screen">
       <header className="portal-header">
@@ -97,9 +162,18 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart }) => {
               
               <button 
                 onClick={handleGoToInternet}
-                className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest mb-4 shadow-xl hover:bg-black transition-all active:scale-95 flex items-center justify-center gap-2"
+                className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest mb-3 shadow-xl hover:bg-black transition-all active:scale-95 flex items-center justify-center gap-2"
               >
                 <span>🌍</span> PROCEED TO INTERNET
+              </button>
+              
+              <button 
+                onClick={handleRefreshNetwork}
+                disabled={isRefreshing}
+                className="w-full bg-blue-600 text-white py-3 rounded-2xl font-bold text-[10px] uppercase tracking-widest shadow-lg hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span>{isRefreshing ? '⟳' : '🔄'}</span> 
+                {isRefreshing ? 'REFRESHING...' : 'REFRESH CONNECTION'}
               </button>
             </div>
           ) : (

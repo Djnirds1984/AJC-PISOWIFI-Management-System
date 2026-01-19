@@ -164,5 +164,13 @@ export const apiClient = {
   async getDeviceSessions(deviceId: string): Promise<DeviceSession[]> {
     const res = await fetch(`${API_BASE}/devices/${deviceId}/sessions`);
     return handleResponse(res);
+  },
+
+  // Network refresh function to help devices reconnect after session creation
+  async refreshNetworkConnection(): Promise<{ success: boolean; message?: string }> {
+    const res = await fetch(`${API_BASE}/network/refresh`, {
+      method: 'POST'
+    });
+    return handleResponse(res);
   }
 };

@@ -100,11 +100,24 @@ const App: React.FC = () => {
       const data = await res.json();
       if (data.success) {
         await loadData();
+        // Show connection message to user
+        if (data.message) {
+          alert('✅ ' + data.message);
+        } else {
+          alert('✅ Internet access granted! Connection should activate automatically.');
+        }
+        
+        // Try to help the connection by forcing a page reload after a short delay
+        setTimeout(() => {
+          if (window.location.pathname === '/') {
+            window.location.reload();
+          }
+        }, 2000);
       } else {
-        alert('Failed to authorize session: ' + data.error);
+        alert('❌ Failed to authorize session: ' + data.error);
       }
     } catch (e) {
-      alert('Network error authorizing connection.');
+      alert('❌ Network error authorizing connection.');
     } finally {
       setLoading(false);
     }
@@ -203,7 +216,7 @@ const App: React.FC = () => {
           </main>
         </div>
       ) : (
-        <LandingPage rates={rates} onSessionStart={handleAddSession} sessions={activeSessions} />
+        <LandingPage rates={rates} onSessionStart={handleAddSession} sessions={activeSessions} refreshSessions={loadData} />
       )}
     </div>
   );

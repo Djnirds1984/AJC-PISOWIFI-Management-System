@@ -352,8 +352,15 @@ app.post('/api/sessions/start', async (req, res) => {
       'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid) VALUES (?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?',
       [mac, clientIp, seconds, pesos, seconds, pesos, clientIp]
     );
+    
+    // Whitelist the device in firewall
     await network.whitelistMAC(mac, clientIp);
-    res.json({ success: true, mac });
+    
+    // Force network refresh for the device
+    await network.forceNetworkRefresh(mac, clientIp);
+    
+    console.log(`[AUTH] Session started for ${mac} (${clientIp}) - ${seconds}s, ₱${pesos}`);
+    res.json({ success: true, mac, message: 'Internet access granted. Please refresh your browser or wait a moment for connection to activate.' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -370,6 +377,28 @@ app.post('/api/rates', async (req, res) => {
 app.delete('/api/rates/:id', async (req, res) => {
   try { await db.run('DELETE FROM rates WHERE id = ?', [req.params.id]); res.json({ success: true }); }
   catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// NETWORK REFRESH API - Help devices reconnect after session creation
+app.post('/api/network/refresh', async (req, res) => {
+  try {
+    const clientIp = req.ip.replace('::ffff:', '');
+    const mac = await getMacFromIp(clientIp);
+    
+    if (!mac) {
+      return res.status(400).json({ success: false, error: 'Could not identify your device' });
+    }
+    
+    // Force network refresh for the requesting device
+    await network.forceNetworkRefresh(mac, clientIp);
+    
+    res.json({ 
+      success: true, 
+      message: 'Network connection refreshed. Try accessing a website now.' 
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // SYSTEM & CONFIG API

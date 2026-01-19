@@ -478,6 +478,8 @@ app.post('/api/network/vlan', async (req, res) => {
 app.post('/api/network/bridge', async (req, res) => {
   try {
     const output = await network.createBridge(req.body);
+    await db.run('INSERT OR REPLACE INTO bridges (name, members, stp) VALUES (?, ?, ?)', 
+      [req.body.name, JSON.stringify(req.body.members), req.body.stp ? 1 : 0]);
     res.json({ success: true, output });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -821,6 +823,19 @@ async function bootupRestore() {
   console.log('[AJC] Starting System Restoration...');
   await network.initFirewall();
   
+  // 0. Restore Bridges
+  try {
+    const bridges = await db.all('SELECT * FROM bridges');
+    for (const b of bridges) {
+      console.log(`[AJC] Restoring Bridge ${b.name}...`);
+      await network.createBridge({
+        name: b.name,
+        members: JSON.parse(b.members),
+        stp: Boolean(b.stp)
+      }).catch(e => console.error(`[AJC] Bridge Restore Failed: ${e.message}`));
+    }
+  } catch (e) { console.error('[AJC] Failed to load bridges from DB', e); }
+
   // 1. Restore Hotspots (DNS/DHCP)
   try {
     const hotspots = await db.all('SELECT * FROM hotspots WHERE enabled = 1');

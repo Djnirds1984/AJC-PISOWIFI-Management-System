@@ -471,6 +471,8 @@ app.delete('/api/hotspots/:interface', async (req, res) => {
 app.post('/api/network/vlan', async (req, res) => {
   try {
     await network.createVlan(req.body);
+    await db.run('INSERT OR REPLACE INTO vlans (name, parent, id) VALUES (?, ?, ?)', 
+      [req.body.name, req.body.parent, req.body.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -845,7 +847,16 @@ async function bootupRestore() {
   console.log('[AJC] Starting System Restoration...');
   await network.initFirewall();
   
-  // 0. Restore Bridges
+  // 0. Restore VLANs
+  try {
+    const vlans = await db.all('SELECT * FROM vlans');
+    for (const v of vlans) {
+      console.log(`[AJC] Restoring VLAN ${v.name} on ${v.parent} ID ${v.id}...`);
+      await network.createVlan(v).catch(e => console.error(`[AJC] VLAN Restore Failed: ${e.message}`));
+    }
+  } catch (e) { console.error('[AJC] Failed to load VLANs from DB', e); }
+
+  // 1. Restore Bridges
   try {
     const bridges = await db.all('SELECT * FROM bridges');
     for (const b of bridges) {
@@ -858,7 +869,7 @@ async function bootupRestore() {
     }
   } catch (e) { console.error('[AJC] Failed to load bridges from DB', e); }
 
-  // 1. Restore Hotspots (DNS/DHCP)
+  // 2. Restore Hotspots (DNS/DHCP)
   try {
     const hotspots = await db.all('SELECT * FROM hotspots WHERE enabled = 1');
     for (const h of hotspots) {
@@ -867,7 +878,7 @@ async function bootupRestore() {
     }
   } catch (e) { console.error('[AJC] Failed to load hotspots from DB'); }
 
-  // 2. Restore Wireless APs
+  // 3. Restore Wireless APs
   try {
     const wireless = await db.all('SELECT * FROM wireless_settings');
     for (const w of wireless) {
@@ -876,12 +887,12 @@ async function bootupRestore() {
     }
   } catch (e) { console.error('[AJC] Failed to load wireless settings from DB'); }
 
-  // 3. Restore GPIO & Hardware
+  // 4. Restore GPIO & Hardware
   const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
   const pin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
   initGPIO((pesos) => io.emit('coin-pulse', { pesos }), board?.value || 'none', parseInt(pin?.value || '2'));
   
-  // 4. Restore Active Sessions
+  // 5. Restore Active Sessions
   const sessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds > 0');
   for (const s of sessions) await network.whitelistMAC(s.mac, s.ip);
   

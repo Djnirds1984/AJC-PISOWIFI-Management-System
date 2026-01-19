@@ -356,9 +356,6 @@ app.post('/api/sessions/start', async (req, res) => {
     // Whitelist the device in firewall
     await network.whitelistMAC(mac, clientIp);
     
-    // Force network refresh for the device
-    await network.forceNetworkRefresh(mac, clientIp);
-    
     console.log(`[AUTH] Session started for ${mac} (${clientIp}) - ${seconds}s, ₱${pesos}`);
     res.json({ success: true, mac, message: 'Internet access granted. Please refresh your browser or wait a moment for connection to activate.' });
   } catch (err) { res.status(500).json({ error: err.message }); }

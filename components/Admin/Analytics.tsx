@@ -53,13 +53,13 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
           data.network.forEach(net => {
             if (!newHistory[net.iface]) newHistory[net.iface] = [];
             // Calculate speed (bytes per second) - systeminformation returns bytes/sec in rx_sec/tx_sec
-            // We'll convert to KB/s for display
+            // We'll convert to MB/s for display
             newHistory[net.iface] = [
               ...newHistory[net.iface],
               { 
                 time: now, 
-                rx: net.rx_sec / 1024, // KB/s
-                tx: net.tx_sec / 1024  // KB/s
+                rx: net.rx_sec / 1024 / 1024, // MB/s
+                tx: net.tx_sec / 1024 / 1024  // MB/s
               }
             ].slice(-20); // Keep last 20 points
           });
@@ -225,14 +225,14 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                 <XAxis dataKey="time" hide />
                                 <YAxis 
-                                    tickFormatter={(val) => `${val.toFixed(0)} KB/s`} 
+                                    tickFormatter={(val) => `${val.toFixed(2)} MB/s`} 
                                     axisLine={false} 
                                     tickLine={false} 
                                     tick={{fill: '#94a3b8', fontSize: 10}} 
                                 />
                                 <Tooltip 
                                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                                    formatter={(val: number) => [`${val.toFixed(2)} KB/s`]}
+                                    formatter={(val: number) => [`${val.toFixed(2)} MB/s`]}
                                 />
                                 <Legend />
                                 <Area 

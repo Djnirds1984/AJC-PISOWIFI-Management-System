@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiClient } from '../../lib/api';
 
 const SystemSettings: React.FC = () => {
   const [isResetting, setIsResetting] = useState(false);
@@ -12,16 +13,23 @@ const SystemSettings: React.FC = () => {
   });
 
   useEffect(() => {
-    // Simulate fetching system stats
-    const timer = setTimeout(() => {
-      setSystemStats({
-        uptime: '12d 4h 32m',
-        memory: '512MB / 2GB (25%)',
-        cpu: '15% Load',
-        disk: '1.2GB / 16GB used'
-      });
-    }, 1000);
-    return () => clearTimeout(timer);
+    const fetchStats = async () => {
+      try {
+        const stats = await apiClient.getSystemStats();
+        setSystemStats({
+          uptime: 'System Online',
+          memory: `${(stats.memory.used / 1024 / 1024 / 1024).toFixed(1)}GB / ${(stats.memory.total / 1024 / 1024 / 1024).toFixed(1)}GB (${stats.memory.percentage}%)`,
+          cpu: `${stats.cpu}% Load`,
+          disk: `${(stats.storage.used / 1024 / 1024 / 1024).toFixed(1)}GB / ${(stats.storage.total / 1024 / 1024 / 1024).toFixed(1)}GB`
+        });
+      } catch (e) {
+        console.error('Failed to fetch system stats', e);
+      }
+    };
+
+    fetchStats();
+    const interval = setInterval(fetchStats, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleReset = async () => {
@@ -31,21 +39,12 @@ const SystemSettings: React.FC = () => {
     setShowConfirm(false);
     
     try {
-      const res = await fetch('/api/system/reset', { 
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      const data = await res.json();
-      
-      if (data.success) {
-        alert('System successfully reset. Application will now refresh to initial state.');
-        window.location.href = '/';
-      } else {
-        alert('Reset failed: ' + (data.error || 'Unknown server error'));
-      }
-    } catch (e) {
+      await apiClient.factoryReset();
+      alert('System successfully reset. Application will now refresh to initial state.');
+      window.location.href = '/';
+    } catch (e: any) {
       console.error('Reset fetch error:', e);
-      alert('Network error during reset. Check if the server crashed.');
+      alert('Reset failed: ' + (e.message || 'Unknown server error'));
     } finally {
       setIsResetting(false);
       setConfirmText('');
@@ -194,26 +193,12 @@ const ChangePasswordForm: React.FC = () => {
     setMessage('');
 
     try {
-      const token = localStorage.getItem('ajc_admin_token');
-      const res = await fetch('/api/admin/change-password', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ oldPassword, newPassword })
-      });
-      const data = await res.json();
-      
-      if (data.success) {
-        setMessage('✅ Password updated successfully');
-        setOldPassword('');
-        setNewPassword('');
-      } else {
-        setMessage('❌ ' + (data.error || 'Failed to update password'));
-      }
-    } catch (err) {
-      setMessage('❌ Connection failed');
+      await apiClient.changePassword(oldPassword, newPassword);
+      setMessage('✅ Password updated successfully');
+      setOldPassword('');
+      setNewPassword('');
+    } catch (err: any) {
+      setMessage(err.message || 'Failed to update password');
     } finally {
       setLoading(false);
     }

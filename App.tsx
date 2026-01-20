@@ -31,7 +31,7 @@ const App: React.FC = () => {
       setError(null);
       const [fetchedRates, sessions] = await Promise.all([
         apiClient.getRates(),
-        fetch('/api/sessions').then(r => r.json()).catch(() => [])
+        apiClient.getSessions().catch(() => [])
       ]);
       setRates(fetchedRates);
       setActiveSessions(sessions);
@@ -81,8 +81,7 @@ const App: React.FC = () => {
     const interval = setInterval(async () => {
       // Periodic refresh from server to ensure sync
       try {
-        const res = await fetch('/api/sessions');
-        const sessions = await res.json();
+        const sessions = await apiClient.getSessions();
         setActiveSessions(sessions);
       } catch (e) {
         // Local decrement as fallback for smooth UI

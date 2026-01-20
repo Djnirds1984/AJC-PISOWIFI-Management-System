@@ -41,8 +41,8 @@ const NetworkSettings: React.FC = () => {
       setLoading(true);
       const [ifaces, hs, wifi, v, b] = await Promise.all([
         apiClient.getInterfaces(),
-        fetch('/api/hotspots').then(r => r.json()).catch(() => []),
-        fetch('/api/network/wireless').then(r => r.json()).catch(() => []),
+        apiClient.getHotspots().catch(() => []),
+        apiClient.getWirelessConfigs().catch(() => []),
         apiClient.getVlans().catch(() => []),
         apiClient.getBridges().catch(() => [])
       ]);
@@ -63,18 +63,9 @@ const NetworkSettings: React.FC = () => {
     
     try {
       setLoading(true);
-      const res = await fetch('/api/network/wireless', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newWifi, interface: targetInterface })
-      });
-      const data = await res.json();
-      if (data.success) {
-        await loadData();
-        alert('Wi-Fi AP Broadcast Started!');
-      } else {
-        alert('Failed: ' + data.error);
-      }
+      await apiClient.saveWirelessConfig({ ...newWifi, interface: targetInterface });
+      await loadData();
+      alert('Wi-Fi AP Broadcast Started!');
     } catch (e) { alert('Failed to deploy Wireless AP.'); }
     finally { setLoading(false); }
   };
@@ -83,18 +74,9 @@ const NetworkSettings: React.FC = () => {
     if (!newHS.interface || !newHS.ip_address) return alert('Select interface and IP!');
     try {
       setLoading(true);
-      const res = await fetch('/api/hotspots', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newHS)
-      });
-      const data = await res.json();
-      if (data.success) {
-        await loadData();
-        alert('Hotspot Portal Segment Deployed!');
-      } else {
-        alert('Failed: ' + data.error);
-      }
+      await apiClient.createHotspot(newHS);
+      await loadData();
+      alert('Hotspot Portal Segment Deployed!');
     } catch (e) { alert('Failed to deploy Hotspot.'); }
     finally { setLoading(false); }
   };
@@ -103,7 +85,7 @@ const NetworkSettings: React.FC = () => {
     if (!confirm(`Stop and remove portal segment on ${iface}?`)) return;
     try {
       setLoading(true);
-      await fetch(`/api/hotspots/${iface}`, { method: 'DELETE' });
+      await apiClient.deleteHotspot(iface);
       await loadData();
     } catch (e) { alert('Failed to remove portal.'); }
     finally { setLoading(false); }

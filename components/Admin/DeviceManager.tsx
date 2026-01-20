@@ -49,9 +49,7 @@ const DeviceManager: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch('/api/devices/scan', { method: 'POST' });
-      if (!res.ok) throw new Error('Scan failed');
-      const data = await res.json();
+      const data = await apiClient.scanDevices();
       setDevices(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to scan devices');
@@ -63,9 +61,7 @@ const DeviceManager: React.FC = () => {
   const refreshDevice = async (deviceId: string) => {
     setRefreshingDevices(prev => new Set(prev).add(deviceId));
     try {
-      const res = await fetch(`/api/devices/${deviceId}/refresh`, { method: 'POST' });
-      if (!res.ok) throw new Error('Refresh failed');
-      const updatedDevice = await res.json();
+      const updatedDevice = await apiClient.refreshDevice(deviceId);
       
       // Update the device in the list
       setDevices(prev => prev.map(device => 

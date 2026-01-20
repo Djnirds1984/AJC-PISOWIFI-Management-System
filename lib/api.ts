@@ -33,7 +33,7 @@ const handleResponse = async (res: Response) => {
 export const apiClient = {
   // Fetch all rates from the database
   async getRates(): Promise<Rate[]> {
-    const res = await fetch(`${API_BASE}/rates`);
+    const res = await fetch(`${API_BASE}/rates`, { headers: getHeaders() });
     return handleResponse(res);
   },
 
@@ -74,7 +74,7 @@ export const apiClient = {
 
   // Fetch available network interfaces from the kernel
   async getInterfaces(): Promise<NetworkInterface[]> {
-    const res = await fetch(`${API_BASE}/interfaces`);
+    const res = await fetch(`${API_BASE}/interfaces`, { headers: getHeaders() });
     return handleResponse(res);
   },
 
@@ -230,6 +230,84 @@ export const apiClient = {
 
   async getSystemInterfaces(): Promise<string[]> {
     const res = await fetch(`${API_BASE}/system/interfaces`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  // Hotspot Management APIs
+  async getHotspots(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/hotspots`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async createHotspot(hotspot: any): Promise<void> {
+    const res = await fetch(`${API_BASE}/hotspots`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(hotspot)
+    });
+    await handleResponse(res);
+  },
+
+  async deleteHotspot(interfaceName: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/hotspots/${interfaceName}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    await handleResponse(res);
+  },
+
+  // Wireless Management APIs
+  async getWirelessConfigs(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/network/wireless`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async saveWirelessConfig(config: any): Promise<void> {
+    const res = await fetch(`${API_BASE}/network/wireless`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(config)
+    });
+    await handleResponse(res);
+  },
+
+  // Device Scan & Refresh APIs
+  async scanDevices(): Promise<WifiDevice[]> {
+    const res = await fetch(`${API_BASE}/devices/scan`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
+  async refreshDevice(deviceId: string): Promise<WifiDevice> {
+    const res = await fetch(`${API_BASE}/devices/${deviceId}/refresh`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
+  // System Management
+  async factoryReset(): Promise<void> {
+    const res = await fetch(`${API_BASE}/system/reset`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    await handleResponse(res);
+  },
+
+  async changePassword(oldPassword: string, newPassword: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/admin/change-password`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ oldPassword, newPassword })
+    });
+    await handleResponse(res);
+  },
+
+  async getSessions(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/sessions`);
     return handleResponse(res);
   }
 };

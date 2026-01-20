@@ -135,6 +135,44 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     }
   };
 
+  const formatSessionTime = (seconds: number) => {
+    if (seconds >= 86400) { // 24 hours or more
+      const days = Math.floor(seconds / 86400);
+      const remainingSeconds = seconds % 86400;
+      const hours = Math.floor(remainingSeconds / 3600);
+      const mins = Math.floor((remainingSeconds % 3600) / 60);
+      const secs = remainingSeconds % 60;
+      
+      return (
+        <>
+          {days}<span className="text-2xl">d</span> {hours}<span className="text-2xl">h</span> {mins}<span className="text-2xl">m</span> {secs}<span className="text-2xl">s</span>
+        </>
+      );
+    }
+    
+    if (seconds >= 3600) { // 60 minutes or more
+      const hours = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+      
+      return (
+        <>
+          {hours}<span className="text-2xl">h</span> {mins}<span className="text-2xl">m</span> {secs}<span className="text-2xl">s</span>
+        </>
+      );
+    }
+    
+    // Default: minutes and seconds
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    
+    return (
+      <>
+        {mins}<span className="text-2xl">m</span> {secs}<span className="text-2xl">s</span>
+      </>
+    );
+  };
+
   return (
     <div className="portal-container min-h-screen">
       <header className="portal-header">
@@ -150,7 +188,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
             <div className="mb-6 animate-in fade-in zoom-in duration-500">
               <p className="text-blue-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Authenticated Session</p>
               <h2 className="text-6xl font-black text-slate-900 mb-4 tracking-tighter">
-                {Math.floor(mySession.remainingSeconds / 60)}<span className="text-2xl">m</span> {mySession.remainingSeconds % 60}<span className="text-2xl">s</span>
+                {formatSessionTime(mySession.remainingSeconds)}
               </h2>
               <div className="flex flex-col gap-1 text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-6">
                 <span className="text-green-500 font-black flex items-center justify-center gap-2">

@@ -156,9 +156,9 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
                     <span>+ Add Graph</span>
                 </button>
                 {isDropdownOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-10">
+                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-10 max-h-64 overflow-y-auto">
                         {availableInterfaces.filter(i => !activeGraphs.includes(i)).map(iface => (
-                            <button 
+                            <button  
                                 key={iface}
                                 onClick={() => addGraph(iface)}
                                 className="w-full text-left px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors"

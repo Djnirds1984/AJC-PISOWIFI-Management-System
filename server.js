@@ -621,6 +621,22 @@ app.delete('/api/network/bridge/:name', requireAdmin, async (req, res) => {
 // DEVICE MANAGEMENT API ENDPOINTS
 app.get('/api/devices', requireAdmin, async (req, res) => {
   try {
+    // Fetch allowed interfaces (hotspots and their bridge members)
+    const hotspotRows = await db.all('SELECT interface FROM hotspots WHERE enabled = 1');
+    const bridgeRows = await db.all('SELECT * FROM bridges');
+    
+    const allowedInterfaces = new Set();
+    hotspotRows.forEach(h => allowedInterfaces.add(h.interface));
+    
+    bridgeRows.forEach(b => {
+      if (allowedInterfaces.has(b.name)) {
+        try {
+          const members = JSON.parse(b.members);
+          members.forEach(m => allowedInterfaces.add(m));
+        } catch (e) {}
+      }
+    });
+
     // Get all devices with their current session information
     const devices = await db.all('SELECT * FROM wifi_devices ORDER BY connected_at DESC');
     
@@ -634,7 +650,9 @@ app.get('/api/devices', requireAdmin, async (req, res) => {
     });
     
     // Merge device data with session data
-    const formattedDevices = devices.map(device => {
+    const formattedDevices = devices
+      .filter(device => allowedInterfaces.has(device.interface))
+      .map(device => {
       const deviceMac = device.mac.toUpperCase();
       const session = sessionMap.get(deviceMac);
       

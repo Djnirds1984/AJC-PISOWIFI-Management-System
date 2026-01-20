@@ -489,8 +489,9 @@ app.post('/api/network/refresh', async (req, res) => {
 // SYSTEM & CONFIG API
 app.get('/api/system/stats', requireAdmin, async (req, res) => {
   try {
-    const [cpu, mem, drive, temp, netStats] = await Promise.all([
+    const [cpuLoad, cpuInfo, mem, drive, temp, netStats] = await Promise.all([
       si.currentLoad(),
+      si.cpu(),
       si.mem(),
       si.fsSize(),
       si.cpuTemperature(),
@@ -498,11 +499,20 @@ app.get('/api/system/stats', requireAdmin, async (req, res) => {
     ]);
     
     res.json({
-      cpu: Math.round(cpu.currentLoad),
+      cpu: {
+        manufacturer: cpuInfo.manufacturer,
+        brand: cpuInfo.brand,
+        speed: cpuInfo.speed,
+        cores: cpuInfo.cores,
+        load: Math.round(cpuLoad.currentLoad),
+        temp: temp.main || 0
+      },
       memory: {
         total: mem.total,
         used: mem.used,
         free: mem.free,
+        active: mem.active,
+        available: mem.available,
         percentage: Math.round((mem.used / mem.total) * 100)
       },
       storage: {

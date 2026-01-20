@@ -107,7 +107,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
                         {sysInfo.manufacturer} {sysInfo.model} ({sysInfo.distro} {sysInfo.arch})
                     </div>
                 )}
-                <p className="text-lg font-black text-slate-800 mt-1">{stats.cpu.manufacturer} {stats.cpu.brand}</p>
+                <p className="text-lg font-black text-slate-800 mt-1">{stats.cpu?.manufacturer || ''} {stats.cpu?.brand || 'CPU'}</p>
               </div>
               <div className="bg-blue-50 text-blue-600 p-3 rounded-2xl">
                 <span className="text-2xl">⚡</span>
@@ -117,16 +117,16 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
            <div className="space-y-4">
               <div className="flex justify-between text-xs font-bold text-slate-500">
                  <span>Load</span>
-                 <span>{stats.cpu.load.toFixed(1)}%</span>
+                 <span>{stats.cpu?.load?.toFixed(1) || 0}%</span>
               </div>
               <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                 <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: `${stats.cpu.load}%` }}></div>
+                 <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: `${stats.cpu?.load || 0}%` }}></div>
               </div>
 
               <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
-                 <StatItem label="Cores" value={stats.cpu.cores.toString()} />
-                 <StatItem label="Speed" value={`${stats.cpu.speed} GHz`} />
-                 <StatItem label="Temp" value={`${stats.cpu.temp?.toFixed(1) || 'N/A'}°C`} />
+                 <StatItem label="Cores" value={stats.cpu?.cores?.toString() || 'N/A'} />
+                 <StatItem label="Speed" value={`${stats.cpu?.speed || 'N/A'} GHz`} />
+                 <StatItem label="Temp" value={`${stats.cpu?.temp?.toFixed(1) || 'N/A'}°C`} />
               </div>
            </div>
         </div>

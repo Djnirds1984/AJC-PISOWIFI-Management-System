@@ -19,7 +19,7 @@ const SystemSettings: React.FC = () => {
         setSystemStats({
           uptime: 'System Online',
           memory: `${(stats.memory.used / 1024 / 1024 / 1024).toFixed(1)}GB / ${(stats.memory.total / 1024 / 1024 / 1024).toFixed(1)}GB (${stats.memory.percentage}%)`,
-          cpu: `${stats.cpu}% Load`,
+          cpu: `${stats.cpu.load}% Load`,
           disk: `${(stats.storage.used / 1024 / 1024 / 1024).toFixed(1)}GB / ${(stats.storage.total / 1024 / 1024 / 1024).toFixed(1)}GB`
         });
       } catch (e) {

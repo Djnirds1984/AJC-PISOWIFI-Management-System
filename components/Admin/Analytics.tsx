@@ -17,6 +17,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
   const [activeGraphs, setActiveGraphs] = useState<string[]>([]);
   const [history, setHistory] = useState<Record<string, InterfaceDataPoint[]>>({});
   const [availableInterfaces, setAvailableInterfaces] = useState<string[]>([]);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -64,6 +65,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
     if (!activeGraphs.includes(iface)) {
       setActiveGraphs([...activeGraphs, iface]);
     }
+    setIsDropdownOpen(false);
   };
 
   const removeGraph = (iface: string) => {
@@ -146,24 +148,29 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
         <div className="flex justify-between items-center">
             <h3 className="text-lg font-black text-slate-800">Network Interfaces</h3>
             
-            <div className="relative group">
-                <button className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors flex items-center gap-2 shadow-lg shadow-slate-200">
+            <div className="relative">
+                <button 
+                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                    className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors flex items-center gap-2 shadow-lg shadow-slate-200"
+                >
                     <span>+ Add Graph</span>
                 </button>
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden hidden group-hover:block z-10">
-                    {availableInterfaces.filter(i => !activeGraphs.includes(i)).map(iface => (
-                        <button 
-                            key={iface}
-                            onClick={() => addGraph(iface)}
-                            className="w-full text-left px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors"
-                        >
-                            {iface}
-                        </button>
-                    ))}
-                    {availableInterfaces.filter(i => !activeGraphs.includes(i)).length === 0 && (
-                        <div className="px-4 py-3 text-xs text-slate-400 text-center font-bold">No more interfaces</div>
-                    )}
-                </div>
+                {isDropdownOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-10">
+                        {availableInterfaces.filter(i => !activeGraphs.includes(i)).map(iface => (
+                            <button 
+                                key={iface}
+                                onClick={() => addGraph(iface)}
+                                className="w-full text-left px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors"
+                            >
+                                {iface}
+                            </button>
+                        ))}
+                        {availableInterfaces.filter(i => !activeGraphs.includes(i)).length === 0 && (
+                            <div className="px-4 py-3 text-xs text-slate-400 text-center font-bold">No more interfaces</div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
 

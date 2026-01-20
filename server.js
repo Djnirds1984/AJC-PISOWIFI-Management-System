@@ -461,6 +461,25 @@ app.get('/api/system/interfaces', async (req, res) => {
   }
 });
 
+app.get('/api/system/info', async (req, res) => {
+  try {
+    const [system, os] = await Promise.all([
+      si.system(),
+      si.osInfo()
+    ]);
+    
+    res.json({
+      manufacturer: system.manufacturer,
+      model: system.model,
+      distro: os.distro,
+      arch: os.arch,
+      platform: os.platform
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/config', async (req, res) => {
   try {
     const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);

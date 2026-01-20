@@ -14,23 +14,31 @@ interface InterfaceDataPoint {
 
 const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
   const [stats, setStats] = useState<SystemStats | null>(null);
+  const [sysInfo, setSysInfo] = useState<{manufacturer: string, model: string, distro: string, arch: string} | null>(null);
   const [activeGraphs, setActiveGraphs] = useState<string[]>([]);
   const [history, setHistory] = useState<Record<string, InterfaceDataPoint[]>>({});
   const [availableInterfaces, setAvailableInterfaces] = useState<string[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   useEffect(() => {
-    // Fetch available interfaces once on mount
-    const fetchInterfaces = async () => {
+    // Fetch available interfaces and system info once on mount
+    const fetchInitData = async () => {
       try {
-        const res = await fetch('/api/system/interfaces');
-        const data = await res.json();
-        setAvailableInterfaces(data);
+        const [ifaceRes, infoRes] = await Promise.all([
+          fetch('/api/system/interfaces'),
+          fetch('/api/system/info')
+        ]);
+        
+        const ifaceData = await ifaceRes.json();
+        setAvailableInterfaces(ifaceData);
+
+        const infoData = await infoRes.json();
+        setSysInfo(infoData);
       } catch (err) {
-        console.error('Failed to fetch interfaces', err);
+        console.error('Failed to fetch init data', err);
       }
     };
-    fetchInterfaces();
+    fetchInitData();
 
     const fetchStats = async () => {
       try {
@@ -96,6 +104,11 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
            <div className="flex justify-between items-start mb-6">
               <div>
                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Processor</h3>
+                {sysInfo && (
+                    <div className="text-xs font-bold text-blue-600 mt-1">
+                        {sysInfo.manufacturer} {sysInfo.model} ({sysInfo.distro} {sysInfo.arch})
+                    </div>
+                )}
                 <p className="text-lg font-black text-slate-800 mt-1">{stats.cpu.manufacturer} {stats.cpu.brand}</p>
               </div>
               <div className="bg-blue-50 text-blue-600 p-3 rounded-2xl">

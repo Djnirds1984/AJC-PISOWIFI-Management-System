@@ -73,6 +73,12 @@ const SystemSettings: React.FC = () => {
         </div>
       </section>
 
+      {/* Security Settings Card */}
+      <section className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden p-8">
+        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Admin Security</h3>
+        <ChangePasswordForm />
+      </section>
+
       <section className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-8 border-b border-slate-100 bg-red-50/30">
           <h3 className="text-xs font-black text-red-600 uppercase tracking-widest">Danger Zone</h3>
@@ -175,5 +181,76 @@ const ServiceButton: React.FC<{ label: string; icon: string }> = ({ label, icon 
     <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
   </button>
 );
+
+const ChangePasswordForm: React.FC = () => {
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const token = localStorage.getItem('ajc_admin_token');
+      const res = await fetch('/api/admin/change-password', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ oldPassword, newPassword })
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        setMessage('✅ Password updated successfully');
+        setOldPassword('');
+        setNewPassword('');
+      } else {
+        setMessage('❌ ' + (data.error || 'Failed to update password'));
+      }
+    } catch (err) {
+      setMessage('❌ Connection failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleChangePassword} className="max-w-md space-y-4">
+      <div>
+        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Current Password</label>
+        <input 
+          type="password" 
+          value={oldPassword}
+          onChange={e => setOldPassword(e.target.value)}
+          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+          placeholder="••••••••"
+        />
+      </div>
+      <div>
+        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">New Password</label>
+        <input 
+          type="password" 
+          value={newPassword}
+          onChange={e => setNewPassword(e.target.value)}
+          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+          placeholder="••••••••"
+        />
+      </div>
+      {message && <p className="text-xs font-bold">{message}</p>}
+      <button 
+        type="submit" 
+        disabled={loading}
+        className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-600/20 disabled:opacity-50"
+      >
+        {loading ? 'Updating...' : 'Update Password'}
+      </button>
+    </form>
+  );
+};
 
 export default SystemSettings;

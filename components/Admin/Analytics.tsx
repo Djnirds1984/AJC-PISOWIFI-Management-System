@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { UserSession, SystemStats } from '../../types';
+import { apiClient } from '../../lib/api';
 
 interface AnalyticsProps {
   sessions: UserSession[];
@@ -24,15 +25,12 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
     // Fetch available interfaces and system info once on mount
     const fetchInitData = async () => {
       try {
-        const [ifaceRes, infoRes] = await Promise.all([
-          fetch('/api/system/interfaces'),
-          fetch('/api/system/info')
+        const [ifaceData, infoData] = await Promise.all([
+          apiClient.getSystemInterfaces(),
+          apiClient.getSystemInfo()
         ]);
         
-        const ifaceData = await ifaceRes.json();
         setAvailableInterfaces(ifaceData);
-
-        const infoData = await infoRes.json();
         setSysInfo(infoData);
       } catch (err) {
         console.error('Failed to fetch init data', err);
@@ -42,8 +40,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
 
     const fetchStats = async () => {
       try {
-        const res = await fetch('/api/system/stats');
-        const data: SystemStats = await res.json();
+        const data: SystemStats = await apiClient.getSystemStats();
         setStats(data);
         
         // Update history

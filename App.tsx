@@ -8,6 +8,7 @@ import HardwareManager from './components/Admin/HardwareManager';
 import SystemUpdater from './components/Admin/SystemUpdater';
 import SystemSettings from './components/Admin/SystemSettings';
 import DeviceManager from './components/Admin/DeviceManager';
+import Login from './components/Admin/Login';
 import { apiClient } from './lib/api';
 
 const App: React.FC = () => {
@@ -18,6 +19,7 @@ const App: React.FC = () => {
   };
 
   const [isAdmin, setIsAdmin] = useState(isCurrentlyAdminPath());
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState<AdminTab>(AdminTab.Analytics);
   const [rates, setRates] = useState<Rate[]>([]);
   const [activeSessions, setActiveSessions] = useState<UserSession[]>([]);
@@ -48,6 +50,29 @@ const App: React.FC = () => {
       setIsAdmin(isNowAdmin);
     };
     window.addEventListener('popstate', handleLocationChange);
+    
+    // Check authentication status
+    const checkAuth = async () => {
+      const token = localStorage.getItem('ajc_admin_token');
+      if (token) {
+        try {
+          const res = await fetch('/api/admin/check-auth', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.authenticated) {
+            setIsAuthenticated(true);
+          } else {
+            localStorage.removeItem('ajc_admin_token');
+            setIsAuthenticated(false);
+          }
+        } catch (e) {
+          setIsAuthenticated(false);
+        }
+      }
+    };
+    checkAuth();
+
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
@@ -80,6 +105,8 @@ const App: React.FC = () => {
       window.history.pushState({}, '', '/admin');
     } else {
       localStorage.removeItem('ajc_admin_mode');
+      localStorage.removeItem('ajc_admin_token');
+      setIsAuthenticated(false);
       window.history.pushState({}, '', '/');
     }
   };
@@ -161,8 +188,9 @@ const App: React.FC = () => {
       </div>
 
       {isAdmin ? (
-        <div className="flex h-screen overflow-hidden animate-in fade-in duration-500 bg-slate-50">
-          <aside className="w-72 bg-slate-950 text-white flex flex-col shrink-0">
+        isAuthenticated ? (
+          <div className="flex h-screen overflow-hidden animate-in fade-in duration-500 bg-slate-50">
+            <aside className="w-72 bg-slate-950 text-white flex flex-col shrink-0">
             <div className="p-8 border-b border-white/5">
               <h1 className="text-2xl font-black tracking-tighter text-blue-500 italic">AJC PISOWIFI</h1>
               <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-[0.3em] font-black">SYSTEM ENGINE</p>
@@ -215,6 +243,15 @@ const App: React.FC = () => {
             </div>
           </main>
         </div>
+        ) : (
+          <Login 
+            onLoginSuccess={(token) => {
+              localStorage.setItem('ajc_admin_token', token);
+              setIsAuthenticated(true);
+            }} 
+            onBack={() => handleToggleAdmin()} 
+          />
+        )
       ) : (
         <LandingPage rates={rates} onSessionStart={handleAddSession} sessions={activeSessions} refreshSessions={loadData} />
       )}

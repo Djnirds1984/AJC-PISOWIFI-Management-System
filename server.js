@@ -7,12 +7,94 @@ const si = require('systeminformation');
 const db = require('./lib/db');
 const { initGPIO, updateGPIO } = require('./lib/gpio');
 const network = require('./lib/network');
+const { verifyPassword, hashPassword } = require('./lib/auth');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.json());
+
+// ADMIN AUTHENTICATION
+const requireAdmin = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  const token = authHeader.split(' ')[1];
+  try {
+    const session = await db.get('SELECT * FROM admin_sessions WHERE token = ? AND expires_at > datetime("now")', [token]);
+    if (!session) {
+      return res.status(401).json({ error: 'Session expired or invalid' });
+    }
+    req.adminUser = session.username;
+    next();
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    const admin = await db.get('SELECT * FROM admin WHERE username = ?', [username]);
+    if (!admin) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    if (verifyPassword(password, admin.salt, admin.password_hash)) {
+      const token = crypto.randomBytes(32).toString('hex');
+      // Set expiration to 24 hours
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      
+      await db.run('INSERT INTO admin_sessions (token, username, expires_at) VALUES (?, ?, ?)', 
+        [token, username, expiresAt]);
+        
+      res.json({ success: true, token });
+    } else {
+      res.status(401).json({ error: 'Invalid credentials' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/logout', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    await db.run('DELETE FROM admin_sessions WHERE token = ?', [token]);
+  }
+  res.json({ success: true });
+});
+
+app.get('/api/admin/check-auth', requireAdmin, (req, res) => {
+  res.json({ authenticated: true, username: req.adminUser });
+});
+
+app.post('/api/admin/change-password', requireAdmin, async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+  
+  if (!newPassword || newPassword.length < 5) {
+    return res.status(400).json({ error: 'New password must be at least 5 characters long' });
+  }
+
+  try {
+    const admin = await db.get('SELECT * FROM admin WHERE username = ?', [req.adminUser]);
+    
+    if (verifyPassword(oldPassword, admin.salt, admin.password_hash)) {
+      const { salt, hash } = hashPassword(newPassword);
+      await db.run('UPDATE admin SET password_hash = ?, salt = ? WHERE username = ?', [hash, salt, req.adminUser]);
+      res.json({ success: true });
+    } else {
+      res.status(401).json({ error: 'Current password incorrect' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 const { exec } = require('child_process');
 const util = require('util');
@@ -372,12 +454,12 @@ app.get('/api/rates', async (req, res) => {
   try { res.json(await db.all('SELECT * FROM rates')); } catch (err) { res.json([]); }
 });
 
-app.post('/api/rates', async (req, res) => {
+app.post('/api/rates', requireAdmin, async (req, res) => {
   try { await db.run('INSERT INTO rates (pesos, minutes) VALUES (?, ?)', [req.body.pesos, req.body.minutes]); res.json({ success: true }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/rates/:id', async (req, res) => {
+app.delete('/api/rates/:id', requireAdmin, async (req, res) => {
   try { await db.run('DELETE FROM rates WHERE id = ?', [req.params.id]); res.json({ success: true }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -405,32 +487,30 @@ app.post('/api/network/refresh', async (req, res) => {
 });
 
 // SYSTEM & CONFIG API
-app.get('/api/system/stats', async (req, res) => {
+app.get('/api/system/stats', requireAdmin, async (req, res) => {
   try {
-    const [cpu, mem, load, temp, netStats] = await Promise.all([
-      si.cpu(),
-      si.mem(),
+    const [cpu, mem, drive, temp, netStats] = await Promise.all([
       si.currentLoad(),
+      si.mem(),
+      si.fsSize(),
       si.cpuTemperature(),
       si.networkStats()
     ]);
-
+    
     res.json({
-      cpu: {
-        manufacturer: cpu.manufacturer,
-        brand: cpu.brand,
-        speed: cpu.speed,
-        cores: cpu.cores,
-        load: load.currentLoad,
-        temp: temp.main
-      },
+      cpu: Math.round(cpu.currentLoad),
       memory: {
         total: mem.total,
-        free: mem.free,
         used: mem.used,
-        active: mem.active,
-        available: mem.available
+        free: mem.free,
+        percentage: Math.round((mem.used / mem.total) * 100)
       },
+      storage: {
+        total: drive[0].size,
+        used: drive[0].used,
+        percentage: Math.round(drive[0].use)
+      },
+      temp: temp.main || 0,
       network: netStats.map(iface => ({
         iface: iface.iface,
         rx_bytes: iface.rx_bytes,
@@ -444,7 +524,7 @@ app.get('/api/system/stats', async (req, res) => {
   }
 });
 
-app.get('/api/system/interfaces', async (req, res) => {
+app.get('/api/system/interfaces', requireAdmin, async (req, res) => {
   try {
     const interfaces = await si.networkInterfaces();
     // Return just the interface names to keep it light
@@ -461,7 +541,7 @@ app.get('/api/system/interfaces', async (req, res) => {
   }
 });
 
-app.get('/api/system/info', async (req, res) => {
+app.get('/api/system/info', requireAdmin, async (req, res) => {
   try {
     const [system, os] = await Promise.all([
       si.system(),
@@ -488,7 +568,7 @@ app.get('/api/config', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/config', async (req, res) => {
+app.post('/api/config', requireAdmin, async (req, res) => {
   try {
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['boardType', req.body.boardType]);
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['coinPin', req.body.coinPin]);
@@ -497,7 +577,7 @@ app.post('/api/config', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/system/reset', async (req, res) => {
+app.post('/api/system/reset', requireAdmin, async (req, res) => {
   try {
     await db.factoryResetDB();
     await network.cleanupAllNetworkSettings();
@@ -508,19 +588,19 @@ app.post('/api/system/reset', async (req, res) => {
 });
 
 // NETWORK API
-app.get('/api/interfaces', async (req, res) => {
+app.get('/api/interfaces', requireAdmin, async (req, res) => {
   try { res.json(await network.getInterfaces()); } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/hotspots', async (req, res) => {
+app.get('/api/hotspots', requireAdmin, async (req, res) => {
   try { res.json(await db.all('SELECT * FROM hotspots')); } catch (err) { res.json([]); }
 });
 
-app.get('/api/network/wireless', async (req, res) => {
+app.get('/api/network/wireless', requireAdmin, async (req, res) => {
   try { res.json(await db.all('SELECT * FROM wireless_settings')); } catch (err) { res.json([]); }
 });
 
-app.post('/api/network/wireless', async (req, res) => {
+app.post('/api/network/wireless', requireAdmin, async (req, res) => {
   try {
     await db.run('INSERT OR REPLACE INTO wireless_settings (interface, ssid, password, bridge) VALUES (?, ?, ?, ?)', [req.body.interface, req.body.ssid, req.body.password, req.body.bridge]);
     await network.configureWifiAP(req.body);
@@ -528,7 +608,7 @@ app.post('/api/network/wireless', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/hotspots', async (req, res) => {
+app.post('/api/hotspots', requireAdmin, async (req, res) => {
   try {
     await db.run('INSERT OR REPLACE INTO hotspots (interface, ip_address, dhcp_range, enabled) VALUES (?, ?, ?, 1)', [req.body.interface, req.body.ip_address, req.body.dhcp_range]);
     await network.setupHotspot(req.body);
@@ -536,7 +616,7 @@ app.post('/api/hotspots', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/hotspots/:interface', async (req, res) => {
+app.delete('/api/hotspots/:interface', requireAdmin, async (req, res) => {
   try {
     await network.removeHotspot(req.params.interface);
     await db.run('DELETE FROM hotspots WHERE interface = ?', [req.params.interface]);
@@ -544,14 +624,14 @@ app.delete('/api/hotspots/:interface', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/network/vlans', async (req, res) => {
+app.get('/api/network/vlans', requireAdmin, async (req, res) => {
   try {
     const rows = await db.all('SELECT * FROM vlans');
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/network/vlan', async (req, res) => {
+app.post('/api/network/vlan', requireAdmin, async (req, res) => {
   try {
     await network.createVlan(req.body);
     await db.run('INSERT OR REPLACE INTO vlans (name, parent, id) VALUES (?, ?, ?)', 
@@ -560,7 +640,7 @@ app.post('/api/network/vlan', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/network/vlan/:name', async (req, res) => {
+app.delete('/api/network/vlan/:name', requireAdmin, async (req, res) => {
   try {
     await network.deleteVlan(req.params.name);
     await db.run('DELETE FROM vlans WHERE name = ?', [req.params.name]);
@@ -568,7 +648,7 @@ app.delete('/api/network/vlan/:name', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/network/bridges', async (req, res) => {
+app.get('/api/network/bridges', requireAdmin, async (req, res) => {
   try {
     const rows = await db.all('SELECT * FROM bridges');
     // Parse members JSON
@@ -581,7 +661,7 @@ app.get('/api/network/bridges', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/network/bridge', async (req, res) => {
+app.post('/api/network/bridge', requireAdmin, async (req, res) => {
   try {
     const output = await network.createBridge(req.body);
     await db.run('INSERT OR REPLACE INTO bridges (name, members, stp) VALUES (?, ?, ?)', 
@@ -590,7 +670,7 @@ app.post('/api/network/bridge', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/network/bridge/:name', async (req, res) => {
+app.delete('/api/network/bridge/:name', requireAdmin, async (req, res) => {
   try {
     await network.deleteBridge(req.params.name);
     await db.run('DELETE FROM bridges WHERE name = ?', [req.params.name]);
@@ -599,7 +679,7 @@ app.delete('/api/network/bridge/:name', async (req, res) => {
 });
 
 // DEVICE MANAGEMENT API ENDPOINTS
-app.get('/api/devices', async (req, res) => {
+app.get('/api/devices', requireAdmin, async (req, res) => {
   try {
     // Get all devices with their current session information
     const devices = await db.all('SELECT * FROM wifi_devices ORDER BY connected_at DESC');
@@ -661,7 +741,7 @@ app.get('/api/devices', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/devices/scan', async (req, res) => {
+app.post('/api/devices/scan', requireAdmin, async (req, res) => {
   try {
     const scannedDevices = await network.scanWifiDevices();
     const now = Date.now();
@@ -731,7 +811,7 @@ app.post('/api/devices/scan', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/devices/:id', async (req, res) => {
+app.get('/api/devices/:id', requireAdmin, async (req, res) => {
   try {
     const device = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
     if (!device) return res.status(404).json({ error: 'Device not found' });
@@ -739,7 +819,7 @@ app.get('/api/devices/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/devices', async (req, res) => {
+app.post('/api/devices', requireAdmin, async (req, res) => {
   try {
     const { mac, ip, hostname, interface, ssid, signal, customName } = req.body;
     const id = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -755,7 +835,7 @@ app.post('/api/devices', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.put('/api/devices/:id', async (req, res) => {
+app.put('/api/devices/:id', requireAdmin, async (req, res) => {
   try {
     const { customName, sessionTime } = req.body;
     const updates = [];
@@ -782,7 +862,7 @@ app.put('/api/devices/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/devices/:id', async (req, res) => {
+app.delete('/api/devices/:id', requireAdmin, async (req, res) => {
   try {
     const result = await db.run('DELETE FROM wifi_devices WHERE id = ?', [req.params.id]);
     if (result.changes === 0) return res.status(404).json({ error: 'Device not found' });
@@ -790,7 +870,7 @@ app.delete('/api/devices/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/devices/:id/connect', async (req, res) => {
+app.post('/api/devices/:id/connect', requireAdmin, async (req, res) => {
   try {
     const device = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
     if (!device) return res.status(404).json({ error: 'Device not found' });
@@ -823,7 +903,7 @@ app.post('/api/devices/:id/connect', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/devices/:id/disconnect', async (req, res) => {
+app.post('/api/devices/:id/disconnect', requireAdmin, async (req, res) => {
   try {
     const device = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
     if (!device) return res.status(404).json({ error: 'Device not found' });
@@ -844,7 +924,7 @@ app.post('/api/devices/:id/disconnect', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/devices/:id/sessions', async (req, res) => {
+app.get('/api/devices/:id/sessions', requireAdmin, async (req, res) => {
   try {
     const device = await db.get('SELECT mac FROM wifi_devices WHERE id = ?', [req.params.id]);
     if (!device) return res.status(404).json({ error: 'Device not found' });
@@ -854,7 +934,7 @@ app.get('/api/devices/:id/sessions', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/devices/:id/refresh', async (req, res) => {
+app.post('/api/devices/:id/refresh', requireAdmin, async (req, res) => {
   try {
     const device = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
     if (!device) return res.status(404).json({ error: 'Device not found' });

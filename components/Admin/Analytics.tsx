@@ -20,17 +20,24 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   useEffect(() => {
+    // Fetch available interfaces once on mount
+    const fetchInterfaces = async () => {
+      try {
+        const res = await fetch('/api/system/interfaces');
+        const data = await res.json();
+        setAvailableInterfaces(data);
+      } catch (err) {
+        console.error('Failed to fetch interfaces', err);
+      }
+    };
+    fetchInterfaces();
+
     const fetchStats = async () => {
       try {
         const res = await fetch('/api/system/stats');
         const data: SystemStats = await res.json();
         setStats(data);
         
-        // Update available interfaces
-        if (data.network) {
-            setAvailableInterfaces(data.network.map(n => n.iface));
-        }
-
         // Update history
         const now = new Date().toLocaleTimeString();
         setHistory(prev => {

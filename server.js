@@ -407,37 +407,13 @@ app.post('/api/network/refresh', async (req, res) => {
 // SYSTEM & CONFIG API
 app.get('/api/system/stats', async (req, res) => {
   try {
-    const [cpu, mem, load, temp, netStats, netInterfaces] = await Promise.all([
+    const [cpu, mem, load, temp, netStats] = await Promise.all([
       si.cpu(),
       si.mem(),
       si.currentLoad(),
       si.cpuTemperature(),
-      si.networkStats(),
-      si.networkInterfaces()
+      si.networkStats()
     ]);
-
-    // Create a map of stats for easy lookup
-    const statsMap = netStats.reduce((acc, curr) => {
-      acc[curr.iface] = curr;
-      return acc;
-    }, {});
-
-    // Combine interfaces and stats to ensure all interfaces are listed
-    // Use a Set to avoid duplicates if any
-    const allInterfaces = new Set([...netInterfaces.map(i => i.iface), ...netStats.map(s => s.iface)]);
-    
-    const networkData = Array.from(allInterfaces).map(ifaceName => {
-        const stats = statsMap[ifaceName] || {
-            rx_bytes: 0, tx_bytes: 0, rx_sec: 0, tx_sec: 0
-        };
-        return {
-            iface: ifaceName,
-            rx_bytes: stats.rx_bytes,
-            tx_bytes: stats.tx_bytes,
-            rx_sec: stats.rx_sec,
-            tx_sec: stats.tx_sec
-        };
-    });
 
     res.json({
       cpu: {
@@ -455,8 +431,31 @@ app.get('/api/system/stats', async (req, res) => {
         active: mem.active,
         available: mem.available
       },
-      network: networkData
+      network: netStats.map(iface => ({
+        iface: iface.iface,
+        rx_bytes: iface.rx_bytes,
+        tx_bytes: iface.tx_bytes,
+        rx_sec: iface.rx_sec,
+        tx_sec: iface.tx_sec
+      }))
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/system/interfaces', async (req, res) => {
+  try {
+    const interfaces = await si.networkInterfaces();
+    // Return just the interface names to keep it light
+    const interfaceNames = interfaces.map(iface => iface.iface);
+    // Also include any interfaces from networkStats that might be missing (unlikely but safe)
+    const netStats = await si.networkStats();
+    const activeInterfaces = netStats.map(n => n.iface);
+    
+    const allInterfaces = [...new Set([...interfaceNames, ...activeInterfaces])];
+    
+    res.json(allInterfaces);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -468,6 +468,13 @@ app.delete('/api/hotspots/:interface', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/network/vlans', async (req, res) => {
+  try {
+    const rows = await db.all('SELECT * FROM vlans');
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/network/vlan', async (req, res) => {
   try {
     await network.createVlan(req.body);
@@ -477,12 +484,41 @@ app.post('/api/network/vlan', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.delete('/api/network/vlan/:name', async (req, res) => {
+  try {
+    await network.deleteVlan(req.params.name);
+    await db.run('DELETE FROM vlans WHERE name = ?', [req.params.name]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/network/bridges', async (req, res) => {
+  try {
+    const rows = await db.all('SELECT * FROM bridges');
+    // Parse members JSON
+    const bridges = rows.map(b => ({
+      ...b,
+      members: JSON.parse(b.members),
+      stp: Boolean(b.stp)
+    }));
+    res.json(bridges);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/network/bridge', async (req, res) => {
   try {
     const output = await network.createBridge(req.body);
     await db.run('INSERT OR REPLACE INTO bridges (name, members, stp) VALUES (?, ?, ?)', 
       [req.body.name, JSON.stringify(req.body.members), req.body.stp ? 1 : 0]);
     res.json({ success: true, output });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/network/bridge/:name', async (req, res) => {
+  try {
+    await network.deleteBridge(req.params.name);
+    await db.run('DELETE FROM bridges WHERE name = ?', [req.params.name]);
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

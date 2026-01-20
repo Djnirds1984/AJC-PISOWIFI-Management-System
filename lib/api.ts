@@ -100,6 +100,18 @@ export const apiClient = {
     await handleResponse(res);
   },
 
+  async getVlans(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/network/vlans`);
+    return handleResponse(res);
+  },
+
+  async deleteVlan(name: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/network/vlan/${name}`, {
+      method: 'DELETE'
+    });
+    await handleResponse(res);
+  },
+
   // Create a software bridge interface with member ports
   async createBridge(name: string, members: string[], stp: boolean): Promise<string> {
     const res = await fetch(`${API_BASE}/network/bridge`, {
@@ -109,6 +121,18 @@ export const apiClient = {
     });
     const data = await handleResponse(res);
     return data.output;
+  },
+
+  async getBridges(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/network/bridges`);
+    return handleResponse(res);
+  },
+
+  async deleteBridge(name: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/network/bridge/${name}`, {
+      method: 'DELETE'
+    });
+    await handleResponse(res);
   },
 
   // Device Management APIs

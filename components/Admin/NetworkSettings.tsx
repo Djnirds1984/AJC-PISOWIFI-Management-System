@@ -28,23 +28,29 @@ const NetworkSettings: React.FC = () => {
 
   // VLAN State
   const [vlan, setVlan] = useState<VlanConfig>({ id: 10, parentInterface: 'eth0', name: 'eth0.10' });
+  const [vlans, setVlans] = useState<any[]>([]);
 
   // Bridge State
   const [bridge, setBridge] = useState({ name: 'br0', members: [] as string[], stp: false });
+  const [bridges, setBridges] = useState<any[]>([]);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [ifaces, hs, wifi] = await Promise.all([
+      const [ifaces, hs, wifi, v, b] = await Promise.all([
         apiClient.getInterfaces(),
         fetch('/api/hotspots').then(r => r.json()).catch(() => []),
-        fetch('/api/network/wireless').then(r => r.json()).catch(() => [])
+        fetch('/api/network/wireless').then(r => r.json()).catch(() => []),
+        apiClient.getVlans().catch(() => []),
+        apiClient.getBridges().catch(() => [])
       ]);
       setInterfaces(ifaces.filter(i => !i.isLoopback));
       setHotspots(Array.isArray(hs) ? hs : []);
       setWirelessArr(Array.isArray(wifi) ? wifi : []);
+      setVlans(Array.isArray(v) ? v : []);
+      setBridges(Array.isArray(b) ? b : []);
     } catch (err) { 
       console.error('[UI] Data Load Error:', err); 
     }
@@ -121,6 +127,26 @@ const NetworkSettings: React.FC = () => {
       await loadData();
       alert(`Bridge ${bridge.name} created! Members have been flushed to prevent IP conflicts.`);
     } catch (e) { alert('Failed to create Bridge.'); }
+    finally { setLoading(false); }
+  };
+
+  const deleteVlan = async (name: string) => {
+    if (!confirm(`Delete VLAN ${name}? This may disrupt connectivity.`)) return;
+    try {
+      setLoading(true);
+      await apiClient.deleteVlan(name);
+      await loadData();
+    } catch (e) { alert('Failed to delete VLAN.'); }
+    finally { setLoading(false); }
+  };
+
+  const deleteBridge = async (name: string) => {
+    if (!confirm(`Delete Bridge ${name}? This may disrupt connectivity.`)) return;
+    try {
+      setLoading(true);
+      await apiClient.deleteBridge(name);
+      await loadData();
+    } catch (e) { alert('Failed to delete Bridge.'); }
     finally { setLoading(false); }
   };
 
@@ -336,6 +362,22 @@ const NetworkSettings: React.FC = () => {
               </div>
             </div>
             <button onClick={generateVlan} disabled={loading} className="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-[9px] uppercase tracking-widest shadow-xl hover:bg-black transition-all">Generate Virtual Link: {vlan.name}</button>
+            
+            <div className="mt-6 border-t border-slate-100 pt-6">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Active VLANs</h4>
+              <div className="space-y-2">
+                {vlans.map(v => (
+                  <div key={v.name} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 group">
+                    <div>
+                      <p className="text-xs font-black text-slate-900">{v.name}</p>
+                      <p className="text-[9px] text-slate-400 font-mono">Parent: {v.parent} • ID: {v.id}</p>
+                    </div>
+                    <button onClick={() => deleteVlan(v.name)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg text-[8px] font-black uppercase opacity-0 group-hover:opacity-100 transition-all hover:bg-red-100">Delete</button>
+                  </div>
+                ))}
+                {vlans.length === 0 && <p className="text-[9px] text-slate-400 italic text-center py-2">No VLANs configured</p>}
+              </div>
+            </div>
           </div>
         </section>
 
@@ -364,6 +406,24 @@ const NetworkSettings: React.FC = () => {
                ))}
             </div>
             <button onClick={deployBridge} disabled={loading} className="w-full border-2 border-slate-900 text-slate-900 py-4 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all">Commit Bridge Stack</button>
+            
+            <div className="mt-6 border-t border-slate-100 pt-6">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Active Bridges</h4>
+              <div className="space-y-2">
+                {bridges.map(b => (
+                  <div key={b.name} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 group">
+                    <div>
+                      <p className="text-xs font-black text-slate-900">{b.name}</p>
+                      <p className="text-[9px] text-slate-400 font-mono">
+                        Members: {(b.members || []).join(', ') || 'None'} • STP: {b.stp ? 'On' : 'Off'}
+                      </p>
+                    </div>
+                    <button onClick={() => deleteBridge(b.name)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg text-[8px] font-black uppercase opacity-0 group-hover:opacity-100 transition-all hover:bg-red-100">Delete</button>
+                  </div>
+                ))}
+                {bridges.length === 0 && <p className="text-[9px] text-slate-400 italic text-center py-2">No Bridges configured</p>}
+              </div>
+            </div>
           </div>
         </section>
       </div>

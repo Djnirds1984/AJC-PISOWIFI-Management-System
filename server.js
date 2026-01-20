@@ -168,8 +168,8 @@ app.get('/generate_204', async (req, res) => {
     }
   }
   
-  // Not authorized - redirect to portal
-  return res.redirect(302, `http://${req.headers.host}/`);
+  // Not authorized - serve portal directly
+  return res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.get('/hotspot-detect.html', async (req, res) => {
@@ -179,12 +179,12 @@ app.get('/hotspot-detect.html', async (req, res) => {
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
     if (session) {
-      return res.status(204).send();
+      return res.type('text/plain').send('Success');
     }
   }
   
-  // Not authorized - redirect to portal
-  return res.redirect(302, `http://${req.headers.host}/`);
+  // Not authorized - serve portal directly
+  return res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.get('/ncsi.txt', async (req, res) => {
@@ -198,8 +198,8 @@ app.get('/ncsi.txt', async (req, res) => {
     }
   }
   
-  // Not authorized - redirect to portal
-  return res.redirect(302, `http://${req.headers.host}/`);
+  // Not authorized - serve portal directly
+  return res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.get('/connecttest.txt', async (req, res) => {
@@ -213,8 +213,8 @@ app.get('/connecttest.txt', async (req, res) => {
     }
   }
   
-  // Not authorized - redirect to portal
-  return res.redirect(302, `http://${req.headers.host}/`);
+  // Not authorized - serve portal directly
+  return res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.get('/success.txt', async (req, res) => {
@@ -228,8 +228,8 @@ app.get('/success.txt', async (req, res) => {
     }
   }
   
-  // Not authorized - redirect to portal
-  return res.redirect(302, `http://${req.headers.host}/`);
+  // Not authorized - serve portal directly
+  return res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // Apple-specific captive portal detection
@@ -240,88 +240,12 @@ app.get('/library/test/success.html', async (req, res) => {
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
     if (session) {
-      return res.status(204).send();
-    }
-  }
-  
-  // Not authorized - redirect to portal
-  return res.redirect(302, `http://${req.headers.host}/`);
-});
-
-// CAPTIVE PORTAL DETECTION ENDPOINTS
-app.get('/generate_204', async (req, res) => {
-  const clientIp = req.ip.replace('::ffff:', '');
-  const mac = await getMacFromIp(clientIp);
-  
-  if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
-    if (session) {
-      return res.status(204).send();
-    }
-  }
-  
-  // Not authorized - redirect to portal
-  return res.redirect(302, `http://${req.headers.host}/`);
-});
-
-app.get('/hotspot-detect.html', async (req, res) => {
-  const clientIp = req.ip.replace('::ffff:', '');
-  const mac = await getMacFromIp(clientIp);
-  
-  if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
-    if (session) {
-      return res.status(204).send();
-    }
-  }
-  
-  // Not authorized - redirect to portal
-  return res.redirect(302, `http://${req.headers.host}/`);
-});
-
-app.get('/ncsi.txt', async (req, res) => {
-  const clientIp = req.ip.replace('::ffff:', '');
-  const mac = await getMacFromIp(clientIp);
-  
-  if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
-    if (session) {
-      return res.type('text/plain').send('Microsoft NCSI');
-    }
-  }
-  
-  // Not authorized - redirect to portal
-  return res.redirect(302, `http://${req.headers.host}/`);
-});
-
-app.get('/connecttest.txt', async (req, res) => {
-  const clientIp = req.ip.replace('::ffff:', '');
-  const mac = await getMacFromIp(clientIp);
-  
-  if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
-    if (session) {
       return res.type('text/plain').send('Success');
     }
   }
   
-  // Not authorized - redirect to portal
-  return res.redirect(302, `http://${req.headers.host}/`);
-});
-
-app.get('/success.txt', async (req, res) => {
-  const clientIp = req.ip.replace('::ffff:', '');
-  const mac = await getMacFromIp(clientIp);
-  
-  if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
-    if (session) {
-      return res.type('text/plain').send('Success');
-    }
-  }
-  
-  // Not authorized - redirect to portal
-  return res.redirect(302, `http://${req.headers.host}/`);
+  // Not authorized - serve portal directly
+  return res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // DNS REDIRECT HANDLING FOR CAPTIVE PORTAL
@@ -351,8 +275,9 @@ app.use(async (req, res, next) => {
         return res.status(204).send();
       }
     }
-    // Not authorized - redirect to portal
-    return res.redirect(302, `http://${req.headers.host}/`);
+    // Not authorized - serve portal directly to avoid redirect loops
+    // Apple/Android expects 200 OK with non-success content to trigger portal
+    return res.sendFile(path.join(__dirname, 'index.html'));
   }
   
   next();
@@ -364,13 +289,14 @@ app.use(async (req, res, next) => {
   const url = req.url.toLowerCase();
   const clientIp = req.ip.replace('::ffff:', '');
 
-  if (url.startsWith('/api') || url.startsWith('/dist') || host.includes('localhost') || host.includes('127.0.0.1')) {
+  if (url.startsWith('/api') || url.startsWith('/dist') || url.startsWith('/assets') || host.includes('localhost') || host.includes('127.0.0.1')) {
     return next();
   }
 
   const portalProbes = [
     '/generate_204', '/hotspot-detect.html', '/ncsi.txt', 
-    '/connecttest.txt', '/success.txt', '/kindle-wifi'
+    '/connecttest.txt', '/success.txt', '/kindle-wifi',
+    '/library/test/success.html'
   ];
   const isProbe = portalProbes.some(p => url.includes(p));
 
@@ -397,6 +323,9 @@ app.use(async (req, res, next) => {
         if (url.includes('/ncsi.txt')) {
           return res.type('text/plain').send('Microsoft NCSI');
         }
+        if (url.includes('/hotspot-detect.html') || url.includes('/library/test/success.html')) {
+             return res.type('text/plain').send('Success');
+        }
       }
       
       return next();
@@ -404,7 +333,8 @@ app.use(async (req, res, next) => {
   }
 
   if (isProbe || !host.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-    return res.redirect(302, `http://${req.headers.host}/`);
+     // Not authorized - serve portal directly to avoid redirect loops
+    return res.sendFile(path.join(__dirname, 'index.html'));
   }
   
   next();

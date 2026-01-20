@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+const si = require('systeminformation');
 const db = require('./lib/db');
 const { initGPIO, updateGPIO } = require('./lib/gpio');
 const network = require('./lib/network');
@@ -404,6 +405,45 @@ app.post('/api/network/refresh', async (req, res) => {
 });
 
 // SYSTEM & CONFIG API
+app.get('/api/system/stats', async (req, res) => {
+  try {
+    const [cpu, mem, load, temp, netStats] = await Promise.all([
+      si.cpu(),
+      si.mem(),
+      si.currentLoad(),
+      si.cpuTemperature(),
+      si.networkStats()
+    ]);
+
+    res.json({
+      cpu: {
+        manufacturer: cpu.manufacturer,
+        brand: cpu.brand,
+        speed: cpu.speed,
+        cores: cpu.cores,
+        load: load.currentLoad,
+        temp: temp.main
+      },
+      memory: {
+        total: mem.total,
+        free: mem.free,
+        used: mem.used,
+        active: mem.active,
+        available: mem.available
+      },
+      network: netStats.map(iface => ({
+        iface: iface.iface,
+        rx_bytes: iface.rx_bytes,
+        tx_bytes: iface.tx_bytes,
+        rx_sec: iface.rx_sec,
+        tx_sec: iface.tx_sec
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/config', async (req, res) => {
   try {
     const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);

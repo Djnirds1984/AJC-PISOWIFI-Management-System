@@ -77,29 +77,32 @@ export enum AdminTab {
 
 export interface UpdateLog {
   timestamp: string;
-  type: 'info' | 'error' | 'success';
-  message: string;
+  version: string;
+  description: string;
+  status: 'success' | 'failed';
 }
 
-export interface WifiDevice {
-  id: string;
-  mac: string;
-  ip: string;
-  hostname: string;
-  interface: string;
-  ssid: string;
-  signal: number;
-  connectedAt: number;
-  lastSeen: number;
-  sessionTime?: number;
-  isActive: boolean;
-  customName?: string;
-}
-
-export interface DeviceSession {
-  deviceId: string;
-  startTime: number;
-  endTime?: number;
-  duration: number;
-  dataUsed?: number;
+export interface SystemStats {
+  cpu: {
+    manufacturer: string;
+    brand: string;
+    speed: number;
+    cores: number;
+    load: number;
+    temp: number;
+  };
+  memory: {
+    total: number;
+    free: number;
+    used: number;
+    active: number;
+    available: number;
+  };
+  network: {
+    iface: string;
+    rx_bytes: number;
+    tx_bytes: number;
+    rx_sec: number;
+    tx_sec: number;
+  }[];
 }

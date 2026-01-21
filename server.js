@@ -995,6 +995,10 @@ setInterval(async () => {
 
 async function bootupRestore() {
   console.log('[AJC] Starting System Restoration...');
+  
+  // Auto-Provision Interfaces & Bridge if needed
+  await network.autoProvisionNetwork();
+
   await network.initFirewall();
   
   // 0. Restore VLANs

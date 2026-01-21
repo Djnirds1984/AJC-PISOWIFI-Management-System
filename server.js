@@ -1026,7 +1026,19 @@ async function bootupRestore() {
   // 2. Restore Hotspots (DNS/DHCP)
   try {
     const hotspots = await db.all('SELECT * FROM hotspots WHERE enabled = 1');
+    const processedInterfaces = new Set();
+    
     for (const h of hotspots) {
+      // Resolve actual target interface (in case of bridge)
+      // We can't easily know the master here without shelling out, 
+      // but network.setupHotspot handles redirection.
+      // However, we can track the INPUT interface to avoid blatant duplicates in DB
+      if (processedInterfaces.has(h.interface)) {
+        console.log(`[AJC] Skipping duplicate hotspot config for ${h.interface}`);
+        continue;
+      }
+      processedInterfaces.add(h.interface);
+
       console.log(`[AJC] Restoring Hotspot on ${h.interface}...`);
       await network.setupHotspot(h).catch(e => console.error(`[AJC] Hotspot Restore Failed: ${e.message}`));
     }

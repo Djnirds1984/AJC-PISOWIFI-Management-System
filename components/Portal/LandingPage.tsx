@@ -83,6 +83,25 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     window.location.href = '/success';
   };
 
+  // Play success audio when session becomes active
+  useEffect(() => {
+    if (mySession && mySession.remainingSeconds > 0 && config.connectedAudio) {
+      // Only play if we haven't just refreshed the page (optional logic, but for now simple is better)
+      // Check if we just started this session recently (e.g. within last 10 seconds)
+      const isNewSession = (Date.now() - mySession.connectedAt) < 10000;
+      
+      if (isNewSession) {
+        try {
+          console.log('Playing Connected Audio...');
+          const audio = new Audio(config.connectedAudio);
+          audio.play().catch(e => console.log('Connected audio play failed', e));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+  }, [mySession, config.connectedAudio]);
+
   const handleRefreshNetwork = async () => {
     setIsRefreshing(true);
     try {

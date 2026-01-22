@@ -267,6 +267,36 @@ const PortalEditor: React.FC = () => {
                     "
                   />
                 </div>
+
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Connected Success Audio</label>
+                  <p className="text-[9px] text-slate-400 mb-3">Plays when internet access is granted.</p>
+                  
+                  {config.connectedAudio && (
+                    <div className="mb-3">
+                      <audio controls src={config.connectedAudio} className="w-full h-8" />
+                      <button 
+                        onClick={() => handleChange('connectedAudio', '')}
+                        className="text-[9px] text-red-500 font-bold uppercase mt-1 hover:underline"
+                      >
+                        Remove Audio
+                      </button>
+                    </div>
+                  )}
+                  
+                  <input 
+                    type="file" 
+                    accept="audio/*"
+                    onChange={(e) => handleFileUpload(e, 'connectedAudio')}
+                    className="block w-full text-[10px] text-slate-500
+                      file:mr-4 file:py-2 file:px-4
+                      file:rounded-full file:border-0
+                      file:text-[10px] file:font-black file:uppercase
+                      file:bg-green-50 file:text-green-700
+                      hover:file:bg-green-100
+                    "
+                  />
+                </div>
               </div>
             </div>
           </div>

@@ -56,6 +56,7 @@ export interface PortalConfig {
   customHtmlBottom?: string; // Injected above footer
   insertCoinAudio?: string; // Path to audio file
   coinDropAudio?: string; // Path to audio file
+  connectedAudio?: string; // Path to audio file
 }
 
 export const DEFAULT_PORTAL_CONFIG: PortalConfig = {
@@ -69,7 +70,8 @@ export const DEFAULT_PORTAL_CONFIG: PortalConfig = {
   customHtmlTop: '',
   customHtmlBottom: '',
   insertCoinAudio: '',
-  coinDropAudio: ''
+  coinDropAudio: '',
+  connectedAudio: ''
 };
 
 // --- Admin Theme Utilities ---

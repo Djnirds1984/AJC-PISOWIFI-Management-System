@@ -11,16 +11,41 @@ interface Props {
 const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
   const [newPeso, setNewPeso] = useState('');
   const [newMinutes, setNewMinutes] = useState('');
+  const [newDownload, setNewDownload] = useState('');
+  const [newUpload, setNewUpload] = useState('');
+  const [qosDiscipline, setQoSDiscipline] = useState<'cake' | 'fq_codel'>('cake');
   const [loading, setLoading] = useState(false);
+  const [savingQoS, setSavingQoS] = useState(false);
+
+  React.useEffect(() => {
+    apiClient.getQoSConfig().then(config => setQoSDiscipline(config.discipline));
+  }, []);
+
+  const saveQoS = async (discipline: 'cake' | 'fq_codel') => {
+    setSavingQoS(true);
+    try {
+      await apiClient.saveQoSConfig(discipline);
+      setQoSDiscipline(discipline);
+    } finally {
+      setSavingQoS(false);
+    }
+  };
 
   const addRate = async () => {
     if (!newPeso || !newMinutes) return;
     setLoading(true);
     try {
-      await apiClient.addRate(parseInt(newPeso), parseInt(newMinutes));
+      await apiClient.addRate(
+        parseInt(newPeso), 
+        parseInt(newMinutes), 
+        newDownload ? parseInt(newDownload) : 0, 
+        newUpload ? parseInt(newUpload) : 0
+      );
       await setRates();
       setNewPeso('');
       setNewMinutes('');
+      setNewDownload('');
+      setNewUpload('');
     } finally {
       setLoading(false);
     }
@@ -34,9 +59,46 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
+      {/* Global QoS Settings */}
+      <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
+        <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6">Global Traffic Control</h3>
+        <div className="flex flex-col sm:flex-row items-center gap-6">
+          <div className="flex-1 w-full">
+            <p className="text-xs text-slate-500 mb-4 font-medium">
+              Select the Queue Discipline for traffic shaping. 
+              <span className="font-bold text-slate-700"> Cake</span> is generally recommended for better latency under load.
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={() => saveQoS('cake')}
+                disabled={savingQoS}
+                className={`flex-1 py-3 px-4 rounded-xl border-2 font-bold text-xs uppercase tracking-wider transition-all ${
+                  qosDiscipline === 'cake' 
+                    ? 'border-blue-600 bg-blue-50 text-blue-700' 
+                    : 'border-slate-200 text-slate-400 hover:border-slate-300'
+                }`}
+              >
+                Cake QoS
+              </button>
+              <button
+                onClick={() => saveQoS('fq_codel')}
+                disabled={savingQoS}
+                className={`flex-1 py-3 px-4 rounded-xl border-2 font-bold text-xs uppercase tracking-wider transition-all ${
+                  qosDiscipline === 'fq_codel' 
+                    ? 'border-blue-600 bg-blue-50 text-blue-700' 
+                    : 'border-slate-200 text-slate-400 hover:border-slate-300'
+                }`}
+              >
+                Fq_Codel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
         <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6">Create Rate Definition</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Currency (₱)</label>
             <input 
@@ -48,7 +110,7 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
             />
           </div>
           <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Duration (Minutes)</label>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Duration (Mins)</label>
             <input 
               type="number" 
               value={newMinutes}
@@ -57,13 +119,33 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
               placeholder="10"
             />
           </div>
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">DL Limit (Mbps)</label>
+            <input 
+              type="number" 
+              value={newDownload}
+              onChange={(e) => setNewDownload(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all font-bold"
+              placeholder="0 (Unl)"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">UL Limit (Mbps)</label>
+            <input 
+              type="number" 
+              value={newUpload}
+              onChange={(e) => setNewUpload(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all font-bold"
+              placeholder="0 (Unl)"
+            />
+          </div>
           <div className="flex items-end">
             <button 
               onClick={addRate}
               disabled={loading}
               className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50"
             >
-              {loading ? 'Saving...' : 'Commit Rate'}
+              {loading ? '...' : 'Add'}
             </button>
           </div>
         </div>
@@ -75,6 +157,7 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
             <tr>
               <th className="px-6 py-5">Denomination</th>
               <th className="px-6 py-5">Internet Duration</th>
+              <th className="px-6 py-5">Speed Limit (DL/UL)</th>
               <th className="px-6 py-5 text-right">Admin Action</th>
             </tr>
           </thead>
@@ -89,6 +172,15 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
                     ? `${Math.floor(rate.minutes / 60)}h ${rate.minutes % 60 > 0 ? (rate.minutes % 60) + 'm' : ''}`
                     : `${rate.minutes} Minutes`}
                 </td>
+                <td className="px-6 py-5 text-slate-600 font-bold text-xs">
+                  {rate.download_limit || rate.upload_limit ? (
+                    <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded">
+                      {rate.download_limit ? `${rate.download_limit}Mbps` : '∞'} / {rate.upload_limit ? `${rate.upload_limit}Mbps` : '∞'}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">Unlimited</span>
+                  )}
+                </td>
                 <td className="px-6 py-5 text-right">
                   <button 
                     onClick={() => deleteRate(rate.id)}
@@ -100,7 +192,7 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
               </tr>
             )) : (
               <tr>
-                <td colSpan={3} className="px-6 py-20 text-center text-slate-400 text-xs font-black uppercase">No rates defined in database.</td>
+                <td colSpan={4} className="px-6 py-20 text-center text-slate-400 text-xs font-black uppercase">No rates defined in database.</td>
               </tr>
             )}
           </tbody>

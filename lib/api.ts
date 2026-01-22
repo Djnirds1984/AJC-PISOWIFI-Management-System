@@ -88,6 +88,22 @@ export const apiClient = {
     await handleResponse(res);
   },
 
+  // Get QoS Configuration
+  async getQoSConfig(): Promise<QoSConfig> {
+    const res = await fetch(`${API_BASE}/config/qos`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  // Save QoS Configuration
+  async saveQoSConfig(discipline: 'cake' | 'fq_codel'): Promise<void> {
+    const res = await fetch(`${API_BASE}/config/qos`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ discipline })
+    });
+    await handleResponse(res);
+  },
+
   // Fetch available network interfaces from the kernel
   async getInterfaces(): Promise<NetworkInterface[]> {
     const res = await fetch(`${API_BASE}/interfaces`, { headers: getHeaders() });

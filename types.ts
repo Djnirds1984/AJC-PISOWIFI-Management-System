@@ -9,6 +9,12 @@ export interface Rate {
   id: string;
   pesos: number;
   minutes: number;
+  download_limit?: number; // Mbps
+  upload_limit?: number; // Mbps
+}
+
+export interface QoSConfig {
+  discipline: 'cake' | 'fq_codel';
 }
 
 export interface NetworkInterface {

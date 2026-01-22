@@ -122,6 +122,11 @@ async function getMacFromIp(ip) {
   return null;
 }
 
+// Explicitly serve tailwind.js to fix 404 issues
+app.get('/dist/tailwind.js', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist/tailwind.js'));
+});
+
 app.use('/dist', express.static(path.join(__dirname, 'dist')));
 app.use(express.static(__dirname));
 

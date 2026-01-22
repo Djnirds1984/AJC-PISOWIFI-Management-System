@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "build": "esbuild index.tsx --bundle --outfile=dist/bundle.js --format=esm --minify --sourcemap --loader:.tsx=tsx --loader:.ts=ts --jsx=automatic --define:process.env.NODE_ENV='\"production\"'",
+    "postbuild": "node scripts/download_assets.js",
     "dev": "node --watch server.js"
   },
   "dependencies": {

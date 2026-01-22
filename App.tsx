@@ -9,7 +9,9 @@ import SystemUpdater from './components/Admin/SystemUpdater';
 import SystemSettings from './components/Admin/SystemSettings';
 import DeviceManager from './components/Admin/DeviceManager';
 import Login from './components/Admin/Login';
+import ThemePortal from './components/ThemePortal';
 import { apiClient } from './lib/api';
+import { initTheme } from './lib/theme';
 
 const App: React.FC = () => {
   const isCurrentlyAdminPath = () => {
@@ -18,7 +20,10 @@ const App: React.FC = () => {
     return path === '/admin' || path === '/admin/' || path.startsWith('/admin/') || hasAdminFlag;
   };
 
+  const isThemePath = () => window.location.pathname === '/themes';
+
   const [isAdmin, setIsAdmin] = useState(isCurrentlyAdminPath());
+  const [showThemePortal, setShowThemePortal] = useState(isThemePath());
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState<AdminTab>(AdminTab.Analytics);
   const [rates, setRates] = useState<Rate[]>([]);
@@ -44,10 +49,12 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    initTheme();
     loadData();
     const handleLocationChange = () => {
       const isNowAdmin = isCurrentlyAdminPath();
       setIsAdmin(isNowAdmin);
+      setShowThemePortal(isThemePath());
     };
     window.addEventListener('popstate', handleLocationChange);
     
@@ -152,6 +159,10 @@ const App: React.FC = () => {
   const updateRates = async () => {
     await loadData();
   };
+
+  if (showThemePortal) {
+    return <ThemePortal />;
+  }
 
   if (loading) {
     return (

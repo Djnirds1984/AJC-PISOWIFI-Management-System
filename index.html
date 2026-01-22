@@ -11,41 +11,131 @@
         theme: {
           extend: {
             colors: { 
-              primary: '#2563eb',
-              slate: { 50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 400: '#94a3b8', 500: '#64748b', 600: '#475569', 900: '#0f172a', 950: '#020617' }
+              primary: 'var(--primary)',
+              slate: { 
+                50: 'var(--bg)', 
+                100: 'var(--slate-100)', 
+                200: 'var(--border)', 
+                400: 'var(--text-muted)', 
+                500: 'var(--text-muted)', 
+                600: 'var(--text-muted)', 
+                900: 'var(--text-main)', 
+                950: 'var(--text-main)' 
+              },
+              blue: {
+                100: 'rgba(var(--primary), 0.1)',
+                500: 'var(--primary)',
+                600: 'var(--primary)',
+                700: 'var(--primary-dark)'
+              },
+              white: 'var(--bg-card)',
+              black: 'var(--bg)' // Inverted for dark mode logic often
             },
             borderRadius: { '4xl': '2rem', '5xl': '3rem' }
           }
         }
       }
     </script>
+    <script>
+      // Instant Theme Restore
+      (function() {
+        try {
+          var theme = localStorage.getItem('ajc_pisowifi_theme') || 'default';
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {}
+      })();
+    </script>
     <style>
-      /* OFFLINE-FIRST MASTER STYLING (Works without internet) */
-      :root {
+      /* PERFORMANCE OPTIMIZED THEME SYSTEM */
+      :root, :root[data-theme="default"] {
         --primary: #2563eb;
         --primary-dark: #1d4ed8;
         --bg: #f8fafc;
-        --white: #ffffff;
-        --slate-900: #0f172a;
-        --slate-500: #64748b;
-        --slate-100: #f1f5f9;
+        --bg-card: #ffffff;
+        --text-main: #0f172a;
+        --text-muted: #64748b;
+        --border: #e2e8f0;
+        --shadow-color: 0, 0, 0;
+        --radius-sm: 0.5rem;
+        --radius-md: 1rem;
+        --radius-lg: 1.5rem;
+        --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        
+        /* Compatibility Aliases */
+        --white: var(--bg-card);
+        --slate-900: var(--text-main);
+        --slate-500: var(--text-muted);
+        --slate-100: var(--bg);
+      }
+
+      :root[data-theme="dark"] {
+        --primary: #38bdf8;
+        --primary-dark: #0ea5e9;
+        --bg: #0f172a;
+        --bg-card: #1e293b;
+        --text-main: #f8fafc;
+        --text-muted: #94a3b8;
+        --border: #334155;
+        --shadow-color: 0, 0, 0;
+        
+        --white: var(--bg-card);
+        --slate-900: var(--text-main);
+        --slate-500: var(--text-muted);
+        --slate-100: var(--border);
+      }
+
+      :root[data-theme="eco"] {
+        --primary: #16a34a;
+        --primary-dark: #15803d;
+        --bg: #f0fdf4;
+        --bg-card: #ffffff;
+        --text-main: #14532d;
+        --text-muted: #65a30d;
+        --border: #dcfce7;
+        --shadow-color: 20, 83, 45;
+        
+        --white: var(--bg-card);
+        --slate-900: var(--text-main);
+        --slate-500: var(--text-muted);
+        --slate-100: var(--bg);
+      }
+
+      :root[data-theme="terminal"] {
+        --primary: #22c55e;
+        --primary-dark: #16a34a;
+        --bg: #000000;
+        --bg-card: #111111;
+        --text-main: #22c55e;
+        --text-muted: #15803d;
+        --border: #15803d;
+        --shadow-color: 0, 0, 0;
+        --radius-sm: 0;
+        --radius-md: 0;
+        --radius-lg: 0;
+        --font-main: "Courier New", Courier, monospace;
+        
+        --white: var(--bg-card);
+        --slate-900: var(--text-main);
+        --slate-500: var(--text-muted);
+        --slate-100: var(--bg-card); /* High contrast */
       }
       
       * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       
       body { 
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+        font-family: var(--font-main); 
         background-color: var(--bg);
-        color: var(--slate-900);
+        color: var(--text-main);
         line-height: 1.5;
         min-height: 100vh;
+        transition: background-color 0.3s ease, color 0.3s ease;
       }
 
       /* INSTANT SPLASH SCREEN */
       #splash {
         position: fixed;
         inset: 0;
-        background: var(--slate-900);
+        background: var(--bg);
         z-index: 99999;
         display: flex;
         flex-direction: column;
@@ -56,14 +146,14 @@
       .loader {
         width: 48px;
         height: 48px;
-        border: 4px solid rgba(255,255,255,0.1);
+        border: 4px solid rgba(var(--shadow-color), 0.1);
         border-top-color: var(--primary);
         border-radius: 50%;
         animation: spin 1s linear infinite;
         margin-bottom: 1rem;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
-      #splash p { color: white; font-weight: 900; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; }
+      #splash p { color: var(--text-main); font-weight: 900; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; }
 
       /* Core Layout Engine (Mimics Tailwind if CDN is missing) */
       .flex { display: flex; }
@@ -76,8 +166,8 @@
       .p-8 { padding: 2rem; }
       .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
       .mb-8 { margin-bottom: 2rem; }
-      .rounded-3xl { border-radius: 1.5rem; }
-      .shadow-xl { box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); }
+      .rounded-3xl { border-radius: var(--radius-lg); }
+      .shadow-xl { box-shadow: 0 20px 25px -5px rgba(var(--shadow-color), 0.1), 0 10px 10px -5px rgba(var(--shadow-color), 0.04); }
       .uppercase { text-transform: uppercase; }
       .font-black { font-weight: 900; }
       
@@ -85,19 +175,29 @@
       .portal-container { min-height: 100vh; padding-bottom: 3rem; background: var(--bg); }
       
       .portal-header {
-        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
         padding: 4rem 2rem 6rem 2rem;
         text-align: center;
         color: white;
         border-bottom-left-radius: 50px;
         border-bottom-right-radius: 50px;
-        box-shadow: 0 20px 40px rgba(37, 99, 235, 0.25);
+        box-shadow: 0 20px 40px rgba(var(--shadow-color), 0.25);
         position: relative;
+      }
+      
+      /* Terminal Theme Overrides for Header */
+      :root[data-theme="terminal"] .portal-header {
+        background: var(--bg);
+        border-bottom: 2px solid var(--primary);
+        border-radius: 0;
+        box-shadow: none;
+        color: var(--primary);
       }
 
       .portal-card {
-        background: var(--white);
+        background: var(--bg-card);
         margin: -3rem 1.5rem 2rem 1.5rem;
+        border: 1px solid var(--border);
         padding: 2.5rem;
         border-radius: 40px;
         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08);

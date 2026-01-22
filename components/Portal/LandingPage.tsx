@@ -265,8 +265,13 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
         </div>
       </main>
 
-      <footer className="mt-12 text-center text-slate-400 text-[9px] font-black uppercase tracking-[0.3em] pb-10">
-        © 2025 AJC PISOWIFI SYSTEM • HARDWARE v3.3.0
+      <footer className="mt-12 text-center pb-10 flex flex-col items-center gap-4">
+        <a href="/themes" className="text-[9px] font-black uppercase tracking-[0.3em] text-blue-500 hover:text-blue-600 transition-colors">
+          Customize Theme
+        </a>
+        <span className="text-slate-400 text-[9px] font-black uppercase tracking-[0.3em]">
+          © 2025 AJC PISOWIFI SYSTEM • HARDWARE v3.3.0
+        </span>
       </footer>
 
       {showModal && (

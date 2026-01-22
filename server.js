@@ -129,13 +129,22 @@ const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 
-// Helper: Get MAC from IP using ARP table
+// Helper: Get MAC from IP using ARP table and DHCP leases
 async function getMacFromIp(ip) {
   if (ip === '::1' || ip === '127.0.0.1' || !ip) return null;
   
-  // Try to ping the IP to ensure it's in the ARP table
+  // 1. Try to ping the IP to ensure it's in the ARP table (fast check)
   try { await execPromise(`ping -c 1 -W 1 ${ip}`); } catch (e) {}
 
+  // 2. Check ip neigh (modern ARP)
+  try {
+    const { stdout } = await execPromise(`ip neigh show ${ip}`);
+    // Output: 10.0.0.5 dev wlan0 lladdr aa:bb:cc:dd:ee:ff REACHABLE
+    const match = stdout.match(/lladdr\s+([a-fA-F0-9:]+)/);
+    if (match && match[1]) return match[1].toUpperCase();
+  } catch (e) {}
+
+  // 3. Fallback to /proc/net/arp
   try {
     const arpData = fs.readFileSync('/proc/net/arp', 'utf8');
     const lines = arpData.split('\n');
@@ -148,6 +157,26 @@ async function getMacFromIp(ip) {
       }
     }
   } catch (e) {}
+
+  // 4. Check DHCP Leases (dnsmasq) - essential for clients that block ping
+  try {
+    const leaseFiles = ['/tmp/dhcp.leases', '/var/lib/dnsmasq/dnsmasq.leases', '/var/lib/dhcp/dhcpd.leases', '/var/lib/misc/dnsmasq.leases'];
+    for (const file of leaseFiles) {
+      if (fs.existsSync(file)) {
+        const content = fs.readFileSync(file, 'utf8');
+        // dnsmasq lease format: <timestamp> <mac> <ip> <hostname> <client-id>
+        const lines = content.split('\n');
+        for (const line of lines) {
+           const parts = line.split(' ');
+           // Check for IP match (usually 3rd column)
+           if (parts.length >= 3 && parts[2] === ip) {
+             return parts[1].toUpperCase();
+           }
+        }
+      }
+    }
+  } catch (e) {}
+
   return null;
 }
 

@@ -9,9 +9,10 @@ import SystemUpdater from './components/Admin/SystemUpdater';
 import SystemSettings from './components/Admin/SystemSettings';
 import DeviceManager from './components/Admin/DeviceManager';
 import Login from './components/Admin/Login';
-import ThemePortal from './components/ThemePortal';
+import ThemeSettings from './components/Admin/ThemeSettings';
+import PortalEditor from './components/Admin/PortalEditor';
 import { apiClient } from './lib/api';
-import { initTheme } from './lib/theme';
+import { initAdminTheme, setAdminTheme } from './lib/theme';
 
 const App: React.FC = () => {
   const isCurrentlyAdminPath = () => {
@@ -20,10 +21,7 @@ const App: React.FC = () => {
     return path === '/admin' || path === '/admin/' || path.startsWith('/admin/') || hasAdminFlag;
   };
 
-  const isThemePath = () => window.location.pathname === '/themes';
-
   const [isAdmin, setIsAdmin] = useState(isCurrentlyAdminPath());
-  const [showThemePortal, setShowThemePortal] = useState(isThemePath());
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState<AdminTab>(AdminTab.Analytics);
   const [rates, setRates] = useState<Rate[]>([]);
@@ -49,12 +47,24 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    initTheme();
+    // Initialize theme based on current mode
+    if (isCurrentlyAdminPath()) {
+      initAdminTheme();
+    } else {
+      // Ensure portal always uses default theme (or specific portal theme logic)
+      setAdminTheme('default');
+    }
+
     loadData();
     const handleLocationChange = () => {
       const isNowAdmin = isCurrentlyAdminPath();
       setIsAdmin(isNowAdmin);
-      setShowThemePortal(isThemePath());
+      
+      if (isNowAdmin) {
+        initAdminTheme();
+      } else {
+        setAdminTheme('default');
+      }
     };
     window.addEventListener('popstate', handleLocationChange);
     
@@ -160,10 +170,6 @@ const App: React.FC = () => {
     await loadData();
   };
 
-  if (showThemePortal) {
-    return <ThemePortal />;
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -211,6 +217,8 @@ const App: React.FC = () => {
               <SidebarItem active={activeTab === AdminTab.Network} onClick={() => setActiveTab(AdminTab.Network)} icon="🌐" label="Network" />
               <SidebarItem active={activeTab === AdminTab.Devices} onClick={() => setActiveTab(AdminTab.Devices)} icon="📱" label="Devices" />
               <SidebarItem active={activeTab === AdminTab.Hardware} onClick={() => setActiveTab(AdminTab.Hardware)} icon="🔌" label="Hardware" />
+              <SidebarItem active={activeTab === AdminTab.Themes} onClick={() => setActiveTab(AdminTab.Themes)} icon="🎨" label="Themes" />
+              <SidebarItem active={activeTab === AdminTab.PortalEditor} onClick={() => setActiveTab(AdminTab.PortalEditor)} icon="🖥️" label="Portal" />
               <SidebarItem active={activeTab === AdminTab.System} onClick={() => setActiveTab(AdminTab.System)} icon="⚙️" label="System" />
               <SidebarItem active={activeTab === AdminTab.Updater} onClick={() => setActiveTab(AdminTab.Updater)} icon="🚀" label="Updater" />
             </nav>
@@ -247,6 +255,8 @@ const App: React.FC = () => {
                 {activeTab === AdminTab.Network && <NetworkSettings />}
                 {activeTab === AdminTab.Devices && <DeviceManager />}
                 {activeTab === AdminTab.Hardware && <HardwareManager />}
+                {activeTab === AdminTab.Themes && <ThemeSettings />}
+                {activeTab === AdminTab.PortalEditor && <PortalEditor />}
                 {activeTab === AdminTab.System && <SystemSettings />}
                 {activeTab === AdminTab.Updater && <SystemUpdater />}
               </div>

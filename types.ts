@@ -72,7 +72,9 @@ export enum AdminTab {
   Hardware = 'hardware',
   System = 'system',
   Updater = 'updater',
-  Devices = 'devices'
+  Devices = 'devices',
+  Themes = 'themes',
+  PortalEditor = 'portal_editor'
 }
 
 export interface UpdateLog {

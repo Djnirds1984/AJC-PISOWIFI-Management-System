@@ -39,19 +39,61 @@ export const THEMES: ThemeConfig[] = [
   }
 ];
 
-export const STORAGE_KEY = 'ajc_pisowifi_theme';
+export const ADMIN_THEME_KEY = 'ajc_pisowifi_theme';
+export const PORTAL_CONFIG_KEY = 'ajc_portal_config';
 
-export function getStoredTheme(): ThemeId {
-  const stored = localStorage.getItem(STORAGE_KEY);
+export interface PortalConfig {
+  title: string;
+  subtitle: string;
+  primaryColor: string;
+  secondaryColor: string;
+  backgroundColor: string;
+  textColor: string;
+}
+
+export const DEFAULT_PORTAL_CONFIG: PortalConfig = {
+  title: 'AJC PISOWIFI',
+  subtitle: 'Enterprise Internet Gateway',
+  primaryColor: '#2563eb', // blue-600
+  secondaryColor: '#1e40af', // blue-800
+  backgroundColor: '#f8fafc', // slate-50
+  textColor: '#0f172a', // slate-900
+};
+
+// --- Admin Theme Utilities ---
+
+export function getStoredAdminTheme(): ThemeId {
+  const stored = localStorage.getItem(ADMIN_THEME_KEY);
   return (stored as ThemeId) || 'default';
 }
 
-export function setTheme(themeId: ThemeId) {
-  localStorage.setItem(STORAGE_KEY, themeId);
+export function setAdminTheme(themeId: ThemeId) {
+  localStorage.setItem(ADMIN_THEME_KEY, themeId);
   document.documentElement.setAttribute('data-theme', themeId);
 }
 
+export function initAdminTheme() {
+  const theme = getStoredAdminTheme();
+  setAdminTheme(theme);
+}
+
+// --- Portal Config Utilities ---
+
+export function getPortalConfig(): PortalConfig {
+  try {
+    const stored = localStorage.getItem(PORTAL_CONFIG_KEY);
+    return stored ? { ...DEFAULT_PORTAL_CONFIG, ...JSON.parse(stored) } : DEFAULT_PORTAL_CONFIG;
+  } catch (e) {
+    return DEFAULT_PORTAL_CONFIG;
+  }
+}
+
+export function setPortalConfig(config: PortalConfig) {
+  localStorage.setItem(PORTAL_CONFIG_KEY, JSON.stringify(config));
+}
+
+// Helper to apply portal config to CSS variables (if we decide to use them for portal too)
+// For now, the Portal component will read this directly.
 export function initTheme() {
-  const theme = getStoredTheme();
-  setTheme(theme);
+  initAdminTheme();
 }

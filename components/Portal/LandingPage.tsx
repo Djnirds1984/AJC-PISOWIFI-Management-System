@@ -1,16 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Rate, UserSession } from '../../types';
 import CoinModal from './CoinModal';
 import { apiClient } from '../../lib/api';
+import { getPortalConfig, PortalConfig, DEFAULT_PORTAL_CONFIG } from '../../lib/theme';
 
 // Add refreshSessions prop to Props interface
-interface Props {
-  rates: Rate[];
-  sessions: UserSession[];
-  onSessionStart: (session: UserSession) => void;
-  refreshSessions?: () => void;
-}
-
 interface Props {
   rates: Rate[];
   sessions: UserSession[];
@@ -23,6 +18,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   const [myMac, setMyMac] = useState('');
   const [isMacLoading, setIsMacLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [config, setConfig] = useState<PortalConfig>(DEFAULT_PORTAL_CONFIG);
 
   // Hardcoded default rates in case the API fetch returns nothing
   const defaultRates: Rate[] = [
@@ -45,6 +41,9 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   };
 
   useEffect(() => {
+    // Load Portal Configuration
+    setConfig(getPortalConfig());
+
     // Set fallback ID immediately so UI can render
     const fallbackId = getFallbackId();
     setMyMac(fallbackId);
@@ -174,11 +173,17 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   };
 
   return (
-    <div className="portal-container min-h-screen">
-      <header className="portal-header">
+    <div className="portal-container min-h-screen" style={{ backgroundColor: config.backgroundColor, color: config.textColor }}>
+      <header 
+        className="portal-header"
+        style={{ 
+          background: `linear-gradient(135deg, ${config.primaryColor} 0%, ${config.secondaryColor} 100%)`,
+          color: '#ffffff'
+        }}
+      >
         <div className="relative z-10">
-          <h1 className="text-3xl font-black tracking-tighter mb-1 uppercase">AJC PISOWIFI</h1>
-          <p className="text-blue-100 text-xs font-bold opacity-80 uppercase tracking-widest">Enterprise Internet Gateway</p>
+          <h1 className="text-3xl font-black tracking-tighter mb-1 uppercase">{config.title}</h1>
+          <p className="text-xs font-bold opacity-80 uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.9)' }}>{config.subtitle}</p>
         </div>
       </header>
 
@@ -266,12 +271,9 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
       </main>
 
       <footer className="mt-12 text-center pb-10 flex flex-col items-center gap-4">
-        <a href="/themes" className="text-[9px] font-black uppercase tracking-[0.3em] text-blue-500 hover:text-blue-600 transition-colors">
-          Customize Theme
-        </a>
-        <span className="text-slate-400 text-[9px] font-black uppercase tracking-[0.3em]">
-          © 2025 AJC PISOWIFI SYSTEM • HARDWARE v3.3.0
-        </span>
+        <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-400 opacity-50">
+          Powered by AJC PisoWifi System
+        </p>
       </footer>
 
       {showModal && (

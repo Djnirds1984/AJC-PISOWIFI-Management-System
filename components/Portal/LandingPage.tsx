@@ -75,15 +75,6 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
 
   const handleOpenModal = (e: React.MouseEvent) => {
     e.preventDefault();
-    
-    // Play "Insert Coin" Audio
-    if (config.insertCoinAudio) {
-      try {
-        const audio = new Audio(config.insertCoinAudio);
-        audio.play().catch(e => console.log('Audio play failed', e));
-      } catch (e) { console.error(e); }
-    }
-    
     setShowModal(true);
   };
 
@@ -312,6 +303,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
         <CoinModal 
           onClose={() => setShowModal(false)} 
           audioSrc={config.coinDropAudio}
+          insertCoinAudioSrc={config.insertCoinAudio}
           onSuccess={(pesos, minutes) => {
             onSessionStart({
               mac: myMac,

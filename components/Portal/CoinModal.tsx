@@ -6,14 +6,36 @@ interface Props {
   onClose: () => void;
   onSuccess: (pesos: number, minutes: number) => void;
   rates: Rate[];
-  audioSrc?: string;
+  audioSrc?: string; // Coin Drop Audio
+  insertCoinAudioSrc?: string; // Background Loop
 }
 
-const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc }) => {
+const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc, insertCoinAudioSrc }) => {
   const [timeLeft, setTimeLeft] = useState(60);
   const [totalPesos, setTotalPesos] = useState(0);
   const [totalMinutes, setTotalMinutes] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
+
+  // Handle Background Audio (Insert Coin Loop)
+  useEffect(() => {
+    let audio: HTMLAudioElement | null = null;
+    if (insertCoinAudioSrc) {
+      try {
+        audio = new Audio(insertCoinAudioSrc);
+        audio.loop = true;
+        audio.volume = 0.5; // Slightly lower volume for background
+        audio.play().catch(e => console.log('Background audio play failed', e));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return () => {
+      if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
+      }
+    };
+  }, [insertCoinAudioSrc]);
 
   useEffect(() => {
     console.log('[COIN] Connecting to Hardware Socket...');

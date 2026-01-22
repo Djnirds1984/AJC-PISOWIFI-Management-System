@@ -5,6 +5,7 @@ import { apiClient } from '../../lib/api';
 const HardwareManager: React.FC = () => {
   const [board, setBoard] = useState<BoardType>('none');
   const [pin, setPin] = useState(2);
+  const [boardModel, setBoardModel] = useState<string>('orange_pi_one');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -18,6 +19,7 @@ const HardwareManager: React.FC = () => {
       const cfg = await apiClient.getConfig();
       setBoard(cfg.boardType);
       setPin(cfg.coinPin);
+      if (cfg.boardModel) setBoardModel(cfg.boardModel);
     } catch (e) {
       console.error('Failed to load hardware config');
     } finally {
@@ -29,7 +31,11 @@ const HardwareManager: React.FC = () => {
     setSaving(true);
     setSuccess(false);
     try {
-      await apiClient.saveConfig({ boardType: board, coinPin: pin });
+      await apiClient.saveConfig({ 
+        boardType: board, 
+        coinPin: pin,
+        boardModel: board === 'orange_pi' ? boardModel : null
+      });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (e) {
@@ -73,16 +79,38 @@ const HardwareManager: React.FC = () => {
             <div className="lg:col-span-2 space-y-6">
               <div className="flex justify-between items-end">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  {board === 'x64_pc' ? 'Serial Communication' : 'Select BCM Pin'}
+                  {board === 'x64_pc' ? 'Serial Communication' : (board === 'orange_pi' ? 'Select Physical Pin' : 'Select BCM Pin')}
                 </label>
                 <div className="flex gap-2">
-                   <span className="text-[10px] font-black text-slate-900 bg-slate-100 px-2 py-1 rounded-md uppercase tracking-tighter">Current BCM: {pin}</span>
+                   <span className="text-[10px] font-black text-slate-900 bg-slate-100 px-2 py-1 rounded-md uppercase tracking-tighter">Current: {pin}</span>
                 </div>
               </div>
               
+              {board === 'orange_pi' && (
+                <div className="mb-4 bg-orange-50 p-4 rounded-2xl border border-orange-100">
+                   <label className="text-[10px] font-black text-orange-400 uppercase tracking-widest block mb-2">Select Orange Pi Model</label>
+                   <select 
+                     value={boardModel} 
+                     onChange={(e) => setBoardModel(e.target.value)}
+                     className="w-full p-3 rounded-xl border border-orange-200 text-xs font-bold text-slate-700 outline-none focus:border-orange-500 bg-white"
+                   >
+                     <option value="orange_pi_one">Orange Pi One</option>
+                     <option value="orange_pi_zero_3">Orange Pi Zero 3</option>
+                     <option value="orange_pi_pc">Orange Pi PC</option>
+                     <option value="orange_pi_5">Orange Pi 5</option>
+                   </select>
+                   <p className="text-[9px] text-orange-400/80 font-bold mt-2 uppercase tracking-wide">
+                     * Maps Physical Pins to correct GPIO Sysfs numbers for {boardModel.replace(/_/g, ' ')}.
+                   </p>
+                </div>
+              )}
+              
               {board !== 'x64_pc' && (
                 <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
-                  {[2, 3, 4, 17, 27, 22, 10, 9, 11, 5, 6, 13, 19, 26, 14, 15].map(p => (
+                  {(board === 'orange_pi' 
+                    ? [3, 5, 7, 8, 10, 11, 12, 13, 15, 16, 18, 19, 21, 22, 23, 24, 26] 
+                    : [2, 3, 4, 17, 27, 22, 10, 9, 11, 5, 6, 13, 19, 26, 14, 15]
+                  ).map(p => (
                     <button
                       key={p}
                       onClick={() => setPin(p)}
@@ -93,7 +121,7 @@ const HardwareManager: React.FC = () => {
                       }`}
                     >
                       <span>{p}</span>
-                      <span className="text-[7px] opacity-60">BCM</span>
+                      <span className="text-[7px] opacity-60">{board === 'orange_pi' ? 'PHYS' : 'BCM'}</span>
                     </button>
                   ))}
                 </div>
@@ -109,7 +137,8 @@ const HardwareManager: React.FC = () => {
               )}
             </div>
 
-            {/* Pinout Reference Table */}
+            {/* Pinout Reference Table - Only show for RPi as OPi uses direct physical mapping now */}
+            {board === 'raspberry_pi' && (
             <div className="bg-slate-50 rounded-3xl p-6 border border-slate-200">
               <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
                 <span>📋</span> Pinout Reference
@@ -132,6 +161,23 @@ const HardwareManager: React.FC = () => {
                 </p>
               </div>
             </div>
+            )}
+            
+            {board === 'orange_pi' && (
+              <div className="bg-orange-50/50 rounded-3xl p-6 border border-orange-100">
+                <h4 className="text-[10px] font-black text-orange-900 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <span>🍊</span> Orange Pi Guide
+                </h4>
+                <p className="text-[10px] text-slate-600 leading-relaxed mb-4">
+                  For <strong>{boardModel.replace(/_/g, ' ')}</strong>, the system automatically maps the selected Physical Pin to the correct internal GPIO number.
+                </p>
+                <div className="p-4 bg-white rounded-xl border border-orange-100 shadow-sm">
+                  <p className="text-[9px] font-bold text-orange-700 leading-relaxed uppercase">
+                    Recommended: Use Physical Pin 3, 5, or 7 for Coin Acceptor pulse input.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

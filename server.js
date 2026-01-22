@@ -565,11 +565,16 @@ app.get('/api/system/info', requireAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/config', async (req, res) => {
+app.get('/api/config', requireAdmin, async (req, res) => {
   try {
     const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
     const pin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
-    res.json({ boardType: board?.value || 'none', coinPin: parseInt(pin?.value || '2') });
+    const model = await db.get('SELECT value FROM config WHERE key = ?', ['boardModel']);
+    res.json({ 
+      boardType: board?.value || 'none', 
+      coinPin: parseInt(pin?.value || '2'),
+      boardModel: model?.value || null 
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -577,7 +582,8 @@ app.post('/api/config', requireAdmin, async (req, res) => {
   try {
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['boardType', req.body.boardType]);
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['coinPin', req.body.coinPin]);
-    updateGPIO(req.body.boardType, req.body.coinPin);
+    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['boardModel', req.body.boardModel]);
+    updateGPIO(req.body.boardType, req.body.coinPin, req.body.boardModel);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1155,7 +1161,8 @@ async function bootupRestore() {
   // 4. Restore GPIO & Hardware
   const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
   const pin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
-  initGPIO((pesos) => io.emit('coin-pulse', { pesos }), board?.value || 'none', parseInt(pin?.value || '2'));
+  const model = await db.get('SELECT value FROM config WHERE key = ?', ['boardModel']);
+  initGPIO((pesos) => io.emit('coin-pulse', { pesos }), board?.value || 'none', parseInt(pin?.value || '2'), model?.value);
   
   // 5. Restore Active Sessions
   // Initialize QoS on LAN interface before restoring sessions

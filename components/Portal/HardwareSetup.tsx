@@ -11,6 +11,7 @@ interface Props {
 const HardwareSetup: React.FC<Props> = ({ onClose, onSaved }) => {
   const [board, setBoard] = useState<BoardType>('none');
   const [pin, setPin] = useState(3);
+  const [boardModel, setBoardModel] = useState<string>('orange_pi_one');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -18,6 +19,7 @@ const HardwareSetup: React.FC<Props> = ({ onClose, onSaved }) => {
     apiClient.getConfig().then(cfg => {
       setBoard(cfg.boardType);
       setPin(cfg.coinPin);
+      if (cfg.boardModel) setBoardModel(cfg.boardModel);
       setLoading(false);
     });
   }, []);
@@ -25,7 +27,11 @@ const HardwareSetup: React.FC<Props> = ({ onClose, onSaved }) => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await apiClient.saveConfig({ boardType: board, coinPin: pin });
+      await apiClient.saveConfig({ 
+        boardType: board, 
+        coinPin: pin,
+        boardModel: board === 'orange_pi' ? boardModel : null
+      });
       onSaved();
       onClose();
     } catch (e) {
@@ -75,6 +81,22 @@ const HardwareSetup: React.FC<Props> = ({ onClose, onSaved }) => {
                 icon="💻"
               />
             </div>
+            
+            {board === 'orange_pi' && (
+              <div className="mt-4">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Orange Pi Model</label>
+                <select 
+                   value={boardModel} 
+                   onChange={(e) => setBoardModel(e.target.value)}
+                   className="w-full p-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:border-blue-500"
+                >
+                   <option value="orange_pi_one">Orange Pi One</option>
+                   <option value="orange_pi_zero_3">Orange Pi Zero 3</option>
+                   <option value="orange_pi_pc">Orange Pi PC</option>
+                   <option value="orange_pi_5">Orange Pi 5</option>
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Pin Selection */}

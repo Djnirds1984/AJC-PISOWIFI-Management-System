@@ -79,6 +79,22 @@ curl -sSL https://raw.githubusercontent.com/Djnirds1984/AJC-PISOWIFI-Management-
    sudo pm2 logs         # View real-time logs
    ```
 
+## 🔧 Troubleshooting
+
+### Common Errors
+
+**Error: `Cannot find module 'express'`**
+This indicates that the project dependencies are not installed.
+1. Navigate to the project directory: `cd /opt/ajc-pisowifi` (or your install path)
+2. Install dependencies: `npm install`
+3. Restart the system: `sudo pm2 restart ajc-pisowifi`
+
+**Error: `EADDRINUSE: address already in use`**
+Another process is using port 80.
+1. Find the process: `sudo lsof -i :80`
+2. Kill it: `sudo kill -9 <PID>`
+3. Restart: `sudo pm2 restart ajc-pisowifi`
+
 ## ⚙️ Configuration
 
 - **Default Port**: 80 (Standard HTTP)

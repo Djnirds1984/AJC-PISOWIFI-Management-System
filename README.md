@@ -95,6 +95,21 @@ Another process is using port 80.
 2. Kill it: `sudo kill -9 <PID>`
 3. Restart: `sudo pm2 restart ajc-pisowifi`
 
+**Error: `sqlite3` or `serialport` Build Failure**
+If `npm install` fails on ARM boards (Orange Pi/Raspberry Pi) with Python 3.12+:
+1. Install system build tools:
+   ```bash
+   sudo apt install -y build-essential python3-dev libsqlite3-dev
+   ```
+2. Update npm and node-gyp:
+   ```bash
+   sudo npm install -g npm@latest node-gyp@latest
+   ```
+3. Force build from source:
+   ```bash
+   npm install --build-from-source
+   ```
+
 ## ⚙️ Configuration
 
 - **Default Port**: 80 (Standard HTTP)

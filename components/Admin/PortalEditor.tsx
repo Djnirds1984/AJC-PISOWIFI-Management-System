@@ -9,6 +9,8 @@ const PortalEditor: React.FC = () => {
     setConfig(getPortalConfig());
   }, []);
 
+  const [mode, setMode] = useState<'visual' | 'code'>('visual');
+
   const handleChange = (key: keyof PortalConfig, value: string) => {
     setConfig(prev => ({ ...prev, [key]: value }));
     setHasChanges(true);
@@ -47,7 +49,28 @@ const PortalEditor: React.FC = () => {
             )}
           </div>
 
-          <div className="space-y-6">
+          {/* Mode Switcher */}
+          <div className="flex p-1 bg-slate-100 rounded-xl mb-6">
+            <button
+              onClick={() => setMode('visual')}
+              className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
+                mode === 'visual' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+              }`}
+            >
+              🎨 Visual Editor
+            </button>
+            <button
+              onClick={() => setMode('code')}
+              className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
+                mode === 'code' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+              }`}
+            >
+              👨‍💻 Code Editor
+            </button>
+          </div>
+
+          {mode === 'visual' ? (
+            <div className="space-y-6">
             {/* Text Content */}
             <div>
               <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Portal Title</label>
@@ -126,6 +149,42 @@ const PortalEditor: React.FC = () => {
               </div>
             </div>
           </div>
+          ) : (
+            <div className="space-y-6">
+              <div>
+                <label className="block text-xs font-black text-purple-600 uppercase tracking-widest mb-2">Custom CSS</label>
+                <p className="text-[10px] text-slate-400 mb-2">Styles injected into the portal page head. Use specific selectors.</p>
+                <textarea 
+                  value={config.customCss || ''}
+                  onChange={(e) => handleChange('customCss', e.target.value)}
+                  placeholder=".portal-header { background: red !important; }"
+                  className="w-full h-32 bg-slate-900 text-green-400 font-mono text-xs p-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-purple-600 uppercase tracking-widest mb-2">Header HTML Injection</label>
+                <p className="text-[10px] text-slate-400 mb-2">HTML content inserted below the header.</p>
+                <textarea 
+                  value={config.customHtmlTop || ''}
+                  onChange={(e) => handleChange('customHtmlTop', e.target.value)}
+                  placeholder="<div class='alert'>Welcome to my Wifi!</div>"
+                  className="w-full h-24 bg-slate-900 text-blue-400 font-mono text-xs p-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-purple-600 uppercase tracking-widest mb-2">Footer HTML Injection</label>
+                <p className="text-[10px] text-slate-400 mb-2">HTML content inserted above the footer.</p>
+                <textarea 
+                  value={config.customHtmlBottom || ''}
+                  onChange={(e) => handleChange('customHtmlBottom', e.target.value)}
+                  placeholder="<div>Call 555-0123 for support</div>"
+                  className="w-full h-24 bg-slate-900 text-blue-400 font-mono text-xs p-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+          )}
 
           <div className="mt-8 flex gap-4">
             <button 

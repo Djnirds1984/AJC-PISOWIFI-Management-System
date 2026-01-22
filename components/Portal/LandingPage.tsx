@@ -174,6 +174,9 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
 
   return (
     <div className="portal-container min-h-screen" style={{ backgroundColor: config.backgroundColor, color: config.textColor }}>
+      {/* Inject Custom CSS */}
+      {config.customCss && <style dangerouslySetInnerHTML={{ __html: config.customCss }} />}
+      
       <header 
         className="portal-header"
         style={{ 
@@ -186,6 +189,14 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
           <p className="text-xs font-bold opacity-80 uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.9)' }}>{config.subtitle}</p>
         </div>
       </header>
+
+      {/* Inject Custom HTML Top */}
+      {config.customHtmlTop && (
+        <div 
+          className="portal-custom-html-top" 
+          dangerouslySetInnerHTML={{ __html: config.customHtmlTop }} 
+        />
+      )}
 
       <main className="relative z-20">
         <div className="portal-card">
@@ -269,6 +280,14 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
           </div>
         </div>
       </main>
+
+      {/* Inject Custom HTML Bottom */}
+      {config.customHtmlBottom && (
+        <div 
+          className="portal-custom-html-bottom" 
+          dangerouslySetInnerHTML={{ __html: config.customHtmlBottom }} 
+        />
+      )}
 
       <footer className="mt-12 text-center pb-10 flex flex-col items-center gap-4">
         <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-400 opacity-50">

@@ -49,6 +49,9 @@ export interface PortalConfig {
   secondaryColor: string;
   backgroundColor: string;
   textColor: string;
+  customCss?: string;
+  customHtmlTop?: string; // Injected below header
+  customHtmlBottom?: string; // Injected above footer
 }
 
 export const DEFAULT_PORTAL_CONFIG: PortalConfig = {
@@ -58,6 +61,9 @@ export const DEFAULT_PORTAL_CONFIG: PortalConfig = {
   secondaryColor: '#1e40af', // blue-800
   backgroundColor: '#f8fafc', // slate-50
   textColor: '#0f172a', // slate-900
+  customCss: '',
+  customHtmlTop: '',
+  customHtmlBottom: ''
 };
 
 // --- Admin Theme Utilities ---

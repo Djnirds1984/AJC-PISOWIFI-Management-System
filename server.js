@@ -1158,6 +1158,13 @@ async function bootupRestore() {
   initGPIO((pesos) => io.emit('coin-pulse', { pesos }), board?.value || 'none', parseInt(pin?.value || '2'));
   
   // 5. Restore Active Sessions
+  // Initialize QoS on LAN interface before restoring sessions
+  const lan = await network.getLanInterface();
+  const qosDiscipline = await db.get("SELECT value FROM config WHERE key = 'qos_discipline'");
+  if (lan) {
+    await network.initQoS(lan, qosDiscipline?.value || 'cake');
+  }
+
   const sessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds > 0');
   for (const s of sessions) await network.whitelistMAC(s.mac, s.ip);
   

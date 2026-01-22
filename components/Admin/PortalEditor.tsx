@@ -31,6 +31,36 @@ const PortalEditor: React.FC = () => {
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, key: keyof PortalConfig) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append('audio', file);
+
+    const token = localStorage.getItem('ajc_admin_token');
+    
+    try {
+      const res = await fetch('/api/admin/upload-audio', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        handleChange(key, data.path);
+      } else {
+        alert('Upload failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Upload error');
+    }
+  };
+
   const insertCssTemplate = () => {
     const template = `/* Main Container */
 .portal-container { }
@@ -166,6 +196,76 @@ const PortalEditor: React.FC = () => {
                     className="h-10 w-10 rounded-lg cursor-pointer border-0 p-0"
                   />
                   <span className="text-xs font-mono text-slate-500 bg-slate-50 px-2 py-1 rounded border border-slate-200">{config.textColor}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-px bg-slate-100 my-6"></div>
+
+            {/* Audio Settings */}
+            <div>
+              <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <span>🔊</span> Audio Settings
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Insert Coin Audio</label>
+                  <p className="text-[9px] text-slate-400 mb-3">Plays when "Insert Coin" button is clicked.</p>
+                  
+                  {config.insertCoinAudio && (
+                    <div className="mb-3">
+                      <audio controls src={config.insertCoinAudio} className="w-full h-8" />
+                      <button 
+                        onClick={() => handleChange('insertCoinAudio', '')}
+                        className="text-[9px] text-red-500 font-bold uppercase mt-1 hover:underline"
+                      >
+                        Remove Audio
+                      </button>
+                    </div>
+                  )}
+                  
+                  <input 
+                    type="file" 
+                    accept="audio/*"
+                    onChange={(e) => handleFileUpload(e, 'insertCoinAudio')}
+                    className="block w-full text-[10px] text-slate-500
+                      file:mr-4 file:py-2 file:px-4
+                      file:rounded-full file:border-0
+                      file:text-[10px] file:font-black file:uppercase
+                      file:bg-blue-50 file:text-blue-700
+                      hover:file:bg-blue-100
+                    "
+                  />
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Coin Drop Audio</label>
+                  <p className="text-[9px] text-slate-400 mb-3">Plays for every coin pulse detected.</p>
+                  
+                  {config.coinDropAudio && (
+                    <div className="mb-3">
+                      <audio controls src={config.coinDropAudio} className="w-full h-8" />
+                      <button 
+                        onClick={() => handleChange('coinDropAudio', '')}
+                        className="text-[9px] text-red-500 font-bold uppercase mt-1 hover:underline"
+                      >
+                        Remove Audio
+                      </button>
+                    </div>
+                  )}
+                  
+                  <input 
+                    type="file" 
+                    accept="audio/*"
+                    onChange={(e) => handleFileUpload(e, 'coinDropAudio')}
+                    className="block w-full text-[10px] text-slate-500
+                      file:mr-4 file:py-2 file:px-4
+                      file:rounded-full file:border-0
+                      file:text-[10px] file:font-black file:uppercase
+                      file:bg-purple-50 file:text-purple-700
+                      hover:file:bg-purple-100
+                    "
+                  />
                 </div>
               </div>
             </div>

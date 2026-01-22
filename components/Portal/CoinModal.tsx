@@ -6,9 +6,10 @@ interface Props {
   onClose: () => void;
   onSuccess: (pesos: number, minutes: number) => void;
   rates: Rate[];
+  audioSrc?: string;
 }
 
-const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates }) => {
+const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc }) => {
   const [timeLeft, setTimeLeft] = useState(60);
   const [totalPesos, setTotalPesos] = useState(0);
   const [totalMinutes, setTotalMinutes] = useState(0);
@@ -31,6 +32,15 @@ const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates }) => {
 
     socket.on('coin-pulse', (data: { pesos: number }) => {
       console.log(`[COIN] Received Pulse: ₱${data.pesos}`);
+      
+      // Play Audio
+      if (audioSrc) {
+        try {
+          const audio = new Audio(audioSrc);
+          audio.play().catch(e => console.log('Audio play failed', e));
+        } catch (e) { console.error(e); }
+      }
+
       setTotalPesos(prev => prev + data.pesos);
       
       const rate = rates.find(r => r.pesos === data.pesos);

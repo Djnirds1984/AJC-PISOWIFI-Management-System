@@ -54,6 +54,8 @@ export interface PortalConfig {
   customCss?: string;
   customHtmlTop?: string; // Injected below header
   customHtmlBottom?: string; // Injected above footer
+  insertCoinAudio?: string; // Path to audio file
+  coinDropAudio?: string; // Path to audio file
 }
 
 export const DEFAULT_PORTAL_CONFIG: PortalConfig = {
@@ -65,7 +67,9 @@ export const DEFAULT_PORTAL_CONFIG: PortalConfig = {
   textColor: '#0f172a', // slate-900
   customCss: '',
   customHtmlTop: '',
-  customHtmlBottom: ''
+  customHtmlBottom: '',
+  insertCoinAudio: '',
+  coinDropAudio: ''
 };
 
 // --- Admin Theme Utilities ---

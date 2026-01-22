@@ -9,10 +9,39 @@ const { initGPIO, updateGPIO } = require('./lib/gpio');
 const network = require('./lib/network');
 const { verifyPassword, hashPassword } = require('./lib/auth');
 const crypto = require('crypto');
+const multer = require('multer');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
+
+// Configure Multer for Audio Uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const dir = 'uploads/audio/';
+    if (!fs.existsSync(dir)){
+        fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    const name = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9]/g, '_');
+    cb(null, name + '_' + Date.now() + ext);
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('audio/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only audio files are allowed!'), false);
+    }
+  }
+});
 
 app.use(express.json());
 
@@ -128,7 +157,21 @@ app.get('/dist/tailwind.js', (req, res) => {
 });
 
 app.use('/dist', express.static(path.join(__dirname, 'dist')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.static(__dirname));
+
+// AUDIO UPLOAD ENDPOINT
+app.post('/api/admin/upload-audio', requireAdmin, upload.single('audio'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  // Return web-accessible path
+  const webPath = '/uploads/audio/' + req.file.filename;
+  res.json({ 
+    success: true, 
+    path: webPath 
+  });
+});
 
 // SUCCESS PAGE TO TRIGGER CAPTIVE PORTAL EXIT
 app.get('/success', (req, res) => {

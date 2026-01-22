@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { THEMES, setTheme, getStoredTheme, ThemeId } from '../../lib/theme';
+import { THEMES, setTheme, getStoredTheme, ThemeId } from '../lib/theme';
 
 const ThemePortal: React.FC = () => {
   const [currentTheme, setCurrentTheme] = useState<ThemeId>('default');

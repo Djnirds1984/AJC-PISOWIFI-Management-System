@@ -1065,6 +1065,11 @@ async function bootupRestore() {
   console.log('[AJC] System Restoration Complete.');
 }
 
+// SPA Fallback for client-side routing & Captive Portal catch-all
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 server.listen(80, '0.0.0.0', async () => {
   console.log('[AJC] System Engine Online @ Port 80');
   await bootupRestore();

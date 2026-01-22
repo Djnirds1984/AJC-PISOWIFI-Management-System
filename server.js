@@ -45,6 +45,14 @@ const upload = multer({
 
 app.use(express.json());
 
+// Prevent caching of API responses
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
+
 // ADMIN AUTHENTICATION
 const requireAdmin = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -409,18 +417,18 @@ app.use(async (req, res, next) => {
     }
   }
 
-  if (isProbe || !host.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-    // FORCE REDIRECT to common domain for session sharing (localStorage)
-    const PORTAL_DOMAIN = 'portal.ajcpisowifi.com';
-    
-    // If we are already on the correct domain or localhost/IP, serve the portal
-    if (host === PORTAL_DOMAIN || host.includes('localhost') || host.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-        return res.sendFile(path.join(__dirname, 'index.html'));
-    }
+  // FORCE REDIRECT to common domain for session sharing (localStorage)
+  const PORTAL_DOMAIN = 'portal.ajcpisowifi.com';
 
-    // Otherwise, redirect to the common domain
-    // We use HTTP because captive portals often block HTTPS redirects or show cert errors
-    return res.redirect(`http://${PORTAL_DOMAIN}/`);
+  if (isProbe) {
+      // Probes get the file directly to satisfy the CNA
+      return res.sendFile(path.join(__dirname, 'index.html'));
+  }
+
+  // If we are NOT on the portal domain (and not localhost), redirect.
+  // This catches IP address access (10.0.0.1) and forces it to the domain.
+  if (host !== PORTAL_DOMAIN && !host.includes('localhost') && !host.includes('127.0.0.1')) {
+      return res.redirect(`http://${PORTAL_DOMAIN}/`);
   }
   
   next();

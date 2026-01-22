@@ -91,7 +91,7 @@ const App: React.FC = () => {
     checkAuth();
 
     // Check for existing session token and try to restore (Fix for randomized MACs/SSID switching)
-    const restoreSession = async () => {
+    const restoreSession = async (retries = 5) => {
         const sessionToken = localStorage.getItem('ajc_session_token');
         if (sessionToken) {
             try {
@@ -100,6 +100,14 @@ const App: React.FC = () => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ token: sessionToken })
                 });
+                
+                // If 400 (Bad Request), it likely means MAC resolution failed temporarily. Retry.
+                if (res.status === 400 && retries > 0) {
+                   console.log(`[Session] Restore failed (400), retrying... (${retries} left)`);
+                   setTimeout(() => restoreSession(retries - 1), 2000);
+                   return;
+                }
+
                 const data = await res.json();
                 if (data.success) {
                     console.log('Session restored successfully');
@@ -108,11 +116,15 @@ const App: React.FC = () => {
                         loadData(); // Reload to see active session
                     }
                 } else if (res.status === 404) {
-                    // Token invalid/expired
+                    // Token invalid/expired - only remove if we are sure
+                    console.log('[Session] Token expired or invalid');
                     localStorage.removeItem('ajc_session_token');
                 }
             } catch (e) {
                 console.error('Failed to restore session:', e);
+                if (retries > 0) {
+                   setTimeout(() => restoreSession(retries - 1), 2000);
+                }
             }
         }
     };
@@ -304,7 +316,13 @@ const App: React.FC = () => {
           />
         )
       ) : (
-        <LandingPage rates={rates} onSessionStart={handleAddSession} sessions={activeSessions} refreshSessions={loadData} />
+        <LandingPage 
+          rates={rates} 
+          onSessionStart={handleAddSession} 
+          sessions={activeSessions} 
+          refreshSessions={loadData} 
+          onRestoreSession={() => restoreSession(5)}
+        />
       )}
     </div>
   );

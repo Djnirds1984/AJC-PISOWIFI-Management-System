@@ -11,9 +11,10 @@ interface Props {
   sessions: UserSession[];
   onSessionStart: (session: UserSession) => void;
   refreshSessions?: () => void;
+  onRestoreSession?: () => void;
 }
 
-const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refreshSessions }) => {
+const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refreshSessions, onRestoreSession }) => {
   const [showModal, setShowModal] = useState(false);
   const [myMac, setMyMac] = useState('');
   const [isMacLoading, setIsMacLoading] = useState(true);
@@ -264,6 +265,15 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
           <button onClick={handleOpenModal} className="portal-btn">
             {mySession ? 'ADD MORE TIME' : 'INSERT COIN'}
           </button>
+          
+          {!mySession && onRestoreSession && (
+            <button 
+              onClick={onRestoreSession}
+              className="mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-blue-600 transition-colors"
+            >
+              Lost Connection? Restore Session
+            </button>
+          )}
         </div>
 
         <div className="mb-10">

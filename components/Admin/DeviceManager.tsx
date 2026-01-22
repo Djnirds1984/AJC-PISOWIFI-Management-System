@@ -6,11 +6,18 @@ const DeviceManager: React.FC = () => {
   const [devices, setDevices] = useState<WifiDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editingDevice, setEditingDevice] = useState<string | null>(null);
-  const [newDeviceName, setNewDeviceName] = useState('');
-  const [sessionTime, setSessionTime] = useState('');
   const [showAddDevice, setShowAddDevice] = useState(false);
   const [refreshingDevices, setRefreshingDevices] = useState<Set<string>>(new Set());
+  
+  // Edit Modal State
+  const [editingDevice, setEditingDevice] = useState<WifiDevice | null>(null);
+  const [editForm, setEditForm] = useState({
+    customName: '',
+    sessionTime: '',
+    downloadLimit: '',
+    uploadLimit: ''
+  });
+
   const [newDevice, setNewDevice] = useState({
     mac: '',
     ip: '',
@@ -96,28 +103,30 @@ const DeviceManager: React.FC = () => {
     }
   };
 
-  const handleRename = async (deviceId: string) => {
-    if (!newDeviceName.trim()) return;
-    
-    try {
-      await apiClient.updateWifiDevice(deviceId, { customName: newDeviceName });
-      setEditingDevice(null);
-      setNewDeviceName('');
-      fetchDevices();
-    } catch (err) {
-      alert(`Failed to rename device: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
+  const openEditModal = (device: WifiDevice) => {
+    setEditingDevice(device);
+    setEditForm({
+      customName: device.customName || device.hostname || '',
+      sessionTime: device.sessionTime ? Math.floor(device.sessionTime / 60).toString() : '',
+      downloadLimit: device.downloadLimit ? device.downloadLimit.toString() : '',
+      uploadLimit: device.uploadLimit ? device.uploadLimit.toString() : ''
+    });
   };
 
-  const handleSetSessionTime = async (deviceId: string) => {
-    if (!sessionTime || isNaN(Number(sessionTime))) return;
+  const handleSaveEdit = async () => {
+    if (!editingDevice) return;
     
     try {
-      await apiClient.updateWifiDevice(deviceId, { sessionTime: Number(sessionTime) * 60 });
-      setSessionTime('');
+      await apiClient.updateWifiDevice(editingDevice.id, { 
+        customName: editForm.customName,
+        sessionTime: editForm.sessionTime ? Number(editForm.sessionTime) * 60 : undefined,
+        downloadLimit: editForm.downloadLimit ? Number(editForm.downloadLimit) : 0,
+        uploadLimit: editForm.uploadLimit ? Number(editForm.uploadLimit) : 0
+      });
+      setEditingDevice(null);
       fetchDevices();
     } catch (err) {
-      alert(`Failed to set session time: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      alert(`Failed to update device: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -219,6 +228,76 @@ const DeviceManager: React.FC = () => {
         </div>
       </div>
 
+      {editingDevice && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-xl font-bold mb-4">Edit Device</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Device Name</label>
+                <input
+                  type="text"
+                  value={editForm.customName}
+                  onChange={(e) => setEditForm({...editForm, customName: e.target.value})}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Custom Name"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Default Session Time (Minutes)</label>
+                <input
+                  type="number"
+                  value={editForm.sessionTime}
+                  onChange={(e) => setEditForm({...editForm, sessionTime: e.target.value})}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="60"
+                />
+                <p className="text-xs text-gray-500 mt-1">Default duration when connecting this device.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Download Limit (Mbps)</label>
+                  <input
+                    type="number"
+                    value={editForm.downloadLimit}
+                    onChange={(e) => setEditForm({...editForm, downloadLimit: e.target.value})}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0 (Unlimited)"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Upload Limit (Mbps)</label>
+                  <input
+                    type="number"
+                    value={editForm.uploadLimit}
+                    onChange={(e) => setEditForm({...editForm, uploadLimit: e.target.value})}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0 (Unlimited)"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex justify-end gap-2 mt-6">
+                <button
+                  onClick={() => setEditingDevice(null)}
+                  className="px-4 py-2 bg-slate-200 text-slate-800 rounded hover:bg-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveEdit}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showAddDevice && (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <h3 className="text-lg font-semibold text-slate-800 mb-4">Add New Device</h3>
@@ -293,12 +372,11 @@ const DeviceManager: React.FC = () => {
             <thead className="bg-slate-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Device</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">MAC Address</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">IP Address</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Interface</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Network Info</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Signal</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Connected</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Session Time</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Session</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Speed Limit</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -318,9 +396,11 @@ const DeviceManager: React.FC = () => {
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 font-mono">{device.mac || 'Unknown'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 font-mono">{device.ip || 'Unknown'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{device.interface || 'Unknown'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-slate-900 font-mono">{device.ip || 'Unknown'}</div>
+                    <div className="text-xs text-slate-500 font-mono">{device.mac || 'Unknown'}</div>
+                    <div className="text-xs text-slate-400">{device.interface || 'Unknown'}</div>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className={`w-2 h-2 rounded-full mr-2 ${
@@ -337,11 +417,23 @@ const DeviceManager: React.FC = () => {
                     <div className="text-sm text-slate-900">
                       {device.sessionTime ? formatTime(device.sessionTime) : 'No Session'}
                     </div>
-                    {device.totalPaid > 0 && (
+                    {device.totalPaid ? (
                       <div className="text-xs text-green-600 font-medium">
                         ₱{device.totalPaid}
                       </div>
-                    )}
+                    ) : null}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-slate-900">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-bold text-slate-500">DL:</span>
+                        {device.downloadLimit ? `${device.downloadLimit} Mbps` : 'Unlimited'}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-bold text-slate-500">UL:</span>
+                        {device.uploadLimit ? `${device.uploadLimit} Mbps` : 'Unlimited'}
+                      </div>
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                     <button
@@ -349,7 +441,7 @@ const DeviceManager: React.FC = () => {
                       disabled={refreshingDevices.has(device.id)}
                       className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50"
                     >
-                      {refreshingDevices.has(device.id) ? 'Refreshing...' : 'Refresh'}
+                      {refreshingDevices.has(device.id) ? '...' : 'Refresh'}
                     </button>
                     {device.isActive ? (
                       <button
@@ -367,52 +459,11 @@ const DeviceManager: React.FC = () => {
                       </button>
                     )}
                     
-                    {editingDevice === device.id ? (
-                      <div className="flex space-x-1">
-                        <input
-                          type="text"
-                          value={newDeviceName}
-                          onChange={(e) => setNewDeviceName(e.target.value)}
-                          placeholder="New name"
-                          className="px-2 py-1 border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                        <button
-                          onClick={() => handleRename(device.id)}
-                          className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => setEditingDevice(null)}
-                          className="px-2 py-1 bg-slate-400 text-white rounded text-xs hover:bg-slate-500"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setEditingDevice(device.id);
-                          setNewDeviceName(device.customName || device.hostname || '');
-                        }}
-                        className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
-                      >
-                        Rename
-                      </button>
-                    )}
-
-                    <input
-                      type="number"
-                      placeholder="Minutes"
-                      value={sessionTime}
-                      onChange={(e) => setSessionTime(e.target.value)}
-                      className="px-2 py-1 border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 w-16"
-                    />
                     <button
-                      onClick={() => handleSetSessionTime(device.id)}
-                      className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700"
+                      onClick={() => openEditModal(device)}
+                      className="px-3 py-1 bg-slate-600 text-white rounded text-xs hover:bg-slate-700"
                     >
-                      Set Time
+                      Edit
                     </button>
 
                     <button

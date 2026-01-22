@@ -63,6 +63,35 @@ export interface UserSession {
   remainingSeconds: number;
   totalPaid: number;
   connectedAt: number;
+  downloadLimit?: number;
+  uploadLimit?: number;
+}
+
+export interface WifiDevice {
+  id: string;
+  mac: string;
+  ip: string;
+  hostname: string;
+  interface: string;
+  ssid: string;
+  signal: number;
+  connectedAt: number;
+  lastSeen: number;
+  sessionTime?: number;
+  isActive: boolean;
+  customName?: string;
+  totalPaid?: number;
+  downloadLimit?: number;
+  uploadLimit?: number;
+}
+
+export interface DeviceSession {
+  id: number;
+  deviceId: string;
+  startTime: number;
+  endTime?: number;
+  duration: number;
+  dataUsed: number;
 }
 
 export interface AnalyticsData {

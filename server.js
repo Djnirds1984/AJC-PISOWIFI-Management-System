@@ -370,16 +370,26 @@ app.post('/api/sessions/start', async (req, res) => {
   }
 
   try {
+    // Lookup matching rate to apply speed limits
+    // Prioritize exact match on pesos and minutes, then fallback to pesos
+    let rate = await db.get('SELECT * FROM rates WHERE pesos = ? AND minutes = ?', [pesos, minutes]);
+    if (!rate) {
+      rate = await db.get('SELECT * FROM rates WHERE pesos = ?', [pesos]);
+    }
+
+    const downloadLimit = rate ? (rate.download_limit || 0) : 0;
+    const uploadLimit = rate ? (rate.upload_limit || 0) : 0;
     const seconds = minutes * 60;
+
     await db.run(
-      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid) VALUES (?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?',
-      [mac, clientIp, seconds, pesos, seconds, pesos, clientIp]
+      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?',
+      [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, seconds, pesos, clientIp, downloadLimit, uploadLimit]
     );
     
     // Whitelist the device in firewall
     await network.whitelistMAC(mac, clientIp);
     
-    console.log(`[AUTH] Session started for ${mac} (${clientIp}) - ${seconds}s, ₱${pesos}`);
+    console.log(`[AUTH] Session started for ${mac} (${clientIp}) - ${seconds}s, ₱${pesos}, Limits: ${downloadLimit}/${uploadLimit} Mbps`);
     res.json({ success: true, mac, message: 'Internet access granted. Please refresh your browser or wait a moment for connection to activate.' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -390,7 +400,12 @@ app.get('/api/rates', async (req, res) => {
 });
 
 app.post('/api/rates', requireAdmin, async (req, res) => {
-  try { await db.run('INSERT INTO rates (pesos, minutes) VALUES (?, ?)', [req.body.pesos, req.body.minutes]); res.json({ success: true }); }
+  try { 
+    const { pesos, minutes, downloadLimit, uploadLimit } = req.body;
+    await db.run('INSERT INTO rates (pesos, minutes, download_limit, upload_limit) VALUES (?, ?, ?, ?)', 
+      [pesos, minutes, downloadLimit || 0, uploadLimit || 0]); 
+    res.json({ success: true }); 
+  }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -435,12 +450,33 @@ app.post('/api/config/qos', requireAdmin, async (req, res) => {
   }
   try {
     await db.run("INSERT INTO config (key, value) VALUES ('qos_discipline', ?) ON CONFLICT(key) DO UPDATE SET value = ?", [discipline, discipline]);
-    // Re-init QoS on the active LAN interface
-    const ifaces = await si.networkInterfaces();
-    // Simple heuristic to find LAN (reuse network.js logic if possible, but for now rely on network.js doing it next time or force re-init)
-    // Ideally we should call network.initQoS but network.js is not fully exposed.
-    // Let's just update the config. The network module reads this config when applying limits.
-    // To apply immediately, we might need to restart networking or add an endpoint to reload QoS.
+    
+    // Re-init QoS on the active LAN interface immediately
+    try {
+      const lan = await network.getLanInterface();
+      if (lan) {
+        console.log(`[API] Re-initializing QoS (${discipline}) on ${lan}...`);
+        await network.initQoS(lan, discipline);
+        
+        // Restore limits for all active devices/sessions because initQoS wipes TC classes
+        const activeDevices = await db.all('SELECT mac, ip FROM wifi_devices WHERE is_active = 1');
+        const activeSessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds > 0');
+        
+        // Merge list to avoid duplicates
+        const devicesToRestore = new Map();
+        activeDevices.forEach(d => { if(d.mac && d.ip) devicesToRestore.set(d.mac, d.ip); });
+        activeSessions.forEach(s => { if(s.mac && s.ip) devicesToRestore.set(s.mac, s.ip); });
+        
+        console.log(`[API] Restoring limits for ${devicesToRestore.size} devices...`);
+        for (const [mac, ip] of devicesToRestore) {
+          // whitelistMAC applies both Firewall rules and Traffic Control limits
+          await network.whitelistMAC(mac, ip);
+        }
+      }
+    } catch (e) {
+      console.error('[API] Failed to re-init QoS:', e.message);
+    }
+
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -713,7 +749,9 @@ app.get('/api/devices', requireAdmin, async (req, res) => {
         isActive: Boolean(session), // Device is active if it has an active session
         customName: device.custom_name || '',
         sessionTime: session ? session.remainingSeconds : 0, // Real remaining time from session
-        totalPaid: session ? session.totalPaid : 0
+        totalPaid: session ? session.totalPaid : 0,
+        downloadLimit: device.download_limit || 0,
+        uploadLimit: device.upload_limit || 0
       };
     });
 
@@ -839,7 +877,7 @@ app.post('/api/devices', requireAdmin, async (req, res) => {
 
 app.put('/api/devices/:id', requireAdmin, async (req, res) => {
   try {
-    const { customName, sessionTime } = req.body;
+    const { customName, sessionTime, downloadLimit, uploadLimit } = req.body;
     const updates = [];
     const values = [];
     
@@ -851,6 +889,14 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
       updates.push('session_time = ?');
       values.push(sessionTime);
     }
+    if (downloadLimit !== undefined) {
+      updates.push('download_limit = ?');
+      values.push(downloadLimit);
+    }
+    if (uploadLimit !== undefined) {
+      updates.push('upload_limit = ?');
+      values.push(uploadLimit);
+    }
     
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
@@ -860,6 +906,15 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
     await db.run(`UPDATE wifi_devices SET ${updates.join(', ')} WHERE id = ?`, values);
     
     const updatedDevice = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
+    
+    // If speed limits changed, apply them immediately if device is connected
+    if (downloadLimit !== undefined || uploadLimit !== undefined) {
+      if (updatedDevice.ip && updatedDevice.mac) {
+         // We use whitelistMAC to re-evaluate priorities (Device > Session) and apply
+         await network.whitelistMAC(updatedDevice.mac, updatedDevice.ip);
+      }
+    }
+
     res.json(updatedDevice);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1116,5 +1171,10 @@ app.get('*', (req, res) => {
 
 server.listen(80, '0.0.0.0', async () => {
   console.log('[AJC] System Engine Online @ Port 80');
+  try {
+    await db.init();
+  } catch (e) {
+    console.error('[AJC] Critical DB Init Error:', e);
+  }
   await bootupRestore();
 });

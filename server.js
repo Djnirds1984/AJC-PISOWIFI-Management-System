@@ -453,17 +453,75 @@ app.post('/api/sessions/start', async (req, res) => {
     const uploadLimit = rate ? (rate.upload_limit || 0) : 0;
     const seconds = minutes * 60;
 
+    // Get existing token or generate new one
+    const existingSession = await db.get('SELECT token FROM sessions WHERE mac = ?', [mac]);
+    const token = existingSession && existingSession.token ? existingSession.token : crypto.randomBytes(16).toString('hex');
+
     await db.run(
-      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?',
-      [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, seconds, pesos, clientIp, downloadLimit, uploadLimit]
+      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?, token = ?',
+      [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, token, seconds, pesos, clientIp, downloadLimit, uploadLimit, token]
     );
     
     // Whitelist the device in firewall
     await network.whitelistMAC(mac, clientIp);
     
     console.log(`[AUTH] Session started for ${mac} (${clientIp}) - ${seconds}s, ₱${pesos}, Limits: ${downloadLimit}/${uploadLimit} Mbps`);
-    res.json({ success: true, mac, message: 'Internet access granted. Please refresh your browser or wait a moment for connection to activate.' });
+    res.json({ success: true, mac, token, message: 'Internet access granted. Please refresh your browser or wait a moment for connection to activate.' });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/sessions/restore', async (req, res) => {
+  const { token } = req.body;
+  const clientIp = req.ip.replace('::ffff:', '');
+  const mac = await getMacFromIp(clientIp);
+  
+  if (!token || !mac) return res.status(400).json({ error: 'Invalid request' });
+
+  try {
+    const session = await db.get('SELECT * FROM sessions WHERE token = ?', [token]);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    
+    if (session.mac === mac) {
+       // Same device, just update IP if changed and ensure whitelisted
+       if (session.ip !== clientIp) {
+         await db.run('UPDATE sessions SET ip = ? WHERE mac = ?', [clientIp, mac]);
+         await network.whitelistMAC(mac, clientIp);
+       }
+       return res.json({ success: true, remainingSeconds: session.remaining_seconds });
+    }
+    
+    console.log(`[AUTH] Restoring session ${token} from ${session.mac} to ${mac}`);
+
+    // Check if the target MAC already has a session
+    const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ?', [mac]);
+    let extraTime = 0;
+    let extraPaid = 0;
+    
+    if (targetSession) {
+      // Merge existing time from the target MAC if any
+      extraTime = targetSession.remaining_seconds;
+      extraPaid = targetSession.total_paid;
+      await db.run('DELETE FROM sessions WHERE mac = ?', [mac]);
+    }
+
+    // Delete the old session record
+    await db.run('DELETE FROM sessions WHERE mac = ?', [session.mac]);
+    
+    // Insert new record with merged data
+    await db.run(
+      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, download_limit, upload_limit, token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [mac, clientIp, session.remaining_seconds + extraTime, session.total_paid + extraPaid, session.connected_at, session.download_limit, session.upload_limit, token]
+    );
+    
+    // Switch whitelist
+    await network.blockMAC(session.mac, session.ip); // Block old
+    await network.whitelistMAC(mac, clientIp); // Allow new
+    
+    res.json({ success: true, migrated: true, remainingSeconds: session.remaining_seconds + extraTime });
+  } catch (err) { 
+    console.error('[AUTH] Restore error:', err);
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 // RATES API

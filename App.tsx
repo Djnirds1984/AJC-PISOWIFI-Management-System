@@ -90,6 +90,34 @@ const App: React.FC = () => {
     };
     checkAuth();
 
+    // Check for existing session token and try to restore (Fix for randomized MACs/SSID switching)
+    const restoreSession = async () => {
+        const sessionToken = localStorage.getItem('ajc_session_token');
+        if (sessionToken) {
+            try {
+                const res = await fetch('/api/sessions/restore', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: sessionToken })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    console.log('Session restored successfully');
+                    if (data.migrated) {
+                        console.log('Session migrated to new network info');
+                        loadData(); // Reload to see active session
+                    }
+                } else if (res.status === 404) {
+                    // Token invalid/expired
+                    localStorage.removeItem('ajc_session_token');
+                }
+            } catch (e) {
+                console.error('Failed to restore session:', e);
+            }
+        }
+    };
+    restoreSession();
+
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
@@ -142,6 +170,9 @@ const App: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
+        if (data.token) {
+          localStorage.setItem('ajc_session_token', data.token);
+        }
         await loadData();
         // Show connection message to user
         if (data.message) {

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Rate, UserSession } from '../../types';
 import CoinModal from './CoinModal';
 import { apiClient } from '../../lib/api';
-import { getPortalConfig, PortalConfig, DEFAULT_PORTAL_CONFIG } from '../../lib/theme';
+import { getPortalConfig, fetchPortalConfig, PortalConfig, DEFAULT_PORTAL_CONFIG } from '../../lib/theme';
 
 // Add refreshSessions prop to Props interface
 interface Props {
@@ -42,7 +42,11 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
 
   useEffect(() => {
     // Load Portal Configuration
-    setConfig(getPortalConfig());
+    const loadConfig = async () => {
+      const cfg = await fetchPortalConfig();
+      setConfig(cfg);
+    };
+    loadConfig();
 
     // Set fallback ID immediately so UI can render
     const fallbackId = getFallbackId();

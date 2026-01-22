@@ -72,6 +72,22 @@ export const apiClient = {
     await handleResponse(res);
   },
 
+  // Get Portal Configuration
+  async getPortalConfig(): Promise<any> {
+    const res = await fetch(`${API_BASE}/portal/config`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  // Save Portal Configuration
+  async savePortalConfig(config: any): Promise<void> {
+    const res = await fetch(`${API_BASE}/portal/config`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(config)
+    });
+    await handleResponse(res);
+  },
+
   // Fetch available network interfaces from the kernel
   async getInterfaces(): Promise<NetworkInterface[]> {
     const res = await fetch(`${API_BASE}/interfaces`, { headers: getHeaders() });

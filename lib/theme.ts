@@ -1,3 +1,5 @@
+import { apiClient } from './api';
+
 export type ThemeId = 'default' | 'dark' | 'eco' | 'terminal';
 
 export interface ThemeConfig {
@@ -96,6 +98,26 @@ export function getPortalConfig(): PortalConfig {
 
 export function setPortalConfig(config: PortalConfig) {
   localStorage.setItem(PORTAL_CONFIG_KEY, JSON.stringify(config));
+}
+
+export async function fetchPortalConfig(): Promise<PortalConfig> {
+  try {
+    const remote = await apiClient.getPortalConfig();
+    if (remote && Object.keys(remote).length > 0) {
+        const merged = { ...DEFAULT_PORTAL_CONFIG, ...remote };
+        setPortalConfig(merged);
+        return merged;
+    }
+    return getPortalConfig();
+  } catch (e) {
+    console.error('Failed to fetch portal config from server, using local', e);
+    return getPortalConfig();
+  }
+}
+
+export async function savePortalConfigRemote(config: PortalConfig) {
+  setPortalConfig(config);
+  await apiClient.savePortalConfig(config);
 }
 
 // Helper to apply portal config to CSS variables (if we decide to use them for portal too)

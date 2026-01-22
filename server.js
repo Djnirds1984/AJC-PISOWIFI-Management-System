@@ -517,6 +517,21 @@ app.post('/api/config', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// PORTAL CONFIG API
+app.get('/api/portal/config', async (req, res) => {
+  try {
+    const config = await db.get('SELECT value FROM config WHERE key = ?', ['portal_config']);
+    res.json(config?.value ? JSON.parse(config.value) : {});
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/portal/config', requireAdmin, async (req, res) => {
+  try {
+    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['portal_config', JSON.stringify(req.body)]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/system/reset', requireAdmin, async (req, res) => {
   try {
     await db.factoryResetDB();

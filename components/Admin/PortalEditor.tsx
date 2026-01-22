@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { PortalConfig, getPortalConfig, setPortalConfig, DEFAULT_PORTAL_CONFIG } from '../../lib/theme';
+import { PortalConfig, fetchPortalConfig, savePortalConfigRemote, DEFAULT_PORTAL_CONFIG } from '../../lib/theme';
 
 const PortalEditor: React.FC = () => {
   const [config, setConfig] = useState<PortalConfig>(DEFAULT_PORTAL_CONFIG);
   const [hasChanges, setHasChanges] = useState(false);
 
   useEffect(() => {
-    setConfig(getPortalConfig());
+    fetchPortalConfig().then(setConfig);
   }, []);
 
   const [mode, setMode] = useState<'visual' | 'code'>('visual');
@@ -16,19 +16,40 @@ const PortalEditor: React.FC = () => {
     setHasChanges(true);
   };
 
-  const handleSave = () => {
-    setPortalConfig(config);
+  const handleSave = async () => {
+    await savePortalConfigRemote(config);
     setHasChanges(false);
     // Optional: Trigger a toast or notification
     alert('Portal configuration saved successfully!');
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (confirm('Reset portal configuration to defaults?')) {
       setConfig(DEFAULT_PORTAL_CONFIG);
-      setPortalConfig(DEFAULT_PORTAL_CONFIG);
+      await savePortalConfigRemote(DEFAULT_PORTAL_CONFIG);
       setHasChanges(false);
     }
+  };
+
+  const insertCssTemplate = () => {
+    const template = `/* Main Container */
+.portal-container { }
+
+/* Header */
+.portal-header { }
+
+/* Main Card */
+.portal-card { }
+
+/* Buttons */
+.portal-btn { }
+
+/* Rates */
+.rates-grid { }
+.rate-item { }
+`;
+    const newValue = config.customCss ? config.customCss + '\n\n' + template : template;
+    handleChange('customCss', newValue);
   };
 
   return (
@@ -150,12 +171,17 @@ const PortalEditor: React.FC = () => {
             </div>
           </div>
           ) : (
-            <div className="space-y-6">
-              <div>
-                <label className="block text-xs font-black text-purple-600 uppercase tracking-widest mb-2">Custom CSS</label>
-                <p className="text-[10px] text-slate-400 mb-2">Styles injected into the portal page head. Use specific selectors.</p>
-                <textarea 
-                  value={config.customCss || ''}
+             <div className="space-y-6">
+               <div>
+                 <div className="flex justify-between items-center mb-2">
+                   <label className="block text-xs font-black text-purple-600 uppercase tracking-widest">Custom CSS</label>
+                   <button onClick={insertCssTemplate} className="text-[10px] bg-purple-100 text-purple-700 px-2 py-1 rounded font-bold hover:bg-purple-200 transition-colors">
+                     + Load Template
+                   </button>
+                 </div>
+                 <p className="text-[10px] text-slate-400 mb-2">Styles injected into the portal page head. Use specific selectors.</p>
+                 <textarea 
+                   value={config.customCss || ''}
                   onChange={(e) => handleChange('customCss', e.target.value)}
                   placeholder=".portal-header { background: red !important; }"
                   className="w-full h-32 bg-slate-900 text-green-400 font-mono text-xs p-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"

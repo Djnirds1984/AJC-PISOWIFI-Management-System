@@ -410,8 +410,17 @@ app.use(async (req, res, next) => {
   }
 
   if (isProbe || !host.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-     // Not authorized - serve portal directly to avoid redirect loops
-    return res.sendFile(path.join(__dirname, 'index.html'));
+    // FORCE REDIRECT to common domain for session sharing (localStorage)
+    const PORTAL_DOMAIN = 'portal.ajcpisowifi.com';
+    
+    // If we are already on the correct domain or localhost/IP, serve the portal
+    if (host === PORTAL_DOMAIN || host.includes('localhost') || host.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+        return res.sendFile(path.join(__dirname, 'index.html'));
+    }
+
+    // Otherwise, redirect to the common domain
+    // We use HTTP because captive portals often block HTTPS redirects or show cert errors
+    return res.redirect(`http://${PORTAL_DOMAIN}/`);
   }
   
   next();

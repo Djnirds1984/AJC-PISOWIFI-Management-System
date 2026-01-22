@@ -50,6 +50,35 @@ curl -sSL https://raw.githubusercontent.com/Djnirds1984/AJC-PISOWIFI-Management-
    sudo node server.js
    ```
 
+5. **Setup Process Manager (PM2)**:
+   For production environments, use PM2 to keep the system running in the background and automatically restart on boot.
+
+   **Install PM2 Globally:**
+   ```bash
+   sudo npm install -g pm2
+   ```
+
+   **Start the Application:**
+   ```bash
+   # Ensure you are in the project directory
+   sudo pm2 start server.js --name "ajc-pisowifi"
+   ```
+
+   **Enable Startup Script:**
+   Generate and run the startup script to ensure the system boots automatically:
+   ```bash
+   sudo pm2 startup
+   # Run the command displayed by the output of the previous line
+   sudo pm2 save
+   ```
+
+   **Basic Management Commands:**
+   ```bash
+   sudo pm2 status       # Check system status
+   sudo pm2 restart all  # Restart the system
+   sudo pm2 logs         # View real-time logs
+   ```
+
 ## ⚙️ Configuration
 
 - **Default Port**: 80 (Standard HTTP)

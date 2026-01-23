@@ -391,10 +391,14 @@ app.use(async (req, res, next) => {
     if (session) {
       // If IP has changed, update the whitelist rule
       if (session.ip !== clientIp) {
-        console.log(`[NET] Client ${mac} changed IP from ${session.ip} to ${clientIp}. Updating whitelist.`);
+        console.log(`[NET] Client ${mac} moved from IP ${session.ip} to ${clientIp} (likely different SSID). Re-applying limits...`);
+        // Block and clean up old IP (removes TC rules from old VLAN interface)
         await network.blockMAC(mac, session.ip);
+        // Whitelist and re-apply limits on new IP (applies TC rules to new VLAN interface)
         await network.whitelistMAC(mac, clientIp);
+        // Update session with new IP
         await db.run('UPDATE sessions SET ip = ? WHERE mac = ?', [clientIp, mac]);
+        console.log(`[NET] Session limits re-applied for ${mac} on new interface`);
       }
       
       // Handle captive portal probe requests for authorized clients

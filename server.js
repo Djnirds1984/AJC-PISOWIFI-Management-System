@@ -1060,12 +1060,34 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
     
     const updatedDevice = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
     
-    // If speed limits changed, apply them immediately if device is connected
-    if (downloadLimit !== undefined || uploadLimit !== undefined) {
-      if (updatedDevice.ip && updatedDevice.mac) {
-         // We use whitelistMAC to re-evaluate priorities (Device > Session) and apply
-         await network.whitelistMAC(updatedDevice.mac, updatedDevice.ip);
+    // If session time is being set, also update the active session if device is connected
+    if (sessionTime !== undefined && updatedDevice.ip && updatedDevice.mac) {
+      const session = await db.get('SELECT * FROM sessions WHERE mac = ?', [updatedDevice.mac]);
+      if (session) {
+        // Update session with new time and ensure limits are synced
+        const newSessionUpdates = ['remaining_seconds = ?'];
+        const newSessionValues = [sessionTime];
+        
+        // Sync device limits to session
+        if (downloadLimit !== undefined || updatedDevice.download_limit) {
+          newSessionUpdates.push('download_limit = ?');
+          newSessionValues.push(downloadLimit !== undefined ? downloadLimit : updatedDevice.download_limit);
+        }
+        if (uploadLimit !== undefined || updatedDevice.upload_limit) {
+          newSessionUpdates.push('upload_limit = ?');
+          newSessionValues.push(uploadLimit !== undefined ? uploadLimit : updatedDevice.upload_limit);
+        }
+        
+        newSessionValues.push(updatedDevice.mac);
+        await db.run(`UPDATE sessions SET ${newSessionUpdates.join(', ')} WHERE mac = ?`, newSessionValues);
+        
+        console.log(`[ADMIN] Updated session for ${updatedDevice.mac}: time=${sessionTime}s, DL=${downloadLimit || updatedDevice.download_limit}, UL=${uploadLimit || updatedDevice.upload_limit}`);
       }
+    }
+    
+    // Always reapply QoS limits if device is connected (whether time, download, or upload changed)
+    if (updatedDevice.ip && updatedDevice.mac && (sessionTime !== undefined || downloadLimit !== undefined || uploadLimit !== undefined)) {
+      await network.whitelistMAC(updatedDevice.mac, updatedDevice.ip);
     }
 
     res.json(updatedDevice);

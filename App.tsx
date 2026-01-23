@@ -296,7 +296,7 @@ const App: React.FC = () => {
                 {activeTab === AdminTab.Analytics && <Analytics sessions={activeSessions} />}
                 {activeTab === AdminTab.Rates && <RatesManager rates={rates} setRates={updateRates} />}
                 {activeTab === AdminTab.Network && <NetworkSettings />}
-                {activeTab === AdminTab.Devices && <DeviceManager />}
+                {activeTab === AdminTab.Devices && <DeviceManager sessions={activeSessions} refreshSessions={loadData} />}
                 {activeTab === AdminTab.Hardware && <HardwareManager />}
                 {activeTab === AdminTab.Themes && <ThemeSettings />}
                 {activeTab === AdminTab.PortalEditor && <PortalEditor />}

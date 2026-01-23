@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { WifiDevice } from '../../types';
+import { WifiDevice, UserSession } from '../../types';
 import { apiClient } from '../../lib/api';
 
-const DeviceManager: React.FC = () => {
+interface Props {
+  sessions?: UserSession[];
+  refreshSessions?: () => void;
+}
+
+const DeviceManager: React.FC<Props> = ({ sessions = [], refreshSessions }) => {
   const [devices, setDevices] = useState<WifiDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,9 +110,14 @@ const DeviceManager: React.FC = () => {
 
   const openEditModal = (device: WifiDevice) => {
     setEditingDevice(device);
+    
+    // Use live session data if available, otherwise fall back to device data
+    const liveSession = sessions.find(s => s.mac.toUpperCase() === device.mac.toUpperCase());
+    const displayTime = liveSession ? liveSession.remainingSeconds : device.sessionTime;
+    
     setEditForm({
       customName: device.customName || device.hostname || '',
-      sessionTime: device.sessionTime ? Math.floor(device.sessionTime / 60).toString() : '',
+      sessionTime: displayTime ? Math.floor(displayTime / 60).toString() : '',
       downloadLimit: device.downloadLimit ? device.downloadLimit.toString() : '',
       uploadLimit: device.uploadLimit ? device.uploadLimit.toString() : ''
     });
@@ -125,6 +135,10 @@ const DeviceManager: React.FC = () => {
       });
       setEditingDevice(null);
       fetchDevices();
+      // Refresh sessions to ensure live data is updated
+      if (refreshSessions) {
+        refreshSessions();
+      }
     } catch (err) {
       alert(`Failed to update device: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
@@ -381,12 +395,17 @@ const DeviceManager: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
-              {devices.map((device) => (
-                <tr key={device.id} className={device.isActive ? 'bg-white' : 'bg-slate-50 opacity-60'}>
+              {devices.map((device) => {
+                // Check if device has live active session
+                const liveSession = sessions.find(s => s.mac.toUpperCase() === device.mac.toUpperCase());
+                const isDeviceActive = device.isActive || (liveSession && liveSession.remainingSeconds > 0);
+                
+                return (
+                <tr key={device.id} className={isDeviceActive ? 'bg-white' : 'bg-slate-50 opacity-60'}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className={`w-3 h-3 rounded-full mr-3 ${
-                        device.isActive ? 'bg-green-500' : 'bg-slate-400'
+                        isDeviceActive ? 'bg-green-500' : 'bg-slate-400'
                       }`}></div>
                       <div>
                         <div className="text-sm font-medium text-slate-900">
@@ -414,14 +433,25 @@ const DeviceManager: React.FC = () => {
                     {formatDate(device.connectedAt)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-slate-900">
-                      {device.sessionTime ? formatTime(device.sessionTime) : 'No Session'}
-                    </div>
-                    {device.totalPaid ? (
-                      <div className="text-xs text-green-600 font-medium">
-                        ₱{device.totalPaid}
-                      </div>
-                    ) : null}
+                    {(() => {
+                      // Get live session data for this device
+                      const liveSession = sessions.find(s => s.mac.toUpperCase() === device.mac.toUpperCase());
+                      const displayTime = liveSession ? liveSession.remainingSeconds : device.sessionTime;
+                      const displayPaid = liveSession ? liveSession.totalPaid : device.totalPaid;
+                      
+                      return (
+                        <>
+                          <div className="text-sm text-slate-900">
+                            {displayTime ? formatTime(displayTime) : 'No Session'}
+                          </div>
+                          {displayPaid ? (
+                            <div className="text-xs text-green-600 font-medium">
+                              ₱{displayPaid}
+                            </div>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-slate-900">
@@ -443,7 +473,7 @@ const DeviceManager: React.FC = () => {
                     >
                       {refreshingDevices.has(device.id) ? '...' : 'Refresh'}
                     </button>
-                    {device.isActive ? (
+                    {isDeviceActive ? (
                       <button
                         onClick={() => handleDisconnect(device.id)}
                         className="px-3 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700"
@@ -474,7 +504,8 @@ const DeviceManager: React.FC = () => {
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           

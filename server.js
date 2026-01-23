@@ -391,10 +391,14 @@ app.use(async (req, res, next) => {
     if (session) {
       // If IP has changed, update the whitelist rule
       if (session.ip !== clientIp) {
-        console.log(`[NET] Client ${mac} changed IP from ${session.ip} to ${clientIp}. Updating whitelist.`);
+        console.log(`[NET] Client ${mac} moved from IP ${session.ip} to ${clientIp} (likely different SSID). Re-applying limits...`);
+        // Block and clean up old IP (removes TC rules from old VLAN interface)
         await network.blockMAC(mac, session.ip);
+        // Whitelist and re-apply limits on new IP (applies TC rules to new VLAN interface)
         await network.whitelistMAC(mac, clientIp);
+        // Update session with new IP
         await db.run('UPDATE sessions SET ip = ? WHERE mac = ?', [clientIp, mac]);
+        console.log(`[NET] Session limits re-applied for ${mac} on new interface`);
       }
       
       // Handle captive portal probe requests for authorized clients
@@ -1060,12 +1064,34 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
     
     const updatedDevice = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
     
-    // If speed limits changed, apply them immediately if device is connected
-    if (downloadLimit !== undefined || uploadLimit !== undefined) {
-      if (updatedDevice.ip && updatedDevice.mac) {
-         // We use whitelistMAC to re-evaluate priorities (Device > Session) and apply
-         await network.whitelistMAC(updatedDevice.mac, updatedDevice.ip);
+    // If session time is being set, also update the active session if device is connected
+    if (sessionTime !== undefined && updatedDevice.ip && updatedDevice.mac) {
+      const session = await db.get('SELECT * FROM sessions WHERE mac = ?', [updatedDevice.mac]);
+      if (session) {
+        // Update session with new time and ensure limits are synced
+        const newSessionUpdates = ['remaining_seconds = ?'];
+        const newSessionValues = [sessionTime];
+        
+        // Sync device limits to session
+        if (downloadLimit !== undefined || updatedDevice.download_limit) {
+          newSessionUpdates.push('download_limit = ?');
+          newSessionValues.push(downloadLimit !== undefined ? downloadLimit : updatedDevice.download_limit);
+        }
+        if (uploadLimit !== undefined || updatedDevice.upload_limit) {
+          newSessionUpdates.push('upload_limit = ?');
+          newSessionValues.push(uploadLimit !== undefined ? uploadLimit : updatedDevice.upload_limit);
+        }
+        
+        newSessionValues.push(updatedDevice.mac);
+        await db.run(`UPDATE sessions SET ${newSessionUpdates.join(', ')} WHERE mac = ?`, newSessionValues);
+        
+        console.log(`[ADMIN] Updated session for ${updatedDevice.mac}: time=${sessionTime}s, DL=${downloadLimit || updatedDevice.download_limit}, UL=${uploadLimit || updatedDevice.upload_limit}`);
       }
+    }
+    
+    // Always reapply QoS limits if device is connected (whether time, download, or upload changed)
+    if (updatedDevice.ip && updatedDevice.mac && (sessionTime !== undefined || downloadLimit !== undefined || uploadLimit !== undefined)) {
+      await network.whitelistMAC(updatedDevice.mac, updatedDevice.ip);
     }
 
     res.json(updatedDevice);

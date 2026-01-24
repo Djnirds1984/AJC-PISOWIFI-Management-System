@@ -11,10 +11,22 @@ import DeviceManager from './components/Admin/DeviceManager';
 import Login from './components/Admin/Login';
 import ThemeSettings from './components/Admin/ThemeSettings';
 import PortalEditor from './components/Admin/PortalEditor';
+import VendorApp from './components/Vendor/VendorApp';
 import { apiClient } from './lib/api';
 import { initAdminTheme, setAdminTheme } from './lib/theme';
 
 const App: React.FC = () => {
+  // Check if this is the vendor portal
+  const isVendorPath = () => {
+    const path = window.location.pathname.toLowerCase();
+    return path.startsWith('/vendor');
+  };
+
+  // If vendor path, render vendor app
+  if (isVendorPath()) {
+    return <VendorApp />;
+  }
+
   const isCurrentlyAdminPath = () => {
     const path = window.location.pathname.toLowerCase();
     const hasAdminFlag = localStorage.getItem('ajc_admin_mode') === 'true';
@@ -90,44 +102,7 @@ const App: React.FC = () => {
     };
     checkAuth();
 
-    // Check for existing session token and try to restore (Fix for randomized MACs/SSID switching)
-    const restoreSession = async (retries = 5) => {
-        const sessionToken = localStorage.getItem('ajc_session_token');
-        if (sessionToken) {
-            try {
-                const res = await fetch('/api/sessions/restore', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: sessionToken })
-                });
-                
-                // If 400 (Bad Request), it likely means MAC resolution failed temporarily. Retry.
-                if (res.status === 400 && retries > 0) {
-                   console.log(`[Session] Restore failed (400), retrying... (${retries} left)`);
-                   setTimeout(() => restoreSession(retries - 1), 2000);
-                   return;
-                }
-
-                const data = await res.json();
-                if (data.success) {
-                    console.log('Session restored successfully');
-                    if (data.migrated) {
-                        console.log('Session migrated to new network info');
-                        loadData(); // Reload to see active session
-                    }
-                } else if (res.status === 404) {
-                    // Token invalid/expired - only remove if we are sure
-                    console.log('[Session] Token expired or invalid');
-                    localStorage.removeItem('ajc_session_token');
-                }
-            } catch (e) {
-                console.error('Failed to restore session:', e);
-                if (retries > 0) {
-                   setTimeout(() => restoreSession(retries - 1), 2000);
-                }
-            }
-        }
-    };
+    // Restore session on mount
     restoreSession();
 
     return () => window.removeEventListener('popstate', handleLocationChange);
@@ -212,6 +187,46 @@ const App: React.FC = () => {
   const updateRates = async () => {
     await loadData();
   };
+
+  // Check for existing session token and try to restore (Fix for randomized MACs/SSID switching)
+  const restoreSession = async (retries = 5) => {
+    const sessionToken = localStorage.getItem('ajc_session_token');
+    if (sessionToken) {
+      try {
+        const res = await fetch('/api/sessions/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: sessionToken })
+        });
+        
+        // If 400 (Bad Request), it likely means MAC resolution failed temporarily. Retry.
+        if (res.status === 400 && retries > 0) {
+          console.log(`[Session] Restore failed (400), retrying... (${retries} left)`);
+          setTimeout(() => restoreSession(retries - 1), 2000);
+          return;
+        }
+
+        const data = await res.json();
+        if (data.success) {
+          console.log('Session restored successfully');
+          if (data.migrated) {
+            console.log('Session migrated to new network info');
+            loadData(); // Reload to see active session
+          }
+        } else if (res.status === 404) {
+          // Token invalid/expired - only remove if we are sure
+          console.log('[Session] Token expired or invalid');
+          localStorage.removeItem('ajc_session_token');
+        }
+      } catch (e) {
+        console.error('Failed to restore session:', e);
+        if (retries > 0) {
+          setTimeout(() => restoreSession(retries - 1), 2000);
+        }
+      }
+    }
+  };
+
 
   if (loading) {
     return (

@@ -173,3 +173,66 @@ export interface SystemStats {
     tx_sec: number;
   }[];
 }
+
+// ============================================
+// VENDOR DASHBOARD TYPES
+// ============================================
+
+export interface VendorMachine {
+  id: string;
+  vendor_id: string;
+  hardware_id: string;
+  machine_name: string;
+  location: string | null;
+  license_key: string | null;
+  is_licensed: boolean;
+  activated_at: string | null;
+  status: 'online' | 'offline' | 'maintenance';
+  last_seen: string;
+  coin_slot_pulses: number;
+  total_revenue: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SalesLog {
+  id: string;
+  vendor_id: string;
+  machine_id: string;
+  amount: number;
+  currency: string;
+  session_duration: number | null;
+  data_used: number | null;
+  customer_mac: string | null;
+  customer_ip: string | null;
+  transaction_type: 'coin_insert' | 'voucher' | 'refund';
+  created_at: string;
+  notes: string | null;
+}
+
+export interface VendorDashboardSummary {
+  vendor_id: string;
+  total_machines: number;
+  online_machines: number;
+  total_revenue: number;
+  total_transactions: number;
+  revenue_24h: number;
+  revenue_7d: number;
+  revenue_30d: number;
+}
+
+export interface VendorProfile {
+  id: string;
+  email: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+}
+
+export interface RealtimeVendorUpdate {
+  type: 'INSERT' | 'UPDATE' | 'DELETE';
+  table: 'vendors' | 'sales_logs';
+  record: VendorMachine | SalesLog;
+  old_record?: VendorMachine | SalesLog;
+}
+

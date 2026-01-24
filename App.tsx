@@ -11,21 +11,10 @@ import DeviceManager from './components/Admin/DeviceManager';
 import Login from './components/Admin/Login';
 import ThemeSettings from './components/Admin/ThemeSettings';
 import PortalEditor from './components/Admin/PortalEditor';
-import VendorApp from './components/Vendor/VendorApp';
 import { apiClient } from './lib/api';
 import { initAdminTheme, setAdminTheme } from './lib/theme';
 
 const App: React.FC = () => {
-  // Check if this is the vendor portal
-  const isVendorPath = () => {
-    const path = window.location.pathname.toLowerCase();
-    return path.startsWith('/vendor');
-  };
-
-  // If vendor path, render vendor app
-  if (isVendorPath()) {
-    return <VendorApp />;
-  }
 
   const isCurrentlyAdminPath = () => {
     const path = window.location.pathname.toLowerCase();

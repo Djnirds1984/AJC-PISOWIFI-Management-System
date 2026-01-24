@@ -212,6 +212,16 @@ app.get('/api/license/hardware-id', async (req, res) => {
   }
 });
 
+// CLOUD SYNC STATUS API
+app.get('/api/sync/status', requireAdmin, async (req, res) => {
+  try {
+    const stats = getSyncStats();
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
@@ -220,6 +230,9 @@ const execPromise = util.promisify(exec);
 const { initializeLicenseManager } = require('./lib/license.ts');
 const { checkTrialStatus, activateLicense: storeLocalLicense } = require('./lib/trial');
 const { getUniqueHardwareId } = require('./lib/hardware.ts');
+
+// Edge Sync (Cloud Data Sync)
+const { syncSaleToCloud, getSyncStats } = require('./lib/edge-sync.ts');
 
 // Initialize license manager (will use env variables if available)
 const licenseManager = initializeLicenseManager();
@@ -585,6 +598,17 @@ app.post('/api/sessions/start', async (req, res) => {
     await network.whitelistMAC(mac, clientIp);
     
     console.log(`[AUTH] Session started for ${mac} (${clientIp}) - ${seconds}s, ₱${pesos}, Limits: ${downloadLimit}/${uploadLimit} Mbps`);
+    
+    // Sync sale to cloud (non-blocking)
+    syncSaleToCloud({
+      amount: pesos,
+      session_duration: seconds,
+      customer_mac: mac,
+      transaction_type: 'coin_insert'
+    }).catch(err => {
+      console.error('[Sync] Failed to sync sale to cloud:', err);
+    });
+    
     res.json({ success: true, mac, token, message: 'Internet access granted. Please refresh your browser or wait a moment for connection to activate.' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1594,6 +1618,20 @@ server.listen(80, '0.0.0.0', async () => {
   } catch (error) {
     console.error('[License] Error during license check:', error);
     console.warn('[License] Proceeding with caution...');
+  }
+  
+  // Display cloud sync status
+  const syncStats = getSyncStats();
+  console.log('[EdgeSync] Configuration:', syncStats.configured ? '✓ Connected' : '✗ Not configured');
+  if (syncStats.configured) {
+    console.log(`[EdgeSync] Machine ID: ${syncStats.machineId}`);
+    console.log(`[EdgeSync] Vendor ID: ${syncStats.vendorId}`);
+    console.log(`[EdgeSync] Status sync: ${syncStats.statusSyncActive ? 'Active (60s interval)' : 'Inactive'}`);
+    if (syncStats.queuedSyncs > 0) {
+      console.log(`[EdgeSync] Queued syncs: ${syncStats.queuedSyncs} (will retry)`);
+    }
+  } else {
+    console.warn('[EdgeSync] Cloud sync disabled - MACHINE_ID or VENDOR_ID not set in .env');
   }
   
   await bootupRestore();

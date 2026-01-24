@@ -58,6 +58,35 @@ export interface VlanConfig {
   name: string;
 }
 
+export interface PPPoEServerConfig {
+  interface: string;
+  local_ip: string;
+  ip_pool_start: string;
+  ip_pool_end: string;
+  dns1?: string;
+  dns2?: string;
+  service_name?: string;
+  enabled: number;
+}
+
+export interface PPPoEUser {
+  id?: number;
+  username: string;
+  password: string;
+  enabled: number;
+  ip_address?: string;
+  created_at?: string;
+}
+
+export interface PPPoESession {
+  username: string;
+  ip: string;
+  interface: string;
+  uptime: number;
+  rx_bytes: number;
+  tx_bytes: number;
+}
+
 export interface UserSession {
   mac: string;
   ip: string;

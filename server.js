@@ -855,6 +855,88 @@ app.delete('/api/network/bridge/:name', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// PPPoE SERVER API ENDPOINTS
+app.get('/api/network/pppoe/status', requireAdmin, async (req, res) => {
+  try {
+    const status = await network.getPPPoEServerStatus();
+    res.json(status);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/network/pppoe/start', requireAdmin, async (req, res) => {
+  try {
+    const { interface: iface, local_ip, ip_pool_start, ip_pool_end, dns1, dns2, service_name } = req.body;
+    
+    if (!iface || !local_ip || !ip_pool_start || !ip_pool_end) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const result = await network.startPPPoEServer({
+      interface: iface,
+      local_ip,
+      ip_pool_start,
+      ip_pool_end,
+      dns1,
+      dns2,
+      service_name
+    });
+    
+    res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/network/pppoe/stop', requireAdmin, async (req, res) => {
+  try {
+    const { interface: iface } = req.body;
+    const result = await network.stopPPPoEServer(iface);
+    res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/network/pppoe/sessions', requireAdmin, async (req, res) => {
+  try {
+    const sessions = await network.getPPPoESessions();
+    res.json(sessions);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/network/pppoe/users', requireAdmin, async (req, res) => {
+  try {
+    const users = await network.getPPPoEUsers();
+    res.json(users);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/network/pppoe/users', requireAdmin, async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password required' });
+    }
+    
+    const result = await network.addPPPoEUser(username, password);
+    res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/network/pppoe/users/:id', requireAdmin, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const updates = req.body;
+    const result = await network.updatePPPoEUser(userId, updates);
+    res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/network/pppoe/users/:id', requireAdmin, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const result = await network.deletePPPoEUser(userId);
+    res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // DEVICE MANAGEMENT API ENDPOINTS
 app.get('/api/devices', requireAdmin, async (req, res) => {
   try {

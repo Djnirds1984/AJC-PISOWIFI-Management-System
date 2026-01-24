@@ -1,5 +1,5 @@
 
-import { Rate, NetworkInterface, SystemConfig, WanConfig, VlanConfig, WifiDevice, DeviceSession } from '../types';
+import { Rate, NetworkInterface, SystemConfig, WanConfig, VlanConfig, WifiDevice, DeviceSession, PPPoEServerConfig, PPPoEUser, PPPoESession, QoSConfig } from '../types';
 
 const API_BASE = '/api';
 
@@ -340,6 +340,66 @@ export const apiClient = {
 
   async getSessions(): Promise<any[]> {
     const res = await fetch(`${API_BASE}/sessions`);
+    return handleResponse(res);
+  },
+
+  // PPPoE Server Management APIs
+  async getPPPoEServerStatus(): Promise<any> {
+    const res = await fetch(`${API_BASE}/network/pppoe/status`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async startPPPoEServer(config: PPPoEServerConfig): Promise<{ success: boolean; message?: string }> {
+    const res = await fetch(`${API_BASE}/network/pppoe/start`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(config)
+    });
+    return handleResponse(res);
+  },
+
+  async stopPPPoEServer(interfaceName: string): Promise<{ success: boolean }> {
+    const res = await fetch(`${API_BASE}/network/pppoe/stop`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ interface: interfaceName })
+    });
+    return handleResponse(res);
+  },
+
+  async getPPPoESessions(): Promise<PPPoESession[]> {
+    const res = await fetch(`${API_BASE}/network/pppoe/sessions`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async getPPPoEUsers(): Promise<PPPoEUser[]> {
+    const res = await fetch(`${API_BASE}/network/pppoe/users`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async addPPPoEUser(username: string, password: string): Promise<{ success: boolean }> {
+    const res = await fetch(`${API_BASE}/network/pppoe/users`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ username, password })
+    });
+    return handleResponse(res);
+  },
+
+  async updatePPPoEUser(id: number, updates: Partial<PPPoEUser>): Promise<{ success: boolean }> {
+    const res = await fetch(`${API_BASE}/network/pppoe/users/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(updates)
+    });
+    return handleResponse(res);
+  },
+
+  async deletePPPoEUser(id: number): Promise<{ success: boolean }> {
+    const res = await fetch(`${API_BASE}/network/pppoe/users/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
     return handleResponse(res);
   }
 };

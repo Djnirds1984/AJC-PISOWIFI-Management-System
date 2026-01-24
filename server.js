@@ -133,9 +133,107 @@ app.post('/api/admin/change-password', requireAdmin, async (req, res) => {
   }
 });
 
+// LICENSE MANAGEMENT API
+app.get('/api/license/status', async (req, res) => {
+  try {
+    if (!systemHardwareId) {
+      systemHardwareId = await getUniqueHardwareId();
+    }
+
+    // Check trial status
+    const trialStatus = await checkTrialStatus(systemHardwareId);
+    
+    // Check cloud license verification
+    const verification = await licenseManager.verifyLicense();
+
+    res.json({
+      hardwareId: systemHardwareId,
+      isLicensed: verification.isValid && verification.isActivated,
+      trial: {
+        isActive: trialStatus.isTrialActive,
+        hasEnded: trialStatus.trialEnded,
+        daysRemaining: trialStatus.daysRemaining,
+        expiresAt: trialStatus.expiresAt
+      },
+      canOperate: verification.isValid || trialStatus.isTrialActive
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/license/activate', async (req, res) => {
+  const { licenseKey } = req.body;
+  
+  if (!licenseKey || licenseKey.trim().length === 0) {
+    return res.status(400).json({ error: 'License key is required' });
+  }
+
+  try {
+    if (!systemHardwareId) {
+      systemHardwareId = await getUniqueHardwareId();
+    }
+
+    // Activate on cloud (Supabase)
+    const result = await licenseManager.activateDevice(licenseKey.trim());
+    
+    if (result.success) {
+      // Store locally for offline verification
+      await storeLocalLicense(systemHardwareId, licenseKey.trim());
+      
+      res.json({ 
+        success: true, 
+        message: result.message,
+        hardwareId: systemHardwareId
+      });
+    } else {
+      res.status(400).json({ 
+        success: false, 
+        error: result.message 
+      });
+    }
+  } catch (err) {
+    console.error('[License] Activation error:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Activation failed: ' + err.message 
+    });
+  }
+});
+
+app.get('/api/license/hardware-id', async (req, res) => {
+  try {
+    if (!systemHardwareId) {
+      systemHardwareId = await getUniqueHardwareId();
+    }
+    res.json({ hardwareId: systemHardwareId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
+
+// License Management
+const { initializeLicenseManager } = require('./lib/license.ts');
+const { checkTrialStatus, activateLicense: storeLocalLicense } = require('./lib/trial');
+const { getUniqueHardwareId } = require('./lib/hardware.ts');
+
+// Initialize license manager (will use env variables if available)
+const licenseManager = initializeLicenseManager();
+let systemHardwareId = null;
+
+// Initialize hardware ID on startup
+(async () => {
+  try {
+    systemHardwareId = await getUniqueHardwareId();
+    console.log(`[License] Hardware ID: ${systemHardwareId}`);
+  } catch (error) {
+    console.error('[License] Failed to get hardware ID:', error);
+  }
+})();
 
 // Helper: Get MAC from IP using ARP table and DHCP leases
 async function getMacFromIp(ip) {
@@ -1445,5 +1543,58 @@ server.listen(80, '0.0.0.0', async () => {
   } catch (e) {
     console.error('[AJC] Critical DB Init Error:', e);
   }
+  
+  // License Gatekeeper - Check if system can operate
+  console.log('[License] Checking license and trial status...');
+  try {
+    if (!systemHardwareId) {
+      systemHardwareId = await getUniqueHardwareId();
+    }
+
+    const trialStatus = await checkTrialStatus(systemHardwareId);
+    const verification = await licenseManager.verifyLicense();
+    
+    const isLicensed = verification.isValid && verification.isActivated;
+    const canOperate = isLicensed || trialStatus.isTrialActive;
+
+    console.log(`[License] Hardware ID: ${systemHardwareId}`);
+    console.log(`[License] Licensed: ${isLicensed ? 'YES' : 'NO'}`);
+    console.log(`[License] Trial Active: ${trialStatus.isTrialActive ? 'YES' : 'NO'}`);
+    
+    if (trialStatus.isTrialActive && !isLicensed) {
+      console.log(`[License] Trial Mode - ${trialStatus.daysRemaining} days remaining`);
+      console.log(`[License] Trial expires: ${trialStatus.expiresAt}`);
+    }
+    
+    if (!canOperate) {
+      console.error('╔════════════════════════════════════════════════════════════╗');
+      console.error('║                   LICENSE REQUIRED                         ║');
+      console.error('╠════════════════════════════════════════════════════════════╣');
+      console.error('║  Your 7-day trial has expired and no valid license        ║');
+      console.error('║  was found for this device.                                ║');
+      console.error('║                                                            ║');
+      console.error('║  Hardware ID: ' + systemHardwareId.padEnd(41) + '║');
+      console.error('║                                                            ║');
+      console.error('║  To activate:                                              ║');
+      console.error('║  1. Contact your vendor for a license key                 ║');
+      console.error('║  2. Navigate to http://[device-ip]/admin                  ║');
+      console.error('║  3. Go to System Settings > License Activation            ║');
+      console.error('║  4. Enter your license key                                 ║');
+      console.error('║                                                            ║');
+      console.error('║  The system will continue to run in demo mode but         ║');
+      console.error('║  PisoWiFi services are disabled.                          ║');
+      console.error('╚════════════════════════════════════════════════════════════╝');
+      
+      // Don't restore services if not licensed
+      console.log('[License] Skipping service restoration - License required');
+      return;
+    }
+    
+    console.log('[License] ✓ License verification passed - Starting services...');
+  } catch (error) {
+    console.error('[License] Error during license check:', error);
+    console.warn('[License] Proceeding with caution...');
+  }
+  
   await bootupRestore();
 });

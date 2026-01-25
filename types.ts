@@ -139,7 +139,8 @@ export enum AdminTab {
   Updater = 'updater',
   Devices = 'devices',
   Themes = 'themes',
-  PortalEditor = 'portal_editor'
+  PortalEditor = 'portal_editor',
+  PPPoE = 'pppoe'
 }
 
 export interface UpdateLog {

@@ -227,12 +227,12 @@ const util = require('util');
 const execPromise = util.promisify(exec);
 
 // License Management
-const { initializeLicenseManager } = require('./lib/license.ts');
+const { initializeLicenseManager } = require('./lib/license');
 const { checkTrialStatus, activateLicense: storeLocalLicense } = require('./lib/trial');
-const { getUniqueHardwareId } = require('./lib/hardware.ts');
+const { getUniqueHardwareId } = require('./lib/hardware');
 
 // Edge Sync (Cloud Data Sync)
-const { syncSaleToCloud, getSyncStats } = require('./lib/edge-sync.ts');
+const { syncSaleToCloud, getSyncStats } = require('./lib/edge-sync');
 
 // Initialize license manager (will use env variables if available)
 const licenseManager = initializeLicenseManager();

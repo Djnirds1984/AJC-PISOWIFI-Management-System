@@ -24,6 +24,7 @@ https.get(url, function(response) {
               file.on('finish', function() {
                   file.close(() => {
                       console.log('Download completed.');
+                      process.exit(0);
                   });
               });
           });
@@ -34,6 +35,7 @@ https.get(url, function(response) {
   file.on('finish', function() {
     file.close(() => {
         console.log('Download completed.');
+        process.exit(0);
     });
   });
 }).on('error', function(err) {

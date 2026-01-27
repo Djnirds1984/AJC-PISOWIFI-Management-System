@@ -151,6 +151,7 @@ app.get('/api/license/status', async (req, res) => {
     res.json({
       hardwareId: systemHardwareId,
       isLicensed: verification.isValid && verification.isActivated,
+      licenseKey: verification.licenseKey,
       trial: {
         isActive: trialStatus.isTrialActive,
         hasEnded: trialStatus.trialEnded,
@@ -245,6 +246,9 @@ let systemHardwareId = null;
   try {
     systemHardwareId = await getUniqueHardwareId();
     console.log(`[License] Hardware ID: ${systemHardwareId}`);
+
+    // Attempt to sync license from cloud on startup
+    await licenseManager.fetchAndCacheLicense(systemHardwareId);
   } catch (error) {
     console.error('[License] Failed to get hardware ID:', error);
   }

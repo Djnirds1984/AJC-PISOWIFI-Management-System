@@ -4,6 +4,7 @@ import { apiClient } from '../../lib/api';
 interface LicenseStatus {
   hardwareId: string;
   isLicensed: boolean;
+  licenseKey?: string;
   trial: {
     isActive: boolean;
     hasEnded: boolean;
@@ -443,6 +444,14 @@ const LicenseActivation: React.FC<{ licenseStatus: LicenseStatus | null; onActiv
           <p className="text-sm font-black text-green-900 uppercase tracking-tight mb-2">
             License Activated
           </p>
+          {licenseStatus.licenseKey && (
+            <div className="mb-4">
+              <p className="text-[9px] text-green-700 font-bold uppercase mb-1">Active License Key</p>
+              <code className="bg-white/50 border border-green-200 text-green-800 px-4 py-2 rounded-xl text-xs font-mono font-bold inline-block">
+                {licenseStatus.licenseKey}
+              </code>
+            </div>
+          )}
           <p className="text-[10px] text-green-700 font-bold uppercase">
             Your device is fully licensed and operational. Thank you for your support!
           </p>

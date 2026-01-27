@@ -140,7 +140,8 @@ export enum AdminTab {
   Devices = 'devices',
   Themes = 'themes',
   PortalEditor = 'portal_editor',
-  PPPoE = 'pppoe'
+  PPPoE = 'pppoe',
+  Machines = 'machines'
 }
 
 export interface UpdateLog {
@@ -194,6 +195,9 @@ export interface VendorMachine {
   total_revenue: number;
   created_at: string;
   updated_at: string;
+  cpu_temp?: number;
+  uptime_seconds?: number;
+  active_sessions_count?: number;
 }
 
 export interface SalesLog {

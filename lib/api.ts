@@ -265,6 +265,11 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  async getMachineStatus(): Promise<any> {
+    const res = await fetch(`${API_BASE}/machine/status`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
   // Hotspot Management APIs
   async getHotspots(): Promise<any[]> {
     const res = await fetch(`${API_BASE}/hotspots`, { headers: getHeaders() });

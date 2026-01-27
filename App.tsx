@@ -12,6 +12,7 @@ import Login from './components/Admin/Login';
 import ThemeSettings from './components/Admin/ThemeSettings';
 import PortalEditor from './components/Admin/PortalEditor';
 import PPPoEServer from './components/Admin/PPPoEServer';
+import { MyMachines } from './components/Admin/MyMachines';
 import { apiClient } from './lib/api';
 import { initAdminTheme, setAdminTheme } from './lib/theme';
 
@@ -268,6 +269,7 @@ const App: React.FC = () => {
               <SidebarItem active={activeTab === AdminTab.Themes} onClick={() => setActiveTab(AdminTab.Themes)} icon="🎨" label="Themes" />
               <SidebarItem active={activeTab === AdminTab.PortalEditor} onClick={() => setActiveTab(AdminTab.PortalEditor)} icon="🖥️" label="Portal" />
               <SidebarItem active={activeTab === AdminTab.PPPoE} onClick={() => setActiveTab(AdminTab.PPPoE)} icon="📞" label="PPPoE Server" />
+              <SidebarItem active={activeTab === AdminTab.Machines} onClick={() => setActiveTab(AdminTab.Machines)} icon="🤖" label="My Machines" />
               <SidebarItem active={activeTab === AdminTab.System} onClick={() => setActiveTab(AdminTab.System)} icon="⚙️" label="System" />
               <SidebarItem active={activeTab === AdminTab.Updater} onClick={() => setActiveTab(AdminTab.Updater)} icon="🚀" label="Updater" />
             </nav>
@@ -307,6 +309,7 @@ const App: React.FC = () => {
                 {activeTab === AdminTab.Themes && <ThemeSettings />}
                 {activeTab === AdminTab.PortalEditor && <PortalEditor />}
                 {activeTab === AdminTab.PPPoE && <PPPoEServer />}
+                {activeTab === AdminTab.Machines && <MyMachines />}
                 {activeTab === AdminTab.System && <SystemSettings />}
                 {activeTab === AdminTab.Updater && <SystemUpdater />}
               </div>

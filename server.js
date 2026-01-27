@@ -11,6 +11,7 @@ const network = require('./lib/network');
 const { verifyPassword, hashPassword } = require('./lib/auth');
 const crypto = require('crypto');
 const multer = require('multer');
+const edgeSync = require('./lib/edge-sync');
 
 const app = express();
 const server = http.createServer(app);
@@ -833,6 +834,24 @@ app.get('/api/system/info', requireAdmin, async (req, res) => {
       distro: os.distro,
       arch: os.arch,
       platform: os.platform
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/machine/status', requireAdmin, async (req, res) => {
+  try {
+    const identity = edgeSync.getIdentity();
+    const metrics = await edgeSync.getMetrics();
+    
+    // Check if pending activation (no vendor_id)
+    const status = !identity.vendorId ? 'pending_activation' : 'active';
+    
+    res.json({
+      ...identity,
+      status,
+      metrics
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

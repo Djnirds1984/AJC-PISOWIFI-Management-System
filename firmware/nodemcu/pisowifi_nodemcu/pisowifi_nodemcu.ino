@@ -32,6 +32,7 @@
 
 // Configuration structure
 struct Config {
+  uint32_t magic;
   char ssid[32];
   char password[32];
   char authenticationKey[64];
@@ -43,6 +44,7 @@ struct Config {
 
 // Global variables
 Config config;
+const uint32_t CONFIG_MAGIC = 0xP150CAFE; // Magic number to verify config validity
 ESP8266WebServer server(80);
 DNSServer dnsServer;
 const byte DNS_PORT = 53;
@@ -113,14 +115,15 @@ void loop() {
 void loadConfig() {
   EEPROM.get(CONFIG_ADDR, config);
   
-  // Check if configuration is valid
-  if (config.configured) {
+  // Check if configuration is valid using magic number
+  if (config.magic == CONFIG_MAGIC && config.configured) {
     Serial.println("[Config] Loaded existing configuration");
     Serial.printf("[Config] SSID: %s\n", config.ssid);
     Serial.printf("[Config] Key: %s\n", config.authenticationKey);
   } else {
-    Serial.println("[Config] No configuration found, using defaults");
+    Serial.println("[Config] Invalid config or magic mismatch, resetting to defaults");
     // Initialize with defaults
+    config.magic = CONFIG_MAGIC;
     strncpy(config.ssid, "", sizeof(config.ssid));
     strncpy(config.password, "", sizeof(config.password));
     strncpy(config.authenticationKey, "", sizeof(config.authenticationKey));
@@ -156,8 +159,11 @@ void initGPIO() {
   }
   
   // Status LED
-  pinMode(12, OUTPUT); // D6
-  digitalWrite(12, LOW);
+  // Use D0 (GPIO 16) or LED_BUILTIN (GPIO 2) if available. 
+  // Avoid D6 (GPIO 12) as it conflicts with Coin Slot 1 default.
+  int ledPin = 16; // D0
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, HIGH); // Turn off (Active Low usually) or Low for On
 }
 
 // Start Access Point mode
@@ -649,6 +655,7 @@ void handleReboot() {
 
 void handleResetConfig() {
   // Reset configuration to defaults
+  config.magic = CONFIG_MAGIC;
   strncpy(config.ssid, "", sizeof(config.ssid));
   strncpy(config.password, "", sizeof(config.password));
   strncpy(config.authenticationKey, "", sizeof(config.authenticationKey));
@@ -678,7 +685,7 @@ void coinInterrupt() {
       if (now - lastInterruptTime[i] > debounceDelay) {
         coinDetected[i] = true;
         lastInterruptTime[i] = now;
-        Serial.printf("[Coin] Slot %d triggered (denomination: %d)\n", i + 1, config.denominations[i]);
+        // Serial.printf removed from ISR to prevent crashes
       }
     }
   }
@@ -688,6 +695,7 @@ void coinInterrupt() {
 void processCoinDetections() {
   for (int i = 0; i < 4; i++) {
     if (coinDetected[i] && config.slotEnabled[i]) {
+      Serial.printf("[Coin] Slot %d triggered (denomination: %d)\n", i + 1, config.denominations[i]);
       // Send coin detection to main system if configured
       if (config.configured && WiFi.status() == WL_CONNECTED) {
         sendCoinDetection(i + 1, config.denominations[i]);

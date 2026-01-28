@@ -1094,6 +1094,22 @@ app.get('/api/nodemcu/devices', requireAdmin, async (req, res) => {
   }
 });
 
+// Public endpoint for portal to get accepted devices
+app.get('/api/nodemcu/available', async (req, res) => {
+  try {
+    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    const devices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
+    const availableDevices = devices.filter(d => d.status === 'accepted').map(d => ({
+      id: d.id,
+      name: d.name,
+      macAddress: d.macAddress
+    }));
+    res.json(availableDevices);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get single NodeMCU device
 app.get('/api/nodemcu/:deviceId', requireAdmin, async (req, res) => {
   try {

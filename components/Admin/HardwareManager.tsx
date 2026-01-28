@@ -1,10 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { BoardType, SystemConfig, CoinSlotConfig } from '../../types';
+import { BoardType, SystemConfig, CoinSlotConfig, NodeMCUDevice } from '../../types';
 import { apiClient } from '../../lib/api';
 import { 
   Save, 
   Cpu,
-  Monitor
+  Monitor,
+  Wifi,
+  Trash2,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Edit2
 } from 'lucide-react';
 
 const HardwareManager: React.FC = () => {
@@ -12,12 +18,18 @@ const HardwareManager: React.FC = () => {
   const [pin, setPin] = useState(2);
   const [boardModel, setBoardModel] = useState<string>('orange_pi_one');
   const [coinSlots, setCoinSlots] = useState<CoinSlotConfig[]>([]);
+  const [nodemcuDevices, setNodemcuDevices] = useState<NodeMCUDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
     loadConfig();
+    loadNodemcuDevices();
+    
+    // Refresh device list periodically
+    const interval = setInterval(loadNodemcuDevices, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadConfig = async () => {
@@ -33,6 +45,43 @@ const HardwareManager: React.FC = () => {
       console.error('Failed to load hardware config');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadNodemcuDevices = async () => {
+    try {
+      const devices = await apiClient.getNodeMCUDevices();
+      setNodemcuDevices(devices);
+    } catch (e) {
+      console.error('Failed to load NodeMCU devices');
+    }
+  };
+
+  const handleUpdateDeviceStatus = async (deviceId: string, status: 'accepted' | 'rejected') => {
+    try {
+      await apiClient.updateNodeMCUStatus(deviceId, status);
+      loadNodemcuDevices();
+    } catch (e) {
+      alert('Failed to update device status');
+    }
+  };
+
+  const handleDeleteDevice = async (deviceId: string) => {
+    if (!confirm('Are you sure you want to remove this device?')) return;
+    try {
+      await apiClient.removeNodeMCUDevice(deviceId);
+      loadNodemcuDevices();
+    } catch (e) {
+      alert('Failed to delete device');
+    }
+  };
+
+  const handleUpdateDeviceConfig = async (deviceId: string, name: string, pin: number) => {
+    try {
+      await apiClient.sendNodeMCUConfig(deviceId, { name, pin });
+      loadNodemcuDevices();
+    } catch (e) {
+      alert('Failed to update device configuration');
     }
   };
 
@@ -166,6 +215,133 @@ const HardwareManager: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Sub-Vendo Controller Section */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+          <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+            <Wifi size={16} className="text-slate-700" /> Sub-Vendo Controller
+          </h3>
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            {nodemcuDevices.length} Connected Devices
+          </span>
+        </div>
+        <div className="p-6">
+          {nodemcuDevices.length === 0 ? (
+            <div className="text-center py-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+              <div className="text-slate-300 mb-2 flex justify-center"><Wifi size={48} /></div>
+              <p className="text-xs font-black text-slate-400 uppercase tracking-widest">No NodeMCU devices detected</p>
+              <p className="text-[10px] text-slate-400 mt-1">Make sure your NodeMCU is running the firmware and connected to the network</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {nodemcuDevices.map((device) => (
+                <div key={device.id} className="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden flex flex-col">
+                  <div className="p-4 border-b border-slate-100 flex justify-between items-start">
+                    <div>
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Device Name</div>
+                      <div className="text-xs font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                        {device.name}
+                        {device.status === 'accepted' ? (
+                          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                        ) : (
+                          <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Status</div>
+                      <div className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                        device.status === 'accepted' ? 'bg-green-100 text-green-700' : 
+                        device.status === 'pending' ? 'bg-amber-100 text-amber-700' : 
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {device.status}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="p-4 space-y-3 flex-grow">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">IP Address</div>
+                        <div className="text-[10px] font-mono text-slate-700">{device.ipAddress}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">MAC Address</div>
+                        <div className="text-[10px] font-mono text-slate-700">{device.macAddress}</div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Revenue</div>
+                        <div className="text-xs font-black text-slate-900 tracking-tight">₱{device.totalRevenue}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Pulses</div>
+                        <div className="text-xs font-black text-slate-900 tracking-tight">{device.totalPulses}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                       <div className="flex items-center gap-1.5 text-slate-500">
+                          <Clock size={12} />
+                          <span className="text-[9px] font-bold uppercase tracking-widest">
+                            Seen {new Date(device.lastSeen).toLocaleTimeString()}
+                          </span>
+                       </div>
+                       <div className="flex items-center gap-1.5 text-slate-500">
+                          <Cpu size={12} />
+                          <span className="text-[9px] font-bold uppercase tracking-widest">
+                            GPIO {device.pin}
+                          </span>
+                       </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-white border-t border-slate-100 grid grid-cols-2 gap-2">
+                    {device.status === 'pending' ? (
+                      <>
+                        <button 
+                          onClick={() => handleUpdateDeviceStatus(device.id, 'accepted')}
+                          className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-green-600 text-white text-[9px] font-black uppercase tracking-widest hover:bg-green-700 transition-all active:scale-95"
+                        >
+                          <CheckCircle size={12} /> Accept
+                        </button>
+                        <button 
+                          onClick={() => handleUpdateDeviceStatus(device.id, 'rejected')}
+                          className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-slate-100 text-slate-600 text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                        >
+                          <XCircle size={12} /> Reject
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button 
+                          onClick={() => {
+                            const newName = prompt('Enter device name:', device.name);
+                            if (newName) handleUpdateDeviceConfig(device.id, newName, device.pin);
+                          }}
+                          className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-slate-100 text-slate-600 text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                        >
+                          <Edit2 size={12} /> Rename
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteDevice(device.id)}
+                          className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-red-50 text-red-600 text-[9px] font-black uppercase tracking-widest hover:bg-red-100 transition-all active:scale-95"
+                        >
+                          <Trash2 size={12} /> Remove
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

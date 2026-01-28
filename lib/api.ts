@@ -493,5 +493,10 @@ export const apiClient = {
   async getNodeMCUDevice(deviceId: string): Promise<any> {
     const res = await fetch(`${API_BASE}/nodemcu/${deviceId}`, { headers: getHeaders() });
     return handleResponse(res);
+  },
+
+  async getAvailableNodeMCUDevices(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/nodemcu/available`);
+    return handleResponse(res);
   }
 };

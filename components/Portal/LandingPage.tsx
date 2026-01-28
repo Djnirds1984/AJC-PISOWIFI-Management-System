@@ -20,6 +20,8 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   const [isMacLoading, setIsMacLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [config, setConfig] = useState<PortalConfig>(DEFAULT_PORTAL_CONFIG);
+  const [availableSlots, setAvailableSlots] = useState<{id: string, name: string, macAddress: string}[]>([]);
+  const [selectedSlot, setSelectedSlot] = useState<string>('main');
 
   // Hardcoded default rates in case the API fetch returns nothing
   const defaultRates: Rate[] = [
@@ -48,6 +50,17 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
       setConfig(cfg);
     };
     loadConfig();
+
+    // Load Available Coinslots
+    const loadAvailableSlots = async () => {
+      try {
+        const slots = await apiClient.getAvailableNodeMCUDevices();
+        setAvailableSlots(slots);
+      } catch (e) {
+        console.error('Failed to load available coinslots');
+      }
+    };
+    loadAvailableSlots();
 
     // Set fallback ID immediately so UI can render
     const fallbackId = getFallbackId();
@@ -259,6 +272,41 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
               <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">📡</div>
               <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Insert Coins to Connect</h2>
               <p className="text-slate-500 text-sm mb-6 font-medium px-4">Drop physical coins into the slot to enable high-speed internet access.</p>
+              
+              {availableSlots.length > 0 && (
+                <div className="px-8 mb-6">
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 text-center">
+                    Select Coinslot Location
+                  </label>
+                  <div className="grid grid-cols-1 gap-2">
+                    <button 
+                      onClick={() => setSelectedSlot('main')}
+                      className={`py-3 px-4 rounded-xl border-2 text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between ${
+                        selectedSlot === 'main' 
+                          ? 'border-blue-600 bg-blue-50 text-blue-700' 
+                          : 'border-slate-100 text-slate-400 hover:border-slate-200'
+                      }`}
+                    >
+                      <span>Main Machine</span>
+                      {selectedSlot === 'main' && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
+                    </button>
+                    {availableSlots.map(slot => (
+                      <button 
+                        key={slot.id}
+                        onClick={() => setSelectedSlot(slot.macAddress)}
+                        className={`py-3 px-4 rounded-xl border-2 text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between ${
+                          selectedSlot === slot.macAddress 
+                            ? 'border-blue-600 bg-blue-50 text-blue-700' 
+                            : 'border-slate-100 text-slate-400 hover:border-slate-200'
+                        }`}
+                      >
+                        <span>{slot.name}</span>
+                        {selectedSlot === slot.macAddress && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -333,6 +381,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
           onClose={() => setShowModal(false)} 
           audioSrc={config.coinDropAudio}
           insertCoinAudioSrc={config.insertCoinAudio}
+          selectedSlot={selectedSlot}
           onSuccess={(pesos, minutes) => {
             onSessionStart({
               mac: myMac,

@@ -19,6 +19,7 @@ const HardwareManager: React.FC = () => {
   const [boardModel, setBoardModel] = useState<string>('orange_pi_one');
   const [coinSlots, setCoinSlots] = useState<CoinSlotConfig[]>([]);
   const [nodemcuDevices, setNodemcuDevices] = useState<NodeMCUDevice[]>([]);
+  const [registrationKey, setRegistrationKey] = useState<string>('7B3F1A9');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -38,6 +39,7 @@ const HardwareManager: React.FC = () => {
       setBoard(cfg.boardType);
       setPin(cfg.coinPin);
       if (cfg.boardModel) setBoardModel(cfg.boardModel);
+      if (cfg.registrationKey) setRegistrationKey(cfg.registrationKey);
       if (cfg.coinSlots && cfg.coinSlots.length > 0) {
         setCoinSlots(cfg.coinSlots);
       }
@@ -93,7 +95,8 @@ const HardwareManager: React.FC = () => {
         boardType: board, 
         coinPin: pin,
         boardModel: board === 'orange_pi' ? boardModel : null,
-        coinSlots: coinSlots
+        coinSlots: coinSlots,
+        registrationKey: registrationKey
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -229,6 +232,51 @@ const HardwareManager: React.FC = () => {
           </span>
         </div>
         <div className="p-6">
+          {/* System Auth Key Display */}
+          <div className="mb-8 p-6 bg-slate-900 rounded-2xl border border-slate-800 shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 blur-3xl rounded-full"></div>
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div>
+                <div className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-2">System Authentication Key</div>
+                <div className="flex items-center gap-4">
+                  <div className="text-2xl font-black text-white tracking-widest font-mono">
+                    {registrationKey}
+                  </div>
+                  <button 
+                    onClick={() => {
+                      const newKey = prompt('Enter new System Authentication Key:', registrationKey);
+                      if (newKey && newKey.trim()) {
+                        setRegistrationKey(newKey.trim());
+                      }
+                    }}
+                    className="p-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all"
+                    title="Change Key"
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase tracking-widest">
+                  Use this key when setting up your NodeMCU sub-vendo units.
+                </p>
+              </div>
+              <div className="hidden md:block">
+                <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-white/20">
+                  <Wifi size={24} />
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-6 py-2 rounded-xl bg-blue-600 text-white font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save System Key'}
+              </button>
+            </div>
+          </div>
+
           {nodemcuDevices.length === 0 ? (
             <div className="text-center py-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
               <div className="text-slate-300 mb-2 flex justify-center"><Wifi size={48} /></div>

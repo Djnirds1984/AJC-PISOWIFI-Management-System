@@ -11,6 +11,7 @@ export interface SystemConfig {
   espPort?: number;
   // For multi-NodeMCU setup
   nodemcuDevices?: NodeMCUDevice[];
+  registrationKey?: string;
   // Deprecated - kept for backward compatibility
   serialPort?: string;
 }

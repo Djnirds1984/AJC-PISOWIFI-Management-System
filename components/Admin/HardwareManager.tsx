@@ -15,7 +15,8 @@ import {
   Plus,
   Save,
   Cpu,
-  Monitor
+  Monitor,
+  Download
 } from 'lucide-react';
 
 const HardwareManager: React.FC = () => {
@@ -26,6 +27,7 @@ const HardwareManager: React.FC = () => {
   const [nodemcuDevices, setNodemcuDevices] = useState<NodeMCUDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [success, setSuccess] = useState(false);
   
   // Modal states
@@ -185,6 +187,36 @@ const HardwareManager: React.FC = () => {
 
   const removeRate = (id: string) => {
     setRatesForm(ratesForm.filter(r => r.id !== id));
+  };
+
+  const handleDownloadFirmware = async () => {
+    setIsDownloading(true);
+    try {
+      const response = await fetch('/api/firmware/nodemcu', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to download firmware');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'NodeMCU_ESP8266.ino';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Failed to download firmware. Please try again.');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const pendingDevices = nodemcuDevices.filter(d => d.status === 'pending');
@@ -397,6 +429,49 @@ const HardwareManager: React.FC = () => {
                {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
                {saving ? 'Saving...' : 'Save Controller Config'}
              </button>
+          </div>
+        </div>
+
+        {/* NodeMCU Firmware Download */}
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden h-full">
+          <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+             <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+               <Download size={16} className="text-slate-700" /> NodeMCU Firmware
+             </h3>
+          </div>
+          <div className="p-6 space-y-4">
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Download the official firmware for NodeMCU ESP8266 devices. 
+              Flash this file using Arduino IDE to enable integration with the system.
+            </p>
+            
+            <button
+              onClick={handleDownloadFirmware}
+              disabled={isDownloading}
+              className="w-full py-4 rounded-xl bg-blue-600 text-white font-black text-xs uppercase tracking-[0.2em] hover:bg-blue-700 transition-all shadow-lg active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2"
+            >
+              {isDownloading ? (
+                <>
+                  <RefreshCw size={14} className="animate-spin" />
+                  Downloading...
+                </>
+              ) : (
+                <>
+                  <Download size={14} />
+                  Download Firmware (.ino)
+                </>
+              )}
+            </button>
+            
+            <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+              <h4 className="text-[10px] font-black text-blue-800 uppercase tracking-widest mb-2">Instructions</h4>
+              <ol className="text-[10px] text-blue-600 space-y-1 list-decimal list-inside">
+                <li>Open <b>NodeMCU_ESP8266.ino</b> in Arduino IDE</li>
+                <li>Select board: <b>NodeMCU 1.0 (ESP-12E Module)</b></li>
+                <li>Install required libraries (ArduinoJson, etc.)</li>
+                <li>Upload to your device</li>
+              </ol>
+            </div>
           </div>
         </div>
 

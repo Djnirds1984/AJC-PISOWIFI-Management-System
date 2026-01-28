@@ -477,7 +477,7 @@ const HardwareManager: React.FC = () => {
               <h4 className="text-[10px] font-black text-amber-800 uppercase tracking-widest mb-2">Troubleshooting</h4>
               <p className="text-[10px] text-amber-700 leading-relaxed">
                 <b>Error 0xc0000135?</b> This is a Windows error indicating a missing DLL in the Arduino toolchain. 
-                Try reinstalling the ESP8266 board package in Arduino IDE (Tools > Board > Boards Manager).
+                Try reinstalling the ESP8266 board package in Arduino IDE (Tools {'>'} Board {'>'} Boards Manager).
               </p>
             </div>
           </div>

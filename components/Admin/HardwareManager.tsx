@@ -89,13 +89,15 @@ const HardwareManager: React.FC = () => {
                   <div className="text-xs font-black uppercase tracking-wide mb-1">Orange Pi</div>
                   <div className="text-[10px] text-slate-500">Physical Pin Map</div>
                 </button>
+                
                 <button 
                   onClick={() => setBoard('x64_pc')}
-                  className={`p-4 rounded-2xl border-2 text-left transition-all ${board === 'x64_pc' ? 'border-purple-600 bg-purple-50' : 'border-slate-100 hover:border-slate-300'}`}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all ${board === 'x64_pc' ? 'border-green-600 bg-green-50' : 'border-slate-100 hover:border-slate-300'}`}
                 >
                   <div className="text-xs font-black uppercase tracking-wide mb-1">x64 PC</div>
                   <div className="text-[10px] text-slate-500">Serial Bridge</div>
                 </button>
+                
                 <button 
                   onClick={() => setBoard('none')}
                   className={`p-4 rounded-2xl border-2 text-left transition-all ${board === 'none' ? 'border-slate-400 bg-slate-50' : 'border-slate-100 hover:border-slate-300'}`}

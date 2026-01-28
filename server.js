@@ -870,7 +870,6 @@ app.get('/api/config', requireAdmin, async (req, res) => {
     const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
     const pin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
     const model = await db.get('SELECT value FROM config WHERE key = ?', ['boardModel']);
-    const serialPort = await db.get('SELECT value FROM config WHERE key = ?', ['serialPort']);
     const coinSlots = await db.get('SELECT value FROM config WHERE key = ?', ['coinSlots']);
     const espIpAddress = await db.get('SELECT value FROM config WHERE key = ?', ['espIpAddress']);
     const espPort = await db.get('SELECT value FROM config WHERE key = ?', ['espPort']);
@@ -880,7 +879,6 @@ app.get('/api/config', requireAdmin, async (req, res) => {
       boardType: board?.value || 'none', 
       coinPin: parseInt(pin?.value || '2'),
       boardModel: model?.value || null,
-      serialPort: serialPort?.value || '/dev/ttyUSB0',
       espIpAddress: espIpAddress?.value || '192.168.4.1',
       espPort: parseInt(espPort?.value || '80'),
       coinSlots: coinSlots?.value ? JSON.parse(coinSlots.value) : [],
@@ -1967,7 +1965,6 @@ async function bootupRestore() {
   const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
   const pin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
   const model = await db.get('SELECT value FROM config WHERE key = ?', ['boardModel']);
-  const serialPort = await db.get('SELECT value FROM config WHERE key = ?', ['serialPort']);
   const espIpAddress = await db.get('SELECT value FROM config WHERE key = ?', ['espIpAddress']);
   const espPort = await db.get('SELECT value FROM config WHERE key = ?', ['espPort']);
   const coinSlots = await db.get('SELECT value FROM config WHERE key = ?', ['coinSlots']);
@@ -1984,7 +1981,7 @@ async function bootupRestore() {
     board?.value || 'none', 
     parseInt(pin?.value || '2'), 
     model?.value,
-    serialPort?.value,
+    null,
     espIpAddress?.value,
     parseInt(espPort?.value || '80'),
     coinSlots?.value ? JSON.parse(coinSlots.value) : [],

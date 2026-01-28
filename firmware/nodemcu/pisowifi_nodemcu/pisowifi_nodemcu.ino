@@ -44,7 +44,7 @@ struct Config {
 
 // Global variables
 Config config;
-const uint32_t CONFIG_MAGIC = 0xP150CAFE; // Magic number to verify config validity
+const uint32_t CONFIG_MAGIC = 0xCAFEBABE; // Magic number to verify config validity
 ESP8266WebServer server(80);
 DNSServer dnsServer;
 const byte DNS_PORT = 53;

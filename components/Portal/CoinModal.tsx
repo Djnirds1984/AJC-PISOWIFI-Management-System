@@ -103,7 +103,7 @@ const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc, inser
       clearInterval(timer);
       socket.disconnect();
     };
-  }, [rates]);
+  }, [rates, selectedSlot, audioSrc]);
 
   return (
     <div className="modal-overlay">

@@ -498,5 +498,10 @@ export const apiClient = {
   async getAvailableNodeMCUDevices(): Promise<any[]> {
     const res = await fetch(`${API_BASE}/nodemcu/available`);
     return handleResponse(res);
+  },
+
+  async checkNodeMCUStatus(macAddress: string): Promise<{ online: boolean, lastSeen: string }> {
+    const res = await fetch(`${API_BASE}/nodemcu/status/${macAddress}`);
+    return handleResponse(res);
   }
 };

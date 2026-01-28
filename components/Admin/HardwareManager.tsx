@@ -17,6 +17,12 @@ const HardwareManager: React.FC = () => {
   const [board, setBoard] = useState<BoardType>('none');
   const [pin, setPin] = useState(2);
   const [boardModel, setBoardModel] = useState<string>('orange_pi_one');
+  const isDeviceOnline = (lastSeen: string) => {
+    const now = new Date().getTime();
+    const last = new Date(lastSeen).getTime();
+    return (now - last) < 65000;
+  };
+
   const [coinSlots, setCoinSlots] = useState<CoinSlotConfig[]>([]);
   const [nodemcuDevices, setNodemcuDevices] = useState<NodeMCUDevice[]>([]);
   const [registrationKey, setRegistrationKey] = useState<string>('7B3F1A9');
@@ -223,60 +229,51 @@ const HardwareManager: React.FC = () => {
 
       {/* Sub-Vendo Controller Section */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-          <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-            <Wifi size={16} className="text-slate-700" /> Sub-Vendo Controller
-          </h3>
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-            {nodemcuDevices.length} Connected Devices
-          </span>
-        </div>
-        <div className="p-6">
-          {/* System Auth Key Display */}
-          <div className="mb-8 p-6 bg-slate-900 rounded-2xl border border-slate-800 shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 blur-3xl rounded-full"></div>
-            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div>
-                <div className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-2">System Authentication Key</div>
-                <div className="flex items-center gap-4">
-                  <div className="text-2xl font-black text-white tracking-widest font-mono">
-                    {registrationKey}
-                  </div>
-                  <button 
-                    onClick={() => {
-                      const newKey = prompt('Enter new System Authentication Key:', registrationKey);
-                      if (newKey && newKey.trim()) {
-                        setRegistrationKey(newKey.trim());
-                      }
-                    }}
-                    className="p-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all"
-                    title="Change Key"
-                  >
-                    <Edit2 size={14} />
-                  </button>
-                </div>
-                <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase tracking-widest">
-                  Use this key when setting up your NodeMCU sub-vendo units.
-                </p>
-              </div>
-              <div className="hidden md:block">
-                <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-white/20">
-                  <Wifi size={24} />
-                </div>
+        <div className="p-6 border-b border-slate-100 bg-slate-950 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-600/20">
+              <Wifi size={20} />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-white uppercase tracking-widest">
+                Sub-Vendo Controller
+              </h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                {nodemcuDevices.length} Connected Devices
+              </p>
+            </div>
+          </div>
+          
+          <div className="bg-white/5 rounded-2xl p-4 border border-white/10 flex items-center gap-6">
+            <div>
+              <div className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em] mb-1">System Auth Key</div>
+              <div className="text-xl font-black text-white tracking-widest font-mono">
+                {registrationKey}
               </div>
             </div>
-            
-            <div className="mt-6 flex justify-end">
+            <div className="flex flex-col gap-2">
+              <button 
+                onClick={() => {
+                  const newKey = prompt('Enter new System Authentication Key:', registrationKey);
+                  if (newKey && newKey.trim()) {
+                    setRegistrationKey(newKey.trim());
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white/10 text-white text-[9px] font-black uppercase tracking-widest hover:bg-white/20 transition-all flex items-center gap-2"
+              >
+                <Edit2 size={12} /> Change
+              </button>
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="px-6 py-2 rounded-xl bg-blue-600 text-white font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-[9px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
               >
-                {saving ? 'Saving...' : 'Save System Key'}
+                <Save size={12} /> {saving ? 'Saving...' : 'Save Key'}
               </button>
             </div>
           </div>
-
+        </div>
+        <div className="p-6">
           {nodemcuDevices.length === 0 ? (
             <div className="text-center py-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
               <div className="text-slate-300 mb-2 flex justify-center"><Wifi size={48} /></div>
@@ -299,7 +296,7 @@ const HardwareManager: React.FC = () => {
                         )}
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end gap-1">
                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Status</div>
                       <div className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
                         device.status === 'accepted' ? 'bg-green-100 text-green-700' : 
@@ -307,6 +304,12 @@ const HardwareManager: React.FC = () => {
                         'bg-red-100 text-red-700'
                       }`}>
                         {device.status}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <div className={`w-1.5 h-1.5 rounded-full ${isDeviceOnline(device.lastSeen) ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                        <span className={`text-[8px] font-black uppercase tracking-widest ${isDeviceOnline(device.lastSeen) ? 'text-green-600' : 'text-red-600'}`}>
+                          {isDeviceOnline(device.lastSeen) ? 'Online' : 'Offline'}
+                        </span>
                       </div>
                     </div>
                   </div>

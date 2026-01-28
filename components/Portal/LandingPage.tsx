@@ -20,8 +20,9 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   const [isMacLoading, setIsMacLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [config, setConfig] = useState<PortalConfig>(DEFAULT_PORTAL_CONFIG);
-  const [availableSlots, setAvailableSlots] = useState<{id: string, name: string, macAddress: string}[]>([]);
+  const [availableSlots, setAvailableSlots] = useState<{id: string, name: string, macAddress: string, isOnline: boolean}[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<string>('main');
+  const [slotError, setSlotError] = useState<string | null>(null);
 
   // Hardcoded default rates in case the API fetch returns nothing
   const defaultRates: Rate[] = [
@@ -87,8 +88,29 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
 
   const mySession = sessions.find(s => s.mac === myMac);
 
-  const handleOpenModal = (e: React.MouseEvent) => {
+  const handleOpenModal = async (e: React.MouseEvent) => {
     e.preventDefault();
+    setSlotError(null);
+
+    if (selectedSlot !== 'main') {
+      const slot = availableSlots.find(s => s.macAddress === selectedSlot);
+      if (slot && !slot.isOnline) {
+        setSlotError(`The machine "${slot.name}" is OFFLINE. Please tell the owner to restart it.`);
+        return;
+      }
+      
+      // Double check status with API for selected slot
+      try {
+        const status = await apiClient.checkNodeMCUStatus(selectedSlot);
+        if (!status.online) {
+          setSlotError(`The machine "${slot?.name || 'Sub-Vendo'}" is OFFLINE. Please tell the owner to restart it.`);
+          return;
+        }
+      } catch (err) {
+        console.error('Status check failed');
+      }
+    }
+
     setShowModal(true);
   };
 
@@ -300,13 +322,25 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
                             : 'border-slate-100 text-slate-400 hover:border-slate-200'
                         }`}
                       >
-                        <span>{slot.name}</span>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-1.5 h-1.5 rounded-full ${slot.isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                          <span>{slot.name}</span>
+                        </div>
                         {selectedSlot === slot.macAddress && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
                       </button>
                     ))}
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {slotError && (
+            <div className="mx-6 mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-center animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="text-xl mb-1">⚠️</div>
+              <p className="text-[10px] font-black uppercase tracking-widest leading-relaxed">
+                {slotError}
+              </p>
             </div>
           )}
 

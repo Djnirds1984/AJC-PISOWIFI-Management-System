@@ -42,6 +42,8 @@ String systemKey = "";
 bool isConfigured = false;
 bool isAccepted = false;
 unsigned long lastRegistrationAttempt = 0;
+volatile int pendingPulses = 0;
+volatile unsigned long lastPulseTime = 0;
 
 // Web server and DNS server
 ESP8266WebServer server(80);
@@ -88,6 +90,12 @@ void loop() {
   if (!isConfigured) {
     dnsServer.processNextRequest();
   } else {
+    // Process pending pulses from coin acceptor
+    if (pendingPulses > 0) {
+      sendPulse(1);
+      pendingPulses--;
+    }
+
     // Handle periodic registration/auth check if not accepted
     if (WiFi.status() == WL_CONNECTED && (!isAccepted || millis() - lastRegistrationAttempt > REGISTRATION_INTERVAL)) {
       registerWithServer();
@@ -212,10 +220,10 @@ void handleConfigure() {
 }
 
 void ICACHE_RAM_ATTR handleCoinPulse() {
-  static unsigned long lastPulse = 0;
-  if (millis() - lastPulse > 200) { // Debounce
-    sendPulse(1); // Default 1 peso per pulse
-    lastPulse = millis();
+  unsigned long now = millis();
+  if (now - lastPulseTime > 200) { // Debounce
+    pendingPulses++;
+    lastPulseTime = now;
   }
 }
 

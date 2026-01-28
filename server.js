@@ -1021,12 +1021,53 @@ app.post('/api/nodemcu/authenticate', async (req, res) => {
     
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(updatedDevices)]);
     
+    // Log heartbeat if it was previously offline
+    const now = new Date().getTime();
+    const lastSeen = new Date(device.lastSeen).getTime();
+    if ((now - lastSeen) > 15000) {
+       console.log(`[NODEMCU] Device RECONNECTED | Name: ${device.name} | MAC: ${macAddress}`);
+    }
+
     res.json({ success: true, device: { ...device, status: device.status } });
   } catch (err) {
     console.error('Error authenticating NodeMCU device:', err);
     res.status(500).json({ error: err.message });
   }
 });
+
+// Background task to monitor NodeMCU health
+const deviceStatusCache = new Map();
+
+setInterval(async () => {
+  try {
+    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    if (!devicesResult?.value) return;
+    
+    const devices = JSON.parse(devicesResult.value);
+    const now = new Date().getTime();
+    const OFFLINE_THRESHOLD = 15000; // Lowered to 15 seconds for faster detection (1.5x heartbeat)
+
+    devices.forEach(device => {
+      if (device.status !== 'accepted') return;
+
+      const lastSeen = new Date(device.lastSeen).getTime();
+      const isOnline = (now - lastSeen) < OFFLINE_THRESHOLD;
+      const previousStatus = deviceStatusCache.get(device.macAddress);
+
+      if (previousStatus === 'online' && !isOnline) {
+        console.warn(`[NODEMCU] CRITICAL: Device DISCONNECTED | Name: ${device.name} | MAC: ${device.macAddress} | Last Seen: ${new Date(device.lastSeen).toLocaleTimeString()}`);
+        io.emit('nodemcu-status-change', { macAddress: device.macAddress, status: 'offline' });
+      } else if (previousStatus === 'offline' && isOnline) {
+        console.log(`[NODEMCU] SUCCESS: Device BACK ONLINE | Name: ${device.name} | MAC: ${device.macAddress}`);
+        io.emit('nodemcu-status-change', { macAddress: device.macAddress, status: 'online' });
+      }
+
+      deviceStatusCache.set(device.macAddress, isOnline ? 'online' : 'offline');
+    });
+  } catch (err) {
+    // Silent fail for background task
+  }
+}, 5000); // Check every 5 seconds
 
 // NodeMCU pulse reporting API
 app.post('/api/nodemcu/pulse', async (req, res) => {
@@ -1170,7 +1211,7 @@ app.get('/api/nodemcu/available', async (req, res) => {
       .filter(d => d.status === 'accepted')
       .map(d => {
         const lastSeen = new Date(d.lastSeen).getTime();
-        const isOnline = (now - lastSeen) < 10000; // Online if seen in last 10 seconds (5 heartbeats)
+        const isOnline = (now - lastSeen) < 15000; // Online if seen in last 15 seconds
         return {
           id: d.id,
           name: d.name,
@@ -1196,7 +1237,7 @@ app.get('/api/nodemcu/status/:mac', async (req, res) => {
     
     const now = new Date().getTime();
     const lastSeen = new Date(device.lastSeen).getTime();
-    const isOnline = (now - lastSeen) < 10000;
+    const isOnline = (now - lastSeen) < 15000;
     
     res.json({ online: isOnline, lastSeen: device.lastSeen });
   } catch (err) {

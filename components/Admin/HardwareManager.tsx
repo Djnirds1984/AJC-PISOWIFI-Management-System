@@ -20,7 +20,7 @@ const HardwareManager: React.FC = () => {
   const isDeviceOnline = (lastSeen: string) => {
     const now = new Date().getTime();
     const last = new Date(lastSeen).getTime();
-    return (now - last) < 10000;
+    return (now - last) < 15000; // 15 seconds threshold
   };
 
   const [coinSlots, setCoinSlots] = useState<CoinSlotConfig[]>([]);

@@ -294,44 +294,44 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
               <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">📡</div>
               <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Insert Coins to Connect</h2>
               <p className="text-slate-500 text-sm mb-6 font-medium px-4">Drop physical coins into the slot to enable high-speed internet access.</p>
-              
-              {availableSlots.length > 0 && (
-                <div className="px-8 mb-6">
-                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 text-center">
-                    Select Coinslot Location
-                  </label>
-                  <div className="grid grid-cols-1 gap-2">
-                    <button 
-                      onClick={() => setSelectedSlot('main')}
-                      className={`py-3 px-4 rounded-xl border-2 text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between ${
-                        selectedSlot === 'main' 
-                          ? 'border-blue-600 bg-blue-50 text-blue-700' 
-                          : 'border-slate-100 text-slate-400 hover:border-slate-200'
-                      }`}
-                    >
-                      <span>Main Machine</span>
-                      {selectedSlot === 'main' && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
-                    </button>
-                    {availableSlots.map(slot => (
-                      <button 
-                        key={slot.id}
-                        onClick={() => setSelectedSlot(slot.macAddress)}
-                        className={`py-3 px-4 rounded-xl border-2 text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between ${
-                          selectedSlot === slot.macAddress 
-                            ? 'border-blue-600 bg-blue-50 text-blue-700' 
-                            : 'border-slate-100 text-slate-400 hover:border-slate-200'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className={`w-1.5 h-1.5 rounded-full ${slot.isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                          <span>{slot.name}</span>
-                        </div>
-                        {selectedSlot === slot.macAddress && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+            </div>
+          )}
+
+          {availableSlots.length > 0 && (
+            <div className="px-8 mb-6">
+              <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 text-center">
+                Select Coinslot Location
+              </label>
+              <div className="grid grid-cols-1 gap-2">
+                <button 
+                  onClick={() => setSelectedSlot('main')}
+                  className={`py-3 px-4 rounded-xl border-2 text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between ${
+                    selectedSlot === 'main' 
+                      ? 'border-blue-600 bg-blue-50 text-blue-700' 
+                      : 'border-slate-100 text-slate-400 hover:border-slate-200'
+                  }`}
+                >
+                  <span>Main Machine</span>
+                  {selectedSlot === 'main' && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
+                </button>
+                {availableSlots.map(slot => (
+                  <button 
+                    key={slot.id}
+                    onClick={() => setSelectedSlot(slot.macAddress)}
+                    className={`py-3 px-4 rounded-xl border-2 text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between ${
+                      selectedSlot === slot.macAddress 
+                        ? 'border-blue-600 bg-blue-50 text-blue-700' 
+                        : 'border-slate-100 text-slate-400 hover:border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-1.5 h-1.5 rounded-full ${slot.isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                      <span>{slot.name}</span>
+                    </div>
+                    {selectedSlot === slot.macAddress && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

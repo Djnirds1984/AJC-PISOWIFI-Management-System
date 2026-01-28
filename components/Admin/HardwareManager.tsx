@@ -194,12 +194,12 @@ const HardwareManager: React.FC = () => {
     try {
       const response = await fetch('/api/firmware/nodemcu', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
         }
       });
       
       if (!response.ok) {
-        throw new Error('Failed to download firmware');
+        throw new Error(`Failed to download firmware (${response.status} ${response.statusText})`);
       }
       
       const blob = await response.blob();

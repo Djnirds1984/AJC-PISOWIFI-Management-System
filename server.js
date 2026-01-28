@@ -922,15 +922,31 @@ app.post('/api/nodemcu/register', async (req, res) => {
     if (!macAddress || !ipAddress || !authenticationKey) {
       return res.status(400).json({ error: 'Missing required fields: macAddress, ipAddress, authenticationKey' });
     }
+
+    // Validate Registration Key
+    const registrationKeyResult = await db.get('SELECT value FROM config WHERE key = ?', ['registrationKey']);
+    const serverRegistrationKey = registrationKeyResult?.value || '2C0209ACD0D2E0'; // Default key if not set
+
+    if (authenticationKey !== serverRegistrationKey) {
+       return res.status(401).json({ error: 'Invalid Registration Key' });
+    }
     
     // Load existing devices
     const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
     const existingDevices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
     
     // Check if device already exists
-    const existingDevice = existingDevices.find(d => d.macAddress === macAddress);
-    if (existingDevice) {
-      return res.status(409).json({ error: 'Device with this MAC address already registered' });
+    const existingDeviceIndex = existingDevices.findIndex(d => d.macAddress === macAddress);
+    if (existingDeviceIndex !== -1) {
+       // Update existing device info (e.g. IP might have changed)
+       const updatedDevices = [...existingDevices];
+       updatedDevices[existingDeviceIndex] = {
+         ...updatedDevices[existingDeviceIndex],
+         ipAddress,
+         lastSeen: new Date().toISOString()
+       };
+       await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(updatedDevices)]);
+       return res.json({ success: true, device: updatedDevices[existingDeviceIndex], message: 'Device updated' });
     }
     
     // Create new pending device
@@ -941,9 +957,12 @@ app.post('/api/nodemcu/register', async (req, res) => {
       macAddress,
       pin: 12, // D6 on ESP8266 (GPIO 12)
       status: 'pending',
-      vlanId: 13, // As requested
+      vlanId: 13, // Default VLAN, can be changed later
       lastSeen: new Date().toISOString(),
-      authenticationKey,
+      authenticationKey, // Store the key used for auth (or generate a new specific one?) 
+                         // For now, keep using the registration key or generate a session key. 
+                         // The user requirement says "validates ... using the Key". 
+                         // Usually we'd issue a token, but let's stick to simple key auth for now.
       createdAt: new Date().toISOString(),
       rates: [],
       totalPulses: 0,
@@ -1030,6 +1049,111 @@ app.post('/api/nodemcu/:deviceId/status', requireAdmin, async (req, res) => {
     res.json({ success: true, device: updatedDevices[deviceIndex] });
   } catch (err) {
     console.error('Error updating NodeMCU device status:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update NodeMCU device rates
+app.post('/api/nodemcu/:deviceId/rates', requireAdmin, async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const { rates } = req.body;
+    
+    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    const existingDevices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
+    
+    const deviceIndex = existingDevices.findIndex(d => d.id === deviceId);
+    if (deviceIndex === -1) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    const updatedDevices = [...existingDevices];
+    updatedDevices[deviceIndex] = { ...updatedDevices[deviceIndex], rates };
+    
+    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(updatedDevices)]);
+    
+    res.json({ success: true, device: updatedDevices[deviceIndex] });
+  } catch (err) {
+    console.error('Error updating NodeMCU device rates:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// List NodeMCU devices
+app.get('/api/nodemcu/devices', requireAdmin, async (req, res) => {
+  try {
+    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    const devices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
+    res.json(devices);
+  } catch (err) {
+    console.error('Error fetching NodeMCU devices:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get single NodeMCU device
+app.get('/api/nodemcu/:deviceId', requireAdmin, async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    const devices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
+    const device = devices.find(d => d.id === deviceId);
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    res.json(device);
+  } catch (err) {
+    console.error('Error fetching NodeMCU device:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update NodeMCU device config (name, VLAN, pin)
+app.post('/api/nodemcu/:deviceId/config', requireAdmin, async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const { name, vlanId, pin } = req.body;
+    
+    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    const existingDevices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
+    
+    const deviceIndex = existingDevices.findIndex(d => d.id === deviceId);
+    if (deviceIndex === -1) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    const updatedDevices = [...existingDevices];
+    updatedDevices[deviceIndex] = { 
+      ...updatedDevices[deviceIndex], 
+      name: typeof name === 'string' && name.trim().length > 0 ? name.trim() : updatedDevices[deviceIndex].name,
+      vlanId: typeof vlanId === 'number' ? vlanId : updatedDevices[deviceIndex].vlanId,
+      pin: typeof pin === 'number' ? pin : updatedDevices[deviceIndex].pin
+    };
+    
+    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(updatedDevices)]);
+    
+    res.json({ success: true, device: updatedDevices[deviceIndex] });
+  } catch (err) {
+    console.error('Error updating NodeMCU device config:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete NodeMCU device
+app.delete('/api/nodemcu/:deviceId', requireAdmin, async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    
+    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    const existingDevices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
+    
+    const updatedDevices = existingDevices.filter(d => d.id !== deviceId);
+    
+    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(updatedDevices)]);
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting NodeMCU device:', err);
     res.status(500).json({ error: err.message });
   }
 });

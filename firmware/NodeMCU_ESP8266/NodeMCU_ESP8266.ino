@@ -31,7 +31,7 @@
 // Default values
 #define DEFAULT_AP_SSID "AJC-SubVendo-Setup"
 #define DEFAULT_AP_PASSWORD ""
-#define REGISTRATION_INTERVAL 30000 // 30 seconds
+#define REGISTRATION_INTERVAL 2000 // 2 seconds heartbeat
 
 // GPIO pin for coin detection (D6 = GPIO 12)
 #define COIN_PIN 12 
@@ -90,10 +90,11 @@ void loop() {
   if (!isConfigured) {
     dnsServer.processNextRequest();
   } else {
-    // Process pending pulses from coin acceptor
-    if (pendingPulses > 0) {
-      sendPulse(1);
-      pendingPulses--;
+    // Accumulate pulses and send total after 500ms of inactivity
+    if (pendingPulses > 0 && millis() - lastPulseTime > 500) {
+      int totalToSend = pendingPulses;
+      pendingPulses = 0; // Reset before sending to avoid race conditions
+      sendPulse(totalToSend);
     }
 
     // Handle periodic registration/auth check if not accepted
@@ -221,7 +222,7 @@ void handleConfigure() {
 
 void ICACHE_RAM_ATTR handleCoinPulse() {
   unsigned long now = millis();
-  if (now - lastPulseTime > 200) { // Debounce
+  if (now - lastPulseTime > 30) { // Reduced debounce to 30ms for multi-coin accuracy
     pendingPulses++;
     lastPulseTime = now;
   }

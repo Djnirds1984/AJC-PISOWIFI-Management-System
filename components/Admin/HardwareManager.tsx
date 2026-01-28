@@ -20,7 +20,7 @@ const HardwareManager: React.FC = () => {
   const isDeviceOnline = (lastSeen: string) => {
     const now = new Date().getTime();
     const last = new Date(lastSeen).getTime();
-    return (now - last) < 65000;
+    return (now - last) < 10000;
   };
 
   const [coinSlots, setCoinSlots] = useState<CoinSlotConfig[]>([]);

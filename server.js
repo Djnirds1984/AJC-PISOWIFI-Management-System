@@ -1170,7 +1170,7 @@ app.get('/api/nodemcu/available', async (req, res) => {
       .filter(d => d.status === 'accepted')
       .map(d => {
         const lastSeen = new Date(d.lastSeen).getTime();
-        const isOnline = (now - lastSeen) < 65000; // Online if seen in last 65 seconds
+        const isOnline = (now - lastSeen) < 10000; // Online if seen in last 10 seconds (5 heartbeats)
         return {
           id: d.id,
           name: d.name,
@@ -1196,7 +1196,7 @@ app.get('/api/nodemcu/status/:mac', async (req, res) => {
     
     const now = new Date().getTime();
     const lastSeen = new Date(device.lastSeen).getTime();
-    const isOnline = (now - lastSeen) < 65000;
+    const isOnline = (now - lastSeen) < 10000;
     
     res.json({ online: isOnline, lastSeen: device.lastSeen });
   } catch (err) {

@@ -23,6 +23,8 @@
  */
 
 #include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <DNSServer.h>
 #include <ArduinoJson.h>
@@ -699,10 +701,12 @@ void processCoinDetections() {
 void sendCoinDetection(int slot, int denomination) {
   if (!config.configured) return;
   
+  WiFiClient client;
   HTTPClient http;
-  String url = "http://" + WiFi.localIP().toString() + ":3000/api/nodemcu/coin";
+  // Use gatewayIP as the target server (the main PisoWiFi system)
+  String url = "http://" + WiFi.gatewayIP().toString() + ":3000/api/nodemcu/coin";
   
-  http.begin(url);
+  http.begin(client, url);
   http.addHeader("Content-Type", "application/json");
   
   DynamicJsonDocument doc(256);

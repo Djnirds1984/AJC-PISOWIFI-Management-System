@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AdminTab, UserSession, Rate } from './types';
+import { AdminTab, UserSession, Rate, WifiDevice } from './types';
 import LandingPage from './components/Portal/LandingPage';
 import Analytics from './components/Admin/Analytics';
 import RatesManager from './components/Admin/RatesManager';
@@ -13,6 +13,7 @@ import ThemeSettings from './components/Admin/ThemeSettings';
 import PortalEditor from './components/Admin/PortalEditor';
 import PPPoEServer from './components/Admin/PPPoEServer';
 import { MyMachines } from './components/Admin/MyMachines';
+import BandwidthManager from './components/Admin/BandwidthManager';
 import { apiClient } from './lib/api';
 import { initAdminTheme, setAdminTheme } from './lib/theme';
 
@@ -29,18 +30,21 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>(AdminTab.Analytics);
   const [rates, setRates] = useState<Rate[]>([]);
   const [activeSessions, setActiveSessions] = useState<UserSession[]>([]);
+  const [devices, setDevices] = useState<WifiDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
       setError(null);
-      const [fetchedRates, sessions] = await Promise.all([
+      const [fetchedRates, sessions, fetchedDevices] = await Promise.all([
         apiClient.getRates(),
-        apiClient.getSessions().catch(() => [])
+        apiClient.getSessions().catch(() => []),
+        apiClient.getWifiDevices().catch(() => [])
       ]);
       setRates(fetchedRates);
       setActiveSessions(sessions);
+      setDevices(fetchedDevices);
     } catch (err: any) {
       console.error('Backend connection failed:', err);
       setError(err.message || 'Connection to AJC Hardware failed');
@@ -105,7 +109,9 @@ const App: React.FC = () => {
       // Periodic refresh from server to ensure sync
       try {
         const sessions = await apiClient.getSessions();
+        const fetchedDevices = await apiClient.getWifiDevices();
         setActiveSessions(sessions);
+        setDevices(fetchedDevices);
       } catch (e) {
         // Local decrement as fallback for smooth UI
         setActiveSessions(prev => 
@@ -269,6 +275,7 @@ const App: React.FC = () => {
               <SidebarItem active={activeTab === AdminTab.Themes} onClick={() => setActiveTab(AdminTab.Themes)} icon="🎨" label="Themes" />
               <SidebarItem active={activeTab === AdminTab.PortalEditor} onClick={() => setActiveTab(AdminTab.PortalEditor)} icon="🖥️" label="Portal" />
               <SidebarItem active={activeTab === AdminTab.PPPoE} onClick={() => setActiveTab(AdminTab.PPPoE)} icon="📞" label="PPPoE Server" />
+              <SidebarItem active={activeTab === AdminTab.Bandwidth} onClick={() => setActiveTab(AdminTab.Bandwidth)} icon="📶" label="Bandwidth" />
               <SidebarItem active={activeTab === AdminTab.Machines} onClick={() => setActiveTab(AdminTab.Machines)} icon="🤖" label="My Machines" />
               <SidebarItem active={activeTab === AdminTab.System} onClick={() => setActiveTab(AdminTab.System)} icon="⚙️" label="System" />
               <SidebarItem active={activeTab === AdminTab.Updater} onClick={() => setActiveTab(AdminTab.Updater)} icon="🚀" label="Updater" />
@@ -304,11 +311,12 @@ const App: React.FC = () => {
                 {activeTab === AdminTab.Analytics && <Analytics sessions={activeSessions} />}
                 {activeTab === AdminTab.Rates && <RatesManager rates={rates} setRates={updateRates} />}
                 {activeTab === AdminTab.Network && <NetworkSettings />}
-                {activeTab === AdminTab.Devices && <DeviceManager sessions={activeSessions} refreshSessions={loadData} />}
+                {activeTab === AdminTab.Devices && <DeviceManager sessions={activeSessions} refreshSessions={loadData} refreshDevices={loadData} />}
                 {activeTab === AdminTab.Hardware && <HardwareManager />}
                 {activeTab === AdminTab.Themes && <ThemeSettings />}
                 {activeTab === AdminTab.PortalEditor && <PortalEditor />}
                 {activeTab === AdminTab.PPPoE && <PPPoEServer />}
+                {activeTab === AdminTab.Bandwidth && <BandwidthManager devices={devices} rates={rates} />}
                 {activeTab === AdminTab.Machines && <MyMachines />}
                 {activeTab === AdminTab.System && <SystemSettings />}
                 {activeTab === AdminTab.Updater && <SystemUpdater />}

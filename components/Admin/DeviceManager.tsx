@@ -5,9 +5,10 @@ import { apiClient } from '../../lib/api';
 interface Props {
   sessions?: UserSession[];
   refreshSessions?: () => void;
+  refreshDevices?: () => void;
 }
 
-const DeviceManager: React.FC<Props> = ({ sessions = [], refreshSessions }) => {
+const DeviceManager: React.FC<Props> = ({ sessions = [], refreshSessions, refreshDevices }) => {
   const [devices, setDevices] = useState<WifiDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +80,11 @@ const DeviceManager: React.FC<Props> = ({ sessions = [], refreshSessions }) => {
       setDevices(prev => prev.map(device => 
         device.id === deviceId ? updatedDevice : device
       ));
+      
+      // Refresh device list if refreshDevices function is provided
+      if (refreshDevices) {
+        refreshDevices();
+      }
     } catch (err) {
       alert(`Failed to refresh device: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {

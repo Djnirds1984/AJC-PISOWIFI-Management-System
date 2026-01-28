@@ -141,7 +141,8 @@ export enum AdminTab {
   Themes = 'themes',
   PortalEditor = 'portal_editor',
   PPPoE = 'pppoe',
-  Machines = 'machines'
+  Machines = 'machines',
+  Bandwidth = 'bandwidth'
 }
 
 export interface UpdateLog {
@@ -149,6 +150,12 @@ export interface UpdateLog {
   version: string;
   description: string;
   status: 'success' | 'failed';
+}
+
+export interface BandwidthSettings {
+  defaultDownloadLimit: number;
+  defaultUploadLimit: number;
+  autoApplyToNew: boolean;
 }
 
 export interface SystemStats {

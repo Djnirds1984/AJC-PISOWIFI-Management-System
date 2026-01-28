@@ -406,5 +406,20 @@ export const apiClient = {
       headers: getHeaders()
     });
     return handleResponse(res);
+  },
+
+  // Bandwidth Management APIs
+  async getBandwidthSettings(): Promise<any> {
+    const res = await fetch(`${API_BASE}/bandwidth/settings`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async saveBandwidthSettings(settings: any): Promise<void> {
+    const res = await fetch(`${API_BASE}/bandwidth/settings`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(settings)
+    });
+    await handleResponse(res);
   }
 };

@@ -1003,6 +1003,49 @@ app.delete('/api/network/bridge/:name', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// BANDWIDTH MANAGEMENT API ENDPOINTS
+app.get('/api/bandwidth/settings', requireAdmin, async (req, res) => {
+  try {
+    // Get default bandwidth settings
+    const defaultDL = await db.get("SELECT value FROM config WHERE key = 'default_download_limit'");
+    const defaultUL = await db.get("SELECT value FROM config WHERE key = 'default_upload_limit'");
+    const autoApply = await db.get("SELECT value FROM config WHERE key = 'auto_apply_bandwidth'");
+    
+    res.json({
+      defaultDownloadLimit: defaultDL ? parseInt(defaultDL.value) : 5,
+      defaultUploadLimit: defaultUL ? parseInt(defaultUL.value) : 5,
+      autoApplyToNew: autoApply ? autoApply.value === '1' : true
+    });
+  } catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  }
+});
+
+app.post('/api/bandwidth/settings', requireAdmin, async (req, res) => {
+  try { 
+    const { defaultDownloadLimit, defaultUploadLimit, autoApplyToNew } = req.body;
+    
+    // Validate inputs
+    if (typeof defaultDownloadLimit !== 'number' || typeof defaultUploadLimit !== 'number') {
+      return res.status(400).json({ error: 'Download and upload limits must be numbers' });
+    }
+    
+    if (defaultDownloadLimit < 0 || defaultUploadLimit < 0) {
+      return res.status(400).json({ error: 'Limits cannot be negative' });
+    }
+    
+    // Save settings to database
+    await db.run("INSERT OR REPLACE INTO config (key, value) VALUES ('default_download_limit', ?)", [defaultDownloadLimit.toString()]);
+    await db.run("INSERT OR REPLACE INTO config (key, value) VALUES ('default_upload_limit', ?)", [defaultUploadLimit.toString()]);
+    await db.run("INSERT OR REPLACE INTO config (key, value) VALUES ('auto_apply_bandwidth', ?)", [autoApplyToNew ? '1' : '0']);
+    
+    res.json({ success: true }); 
+  }
+  catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  }
+});
+
 // PPPoE SERVER API ENDPOINTS
 app.get('/api/network/pppoe/status', requireAdmin, async (req, res) => {
   try {

@@ -39,7 +39,21 @@ const HardwareManager: React.FC = () => {
   const [vlans, setVlans] = useState<{ name: string; id: number }[]>([]);
   const [pendingAcceptDevice, setPendingAcceptDevice] = useState<NodeMCUDevice | null>(null);
 
-  const REGISTRATION_KEY = "2C0209ACD0D2E0";
+  const REGISTRATION_KEY = "7B3F1A9";
+
+  // Helper to display ESP8266 pin names (D1, D2, etc.)
+  // Future update: Add ESP32 mapping here
+  const formatNodeMCUPin = (gpio: number) => {
+    const map: Record<number, string> = {
+      5: 'D1',
+      4: 'D2',
+      14: 'D5',
+      12: 'D6',
+      13: 'D7',
+      16: 'D0'
+    };
+    return map[gpio] ? `${map[gpio]} (GPIO ${gpio})` : `GPIO ${gpio}`;
+  };
 
   useEffect(() => {
     loadConfig();
@@ -109,8 +123,7 @@ const HardwareManager: React.FC = () => {
   const handleConfirmAccept = async () => {
     if (!pendingAcceptDevice) return;
     try {
-      await apiClient.acceptNodeMCUDevice(pendingAcceptDevice.id);
-      await apiClient.sendNodeMCUConfig(pendingAcceptDevice.id, { name: acceptName, vlanId: acceptVlanId });
+      await apiClient.acceptNodeMCUDevice(pendingAcceptDevice.id, acceptName, acceptVlanId);
       setShowAcceptModal(false);
       setPendingAcceptDevice(null);
       loadNodeMCUDevices();

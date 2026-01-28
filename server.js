@@ -925,7 +925,7 @@ app.post('/api/nodemcu/register', async (req, res) => {
 
     // Validate Registration Key
     const registrationKeyResult = await db.get('SELECT value FROM config WHERE key = ?', ['registrationKey']);
-    const serverRegistrationKey = registrationKeyResult?.value || '2C0209ACD0D2E0'; // Default key if not set
+    const serverRegistrationKey = registrationKeyResult?.value || '7B3F1A9'; // Default key if not set
 
     if (authenticationKey !== serverRegistrationKey) {
        return res.status(401).json({ error: 'Invalid Registration Key' });
@@ -1025,7 +1025,7 @@ app.post('/api/nodemcu/authenticate', async (req, res) => {
 app.post('/api/nodemcu/:deviceId/status', requireAdmin, async (req, res) => {
   try {
     const { deviceId } = req.params;
-    const { status } = req.body;
+    const { status, name, vlanId } = req.body;
     
     if (!['pending', 'accepted', 'rejected'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status. Must be pending, accepted, or rejected' });
@@ -1042,7 +1042,12 @@ app.post('/api/nodemcu/:deviceId/status', requireAdmin, async (req, res) => {
     }
     
     const updatedDevices = [...existingDevices];
-    updatedDevices[deviceIndex] = { ...updatedDevices[deviceIndex], status };
+    updatedDevices[deviceIndex] = { 
+      ...updatedDevices[deviceIndex], 
+      status,
+      ...(name && { name }),
+      ...(vlanId && { vlanId: parseInt(vlanId) })
+    };
     
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(updatedDevices)]);
     

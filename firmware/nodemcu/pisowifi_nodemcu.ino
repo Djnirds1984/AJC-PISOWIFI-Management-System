@@ -15,11 +15,11 @@
  * - 5V power supply
  * 
  * GPIO Pin Mapping (ESP8266):
- * - D0 (GPIO 16) - Coin Slot 1
+ * - D6 (GPIO 12) - Coin Slot 1 (Primary)
  * - D1 (GPIO 5)  - Coin Slot 2  
  * - D2 (GPIO 4)  - Coin Slot 3
  * - D5 (GPIO 14) - Coin Slot 4
- * - D6 (GPIO 12) - Status LED (optional)
+ * - D0 (GPIO 16) - Status LED (optional)
  */
 
 #include <ESP8266WiFi.h>
@@ -48,9 +48,9 @@ const byte DNS_PORT = 53;
 // Default configuration
 const char* defaultSSID = "PisoWiFi-Setup";
 const char* defaultPassword = "";
-const int defaultCoinPins[4] = {16, 5, 4, 14}; // D0, D1, D2, D5
+const int defaultCoinPins[4] = {12, 5, 4, 14}; // D6, D1, D2, D5
 const int defaultDenominations[4] = {1, 5, 10, 1};
-const bool defaultSlotEnabled[4] = {true, true, false, false};
+const bool defaultSlotEnabled[4] = {true, false, false, false}; // Only 1 slot enabled by default
 
 // Coin detection variables
 volatile bool coinDetected[4] = {false, false, false, false};

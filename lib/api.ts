@@ -442,17 +442,17 @@ export const apiClient = {
     return handleResponse(res);
   },
 
-  async updateNodeMCUStatus(deviceId: string, status: 'pending' | 'accepted' | 'rejected'): Promise<any> {
+  async updateNodeMCUStatus(deviceId: string, status: 'pending' | 'accepted' | 'rejected', name?: string, vlanId?: number): Promise<any> {
     const res = await fetch(`${API_BASE}/nodemcu/${deviceId}/status`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ status })
+      body: JSON.stringify({ status, name, vlanId })
     });
     return handleResponse(res);
   },
 
-  async acceptNodeMCUDevice(deviceId: string): Promise<any> {
-    return this.updateNodeMCUStatus(deviceId, 'accepted');
+  async acceptNodeMCUDevice(deviceId: string, name?: string, vlanId?: number): Promise<any> {
+    return this.updateNodeMCUStatus(deviceId, 'accepted', name, vlanId);
   },
 
   async rejectNodeMCUDevice(deviceId: string): Promise<any> {

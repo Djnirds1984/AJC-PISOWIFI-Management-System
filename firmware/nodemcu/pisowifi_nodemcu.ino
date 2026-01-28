@@ -236,13 +236,7 @@ void startHTTPServer() {
 }
 
 // Handler functions
-void handleRoot() {
-  String page = createWebPage();
-  server.send(200, "text/html", page);
-}
-
-String createWebPage() {
-  String page = FPSTR(R"(
+static const char INDEX_HTML[] PROGMEM = R"=====(
 <!DOCTYPE html>
 <html>
 <head>
@@ -498,9 +492,10 @@ String createWebPage() {
     </script>
 </body>
 </html>
-)");
+)=====";
 
-  return page;
+void handleRoot() {
+  server.send_P(200, "text/html", INDEX_HTML);
 }
 
 void handleWiFiScan() {

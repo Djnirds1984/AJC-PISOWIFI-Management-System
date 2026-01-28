@@ -46,6 +46,25 @@ const upload = multer({
   }
 });
 
+// Configure Multer for Firmware Updates
+const firmwareStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const dir = 'uploads/firmware/';
+    if (!fs.existsSync(dir)){
+        fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: function (req, file, cb) {
+    cb(null, 'firmware_' + Date.now() + '.bin');
+  }
+});
+
+const uploadFirmware = multer({ 
+  storage: firmwareStorage,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit for firmware
+});
+
 app.use(express.json());
 
 // Prevent caching of API responses
@@ -1308,6 +1327,56 @@ app.delete('/api/nodemcu/:deviceId', requireAdmin, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Error deleting NodeMCU device:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update NodeMCU Firmware
+app.post('/api/nodemcu/:deviceId/update', requireAdmin, uploadFirmware.single('firmware'), async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    if (!req.file) {
+      return res.status(400).json({ error: 'No firmware file uploaded' });
+    }
+
+    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    const devices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
+    const device = devices.find(d => d.id === deviceId);
+
+    if (!device) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    if (!device.ipAddress) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'Device IP address not found. Make sure it has registered recently.' });
+    }
+
+    const formData = new FormData();
+    const fileBuffer = fs.readFileSync(req.file.path);
+    const blob = new Blob([fileBuffer], { type: 'application/octet-stream' });
+    formData.append('update', blob, 'firmware.bin');
+
+    console.log(`Updating NodeMCU ${device.macAddress} at ${device.ipAddress}...`);
+    
+    const response = await fetch(`http://${device.ipAddress}/update`, {
+      method: 'POST',
+      body: formData
+    });
+
+    // Clean up temp file
+    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+
+    if (response.ok) {
+      res.json({ success: true, message: 'Firmware update started successfully' });
+    } else {
+      const errorText = await response.text();
+      res.status(response.status).json({ error: `Update failed: ${errorText}` });
+    }
+  } catch (err) {
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    console.error('Error updating NodeMCU firmware:', err);
     res.status(500).json({ error: err.message });
   }
 });

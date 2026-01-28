@@ -22,6 +22,7 @@
 #include <WiFiClient.h>
 #include <DNSServer.h>
 #include <EEPROM.h>
+#include <ESP8266HTTPUpdateServer.h>
 
 // EEPROM addresses
 #define EEPROM_SSID_ADDR 0
@@ -47,12 +48,14 @@ volatile unsigned long lastPulseTime = 0;
 
 // Web server and DNS server
 ESP8266WebServer server(80);
+ESP8266HTTPUpdateServer httpUpdater;
 DNSServer dnsServer;
 const byte DNS_PORT = 53;
 
 // Function prototypes
 void setupAccessPoint();
 void setupCaptivePortal();
+void setupUpdateServer();
 void handleRoot();
 void handleScan();
 void handleConfigure();
@@ -73,17 +76,32 @@ void setup() {
   // Load configuration from EEPROM
   loadConfiguration();
 
+  // Set up WiFi properties
+  WiFi.setAutoReconnect(true);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+
   // Set up coin detection pin
   pinMode(COIN_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(COIN_PIN), handleCoinPulse, FALLING);
 
   // If not configured, start access point
+  setupUpdateServer();
   if (!isConfigured) {
     setupAccessPoint();
     setupCaptivePortal();
   } else {
     connectToPisoWiFi();
   }
+}
+
+void setupUpdateServer() {
+  httpUpdater.setup(&server, "/update");
+  server.on("/", handleRoot);
+  server.on("/scan", handleScan);
+  server.on("/configure", handleConfigure);
+  server.onNotFound(handleRoot);
+  server.begin();
+  Serial.println("HTTP Server & Update Server started");
 }
 
 void loop() {
@@ -113,7 +131,7 @@ void loop() {
 }
 
 void setupAccessPoint() {
-  WiFi.mode(WIFI_AP);
+  WiFi.mode(isConfigured ? WIFI_AP_STA : WIFI_AP);
   WiFi.softAP(DEFAULT_AP_SSID, DEFAULT_AP_PASSWORD);
   Serial.println("Setup AP: " + String(DEFAULT_AP_SSID));
   Serial.println("IP: " + WiFi.softAPIP().toString());
@@ -121,11 +139,7 @@ void setupAccessPoint() {
 
 void setupCaptivePortal() {
   dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
-  server.on("/", handleRoot);
-  server.on("/scan", handleScan);
-  server.on("/configure", handleConfigure);
   server.onNotFound(handleRoot);
-  server.begin();
 }
 
 void handleRoot() {
@@ -289,20 +303,32 @@ void loadConfiguration() {
 }
 
 void connectToPisoWiFi() {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(configuredSSID.c_str());
+  if (WiFi.status() == WL_CONNECTED) return;
+  
+  if (isConfigured) {
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.begin(configuredSSID.c_str());
+  } else {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(configuredSSID.c_str());
+  }
+  
   Serial.print("Connecting to " + configuredSSID);
   int tries = 0;
   while (WiFi.status() != WL_CONNECTED && tries < 20) {
-    delay(500); Serial.print("."); tries++;
+    delay(500);
+    Serial.print(".");
+    tries++;
+    server.handleClient(); // Keep setup portal responsive during connection attempts
   }
+
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\nConnected! IP: " + WiFi.localIP().toString());
+    WiFi.mode(WIFI_STA); // Disable AP once connected to save resources
     registerWithServer();
   } else {
-    Serial.println("\nFailed. Back to AP mode.");
-    isConfigured = false;
-    setupAccessPoint();
+    Serial.println("\nConnection failed. Persistent retry enabled.");
+    setupAccessPoint(); // Keep AP active for setup/debug
     setupCaptivePortal();
   }
 }

@@ -476,6 +476,20 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  async updateNodeMCUFirmware(deviceId: string, file: File): Promise<any> {
+    const formData = new FormData();
+    formData.append('firmware', file);
+    
+    const res = await fetch(`${API_BASE}/nodemcu/${deviceId}/update`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: formData
+    });
+    return handleResponse(res);
+  },
+
   async getNodeMCUDevices(): Promise<any[]> {
     const res = await fetch(`${API_BASE}/nodemcu/devices`, { headers: getHeaders() });
     return handleResponse(res);

@@ -11,6 +11,7 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
   const [localDevices, setLocalDevices] = useState<NodeMCUDevice[]>(devices);
   const [selectedDevice, setSelectedDevice] = useState<NodeMCUDevice | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isUpdating, setIsUpdating] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalDevices(devices);
@@ -45,6 +46,23 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
       alert('Failed to download firmware. Please try again.');
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  const handleUpdateFirmware = async (deviceId: string, file: File) => {
+    setIsUpdating(deviceId);
+    try {
+      const response = await apiClient.updateNodeMCUFirmware(deviceId, file);
+      if (response.success) {
+        alert('Firmware update started! The device will reboot once finished.');
+      } else {
+        throw new Error(response.error || 'Failed to update firmware');
+      }
+    } catch (error: any) {
+      console.error('Update failed:', error);
+      alert(error.message || 'Failed to update firmware. Make sure the device is online.');
+    } finally {
+      setIsUpdating(null);
     }
   };
 
@@ -239,6 +257,20 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
                       >
                         Configure
                       </button>
+                      <label className="text-green-600 hover:text-green-900 mr-3 cursor-pointer">
+                        {isUpdating === device.id ? 'Updating...' : 'Update Firmware'}
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept=".bin"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleUpdateFirmware(device.id, file);
+                            e.target.value = ''; // Reset input
+                          }}
+                          disabled={isUpdating !== null}
+                        />
+                      </label>
                       <button 
                         onClick={() => handleRemoveDevice(device.id)}
                         className="text-red-600 hover:text-red-900"

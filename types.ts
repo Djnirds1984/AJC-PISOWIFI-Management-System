@@ -1,9 +1,44 @@
-export type BoardType = 'raspberry_pi' | 'orange_pi' | 'x64_pc' | 'none';
+export type BoardType = 'raspberry_pi' | 'orange_pi' | 'x64_pc' | 'nodemcu_esp' | 'none';
 
 export interface SystemConfig {
   boardType: BoardType;
   coinPin: number;
   boardModel?: string | null;
+  // Multi-coin slot support
+  coinSlots?: CoinSlotConfig[];
+  // For ESP WiFi connection
+  espIpAddress?: string;
+  espPort?: number;
+  // For multi-NodeMCU setup
+  nodemcuDevices?: NodeMCUDevice[];
+  registrationKey?: string;
+  // Deprecated - kept for backward compatibility
+  serialPort?: string;
+}
+
+export interface CoinSlotConfig {
+  id: number; // Slot identifier (1, 2, 3, 4)
+  enabled: boolean;
+  pin: number; // GPIO pin on ESP board
+  denomination: number; // 1, 5, 10 pesos
+  name?: string; // Optional custom name
+}
+
+export interface NodeMCUDevice {
+  id: string;
+  name: string;
+  ipAddress: string;
+  macAddress: string;
+  pin: number; // GPIO pin for coin detection (default D6)
+  status: 'pending' | 'accepted' | 'rejected' | 'disconnected';
+  vlanId?: number;
+  lastSeen: string;
+  authenticationKey: string;
+  createdAt: string;
+  // Pricing configuration
+  rates: Rate[]; // Independent pricing rules for this device
+  totalPulses: number;
+  totalRevenue: number;
 }
 
 export interface Rate {
@@ -141,7 +176,8 @@ export enum AdminTab {
   Themes = 'themes',
   PortalEditor = 'portal_editor',
   PPPoE = 'pppoe',
-  Machines = 'machines'
+  Machines = 'machines',
+  Bandwidth = 'bandwidth'
 }
 
 export interface UpdateLog {
@@ -149,6 +185,12 @@ export interface UpdateLog {
   version: string;
   description: string;
   status: 'success' | 'failed';
+}
+
+export interface BandwidthSettings {
+  defaultDownloadLimit: number;
+  defaultUploadLimit: number;
+  autoApplyToNew: boolean;
 }
 
 export interface SystemStats {
@@ -198,6 +240,12 @@ export interface VendorMachine {
   cpu_temp?: number;
   uptime_seconds?: number;
   active_sessions_count?: number;
+  // Multi-coin slot data
+  coin_slots_data?: {
+    slot_id: number;
+    pulses: number;
+    revenue: number;
+  }[];
 }
 
 export interface SalesLog {

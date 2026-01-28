@@ -8,9 +8,10 @@ interface Props {
   rates: Rate[];
   audioSrc?: string; // Coin Drop Audio
   insertCoinAudioSrc?: string; // Background Loop
+  selectedSlot?: string; // 'main' or NodeMCU MAC address
 }
 
-const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc, insertCoinAudioSrc }) => {
+const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc, insertCoinAudioSrc, selectedSlot = 'main' }) => {
   const [timeLeft, setTimeLeft] = useState(60);
   const [totalPesos, setTotalPesos] = useState(0);
   const [totalMinutes, setTotalMinutes] = useState(0);
@@ -52,8 +53,8 @@ const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc, inser
       setIsConnected(false);
     });
 
-    socket.on('coin-pulse', (data: { pesos: number }) => {
-      console.log(`[COIN] Received Pulse: ₱${data.pesos}`);
+    const handlePulse = (pesos: number) => {
+      console.log(`[COIN] Received Pulse: ₱${pesos}`);
       
       // Play Audio
       if (audioSrc) {
@@ -63,17 +64,29 @@ const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc, inser
         } catch (e) { console.error(e); }
       }
 
-      setTotalPesos(prev => prev + data.pesos);
+      setTotalPesos(prev => prev + pesos);
       
-      const rate = rates.find(r => r.pesos === data.pesos);
+      const rate = rates.find(r => r.pesos === pesos);
       if (rate) {
         setTotalMinutes(prev => prev + rate.minutes);
       } else {
         // Linear fallback if specific rate not found
-        setTotalMinutes(prev => prev + (data.pesos * 10)); 
+        setTotalMinutes(prev => prev + (pesos * 10)); 
       }
       
       setTimeLeft(60); // Reset timeout on drop
+    };
+
+    socket.on('coin-pulse', (data: { pesos: number }) => {
+      if (selectedSlot === 'main') {
+        handlePulse(data.pesos);
+      }
+    });
+
+    socket.on('nodemcu-pulse', (data: { denomination: number, macAddress: string }) => {
+      if (selectedSlot === data.macAddress) {
+        handlePulse(data.denomination);
+      }
     });
 
     const timer = setInterval(() => {
@@ -90,7 +103,7 @@ const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc, inser
       clearInterval(timer);
       socket.disconnect();
     };
-  }, [rates]);
+  }, [rates, selectedSlot, audioSrc]);
 
   return (
     <div className="modal-overlay">

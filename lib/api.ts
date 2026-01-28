@@ -38,11 +38,11 @@ export const apiClient = {
   },
 
   // Add a new rate definition (fixing error in RatesManager)
-  async addRate(pesos: number, minutes: number, downloadLimit?: number, uploadLimit?: number): Promise<void> {
+  async addRate(pesos: number, minutes: number): Promise<void> {
     const res = await fetch(`${API_BASE}/rates`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ pesos, minutes, downloadLimit, uploadLimit })
+      body: JSON.stringify({ pesos, minutes })
     });
     await handleResponse(res);
   },
@@ -405,6 +405,103 @@ export const apiClient = {
       method: 'DELETE',
       headers: getHeaders()
     });
+    return handleResponse(res);
+  },
+
+  // Bandwidth Management APIs
+  async getBandwidthSettings(): Promise<any> {
+    const res = await fetch(`${API_BASE}/bandwidth/settings`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async saveBandwidthSettings(settings: any): Promise<void> {
+    const res = await fetch(`${API_BASE}/bandwidth/settings`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(settings)
+    });
+    await handleResponse(res);
+  },
+
+  // NodeMCU Device Management APIs
+  async registerNodeMCU(macAddress: string, ipAddress: string, authenticationKey: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/register`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ macAddress, ipAddress, authenticationKey })
+    });
+    return handleResponse(res);
+  },
+
+  async authenticateNodeMCU(macAddress: string, authenticationKey: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/authenticate`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ macAddress, authenticationKey })
+    });
+    return handleResponse(res);
+  },
+
+  async updateNodeMCUStatus(deviceId: string, status: 'pending' | 'accepted' | 'rejected', name?: string, vlanId?: number): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/${deviceId}/status`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ status, name, vlanId })
+    });
+    return handleResponse(res);
+  },
+
+  async acceptNodeMCUDevice(deviceId: string, name?: string, vlanId?: number): Promise<any> {
+    return this.updateNodeMCUStatus(deviceId, 'accepted', name, vlanId);
+  },
+
+  async rejectNodeMCUDevice(deviceId: string): Promise<any> {
+    return this.updateNodeMCUStatus(deviceId, 'rejected');
+  },
+
+  async removeNodeMCUDevice(deviceId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/${deviceId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
+  async updateNodeMCURates(deviceId: string, rates: any[]): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/${deviceId}/rates`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ rates })
+    });
+    return handleResponse(res);
+  },
+
+  async getNodeMCUDevices(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/nodemcu/devices`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async sendNodeMCUConfig(deviceId: string, config: any): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/${deviceId}/config`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(config)
+    });
+    return handleResponse(res);
+  },
+
+  async getNodeMCUDevice(deviceId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/${deviceId}`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async getAvailableNodeMCUDevices(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/nodemcu/available`);
+    return handleResponse(res);
+  },
+
+  async checkNodeMCUStatus(macAddress: string): Promise<{ online: boolean, lastSeen: string }> {
+    const res = await fetch(`${API_BASE}/nodemcu/status/${macAddress}`);
     return handleResponse(res);
   }
 };

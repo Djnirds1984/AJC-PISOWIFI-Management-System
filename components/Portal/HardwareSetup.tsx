@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { BoardType, SystemConfig } from '../../types';
+import { BoardType, SystemConfig, CoinSlotConfig } from '../../types';
 import { apiClient } from '../../lib/api';
 
 interface Props {
@@ -12,6 +12,13 @@ const HardwareSetup: React.FC<Props> = ({ onClose, onSaved }) => {
   const [board, setBoard] = useState<BoardType>('none');
   const [pin, setPin] = useState(3);
   const [boardModel, setBoardModel] = useState<string>('orange_pi_one');
+
+  const [coinSlots, setCoinSlots] = useState<CoinSlotConfig[]>([
+    { id: 1, enabled: true, pin: 4, denomination: 1, name: '1 Peso Slot' },
+    { id: 2, enabled: true, pin: 5, denomination: 5, name: '5 Peso Slot' },
+    { id: 3, enabled: false, pin: 12, denomination: 10, name: '10 Peso Slot' },
+    { id: 4, enabled: false, pin: 13, denomination: 1, name: 'Extra Slot' }
+  ]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -20,6 +27,10 @@ const HardwareSetup: React.FC<Props> = ({ onClose, onSaved }) => {
       setBoard(cfg.boardType);
       setPin(cfg.coinPin);
       if (cfg.boardModel) setBoardModel(cfg.boardModel);
+
+      if (cfg.coinSlots && cfg.coinSlots.length > 0) {
+        setCoinSlots(cfg.coinSlots);
+      }
       setLoading(false);
     });
   }, []);
@@ -30,7 +41,9 @@ const HardwareSetup: React.FC<Props> = ({ onClose, onSaved }) => {
       await apiClient.saveConfig({ 
         boardType: board, 
         coinPin: pin,
-        boardModel: board === 'orange_pi' ? boardModel : null
+        boardModel: board === 'orange_pi' ? boardModel : null,
+
+        coinSlots: board === 'nodemcu_esp' ? coinSlots : null
       });
       onSaved();
       onClose();
@@ -80,6 +93,13 @@ const HardwareSetup: React.FC<Props> = ({ onClose, onSaved }) => {
                 sub="Simulation"
                 icon="💻"
               />
+              <BoardCard 
+                active={board === 'nodemcu_esp'} 
+                onClick={() => setBoard('nodemcu_esp')}
+                title="NodeMCU ESP"
+                sub="ESP8266/ESP32"
+                icon="📡"
+              />
             </div>
             
             {board === 'orange_pi' && (
@@ -95,6 +115,85 @@ const HardwareSetup: React.FC<Props> = ({ onClose, onSaved }) => {
                    <option value="orange_pi_pc">Orange Pi PC</option>
                    <option value="orange_pi_5">Orange Pi 5</option>
                 </select>
+              </div>
+            )}
+            
+            {board === 'nodemcu_esp' && (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Multi-Coin Slots Configuration</label>
+                  <div className="space-y-3">
+                    {coinSlots.map((slot) => (
+                      <div key={slot.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="font-bold text-sm text-slate-800">Slot {slot.id}</h4>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input 
+                              type="checkbox" 
+                              checked={slot.enabled}
+                              onChange={(e) => {
+                                const updated = [...coinSlots];
+                                updated[slot.id - 1].enabled = e.target.checked;
+                                setCoinSlots(updated);
+                              }}
+                              className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                          </label>
+                        </div>
+                        
+                        {slot.enabled && (
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">GPIO Pin</label>
+                              <select 
+                                value={slot.pin}
+                                onChange={(e) => {
+                                  const updated = [...coinSlots];
+                                  updated[slot.id - 1].pin = parseInt(e.target.value);
+                                  setCoinSlots(updated);
+                                }}
+                                className="w-full p-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:border-blue-500"
+                              >
+                                <option value="0">GPIO 0 (D3)</option>
+                                <option value="4">GPIO 4 (D2)</option>
+                                <option value="5">GPIO 5 (D1)</option>
+                                <option value="12">GPIO 12 (D6)</option>
+                                <option value="13">GPIO 13 (D7)</option>
+                                <option value="14">GPIO 14 (D5)</option>
+                                <option value="15">GPIO 15 (D8)</option>
+                                <option value="16">GPIO 16 (D0)</option>
+                              </select>
+                            </div>
+                            
+                            <div>
+                              <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Denomination</label>
+                              <select 
+                                value={slot.denomination}
+                                onChange={(e) => {
+                                  const updated = [...coinSlots];
+                                  updated[slot.id - 1].denomination = parseInt(e.target.value);
+                                  setCoinSlots(updated);
+                                }}
+                                className="w-full p-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:border-blue-500"
+                              >
+                                <option value="1">1 Peso</option>
+                                <option value="5">5 Pesos</option>
+                                <option value="10">10 Pesos</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                    <p className="text-[10px] font-bold text-blue-700 leading-relaxed">
+                      <span className="font-black">💡 ESP8266/ESP32 Setup:</span> Connect coin acceptors to the selected GPIO pins. Each slot can be configured for different denominations.
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
           </div>

@@ -20,6 +20,9 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   const [isMacLoading, setIsMacLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [config, setConfig] = useState<PortalConfig>(DEFAULT_PORTAL_CONFIG);
+  const [availableSlots, setAvailableSlots] = useState<{id: string, name: string, macAddress: string, isOnline: boolean}[]>([]);
+  const [selectedSlot, setSelectedSlot] = useState<string>('main');
+  const [slotError, setSlotError] = useState<string | null>(null);
 
   // Hardcoded default rates in case the API fetch returns nothing
   const defaultRates: Rate[] = [
@@ -49,6 +52,17 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     };
     loadConfig();
 
+    // Load Available Coinslots
+    const loadAvailableSlots = async () => {
+      try {
+        const slots = await apiClient.getAvailableNodeMCUDevices();
+        setAvailableSlots(slots);
+      } catch (e) {
+        console.error('Failed to load available coinslots');
+      }
+    };
+    loadAvailableSlots();
+
     // Set fallback ID immediately so UI can render
     const fallbackId = getFallbackId();
     setMyMac(fallbackId);
@@ -74,8 +88,29 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
 
   const mySession = sessions.find(s => s.mac === myMac);
 
-  const handleOpenModal = (e: React.MouseEvent) => {
+  const handleOpenModal = async (e: React.MouseEvent) => {
     e.preventDefault();
+    setSlotError(null);
+
+    if (selectedSlot !== 'main') {
+      const slot = availableSlots.find(s => s.macAddress === selectedSlot);
+      if (slot && !slot.isOnline) {
+        setSlotError(`The machine "${slot.name}" is OFFLINE. Please tell the owner to restart it.`);
+        return;
+      }
+      
+      // Double check status with API for selected slot
+      try {
+        const status = await apiClient.checkNodeMCUStatus(selectedSlot);
+        if (!status.online) {
+          setSlotError(`The machine "${slot?.name || 'Sub-Vendo'}" is OFFLINE. Please tell the owner to restart it.`);
+          return;
+        }
+      } catch (err) {
+        console.error('Status check failed');
+      }
+    }
+
     setShowModal(true);
   };
 
@@ -262,6 +297,53 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
             </div>
           )}
 
+          {availableSlots.length > 0 && (
+            <div className="px-8 mb-6">
+              <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 text-center">
+                Select Coinslot Location
+              </label>
+              <div className="grid grid-cols-1 gap-2">
+                <button 
+                  onClick={() => setSelectedSlot('main')}
+                  className={`py-3 px-4 rounded-xl border-2 text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between ${
+                    selectedSlot === 'main' 
+                      ? 'border-blue-600 bg-blue-50 text-blue-700' 
+                      : 'border-slate-100 text-slate-400 hover:border-slate-200'
+                  }`}
+                >
+                  <span>Main Machine</span>
+                  {selectedSlot === 'main' && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
+                </button>
+                {availableSlots.map(slot => (
+                  <button 
+                    key={slot.id}
+                    onClick={() => setSelectedSlot(slot.macAddress)}
+                    className={`py-3 px-4 rounded-xl border-2 text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between ${
+                      selectedSlot === slot.macAddress 
+                        ? 'border-blue-600 bg-blue-50 text-blue-700' 
+                        : 'border-slate-100 text-slate-400 hover:border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-1.5 h-1.5 rounded-full ${slot.isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                      <span>{slot.name}</span>
+                    </div>
+                    {selectedSlot === slot.macAddress && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {slotError && (
+            <div className="mx-6 mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-center animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="text-xl mb-1">⚠️</div>
+              <p className="text-[10px] font-black uppercase tracking-widest leading-relaxed">
+                {slotError}
+              </p>
+            </div>
+          )}
+
           <button onClick={handleOpenModal} className="portal-btn">
             {mySession ? 'ADD MORE TIME' : 'INSERT COIN'}
           </button>
@@ -333,6 +415,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
           onClose={() => setShowModal(false)} 
           audioSrc={config.coinDropAudio}
           insertCoinAudioSrc={config.insertCoinAudio}
+          selectedSlot={selectedSlot}
           onSuccess={(pesos, minutes) => {
             onSessionStart({
               mac: myMac,

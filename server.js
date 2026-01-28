@@ -509,12 +509,43 @@ app.use(async (req, res, next) => {
       // If IP has changed, update the whitelist rule
       if (session.ip !== clientIp) {
         console.log(`[NET] Client ${mac} moved from IP ${session.ip} to ${clientIp} (likely different SSID). Re-applying limits...`);
+        
+        // Log current TC rules status before cleanup
+        try {
+          const beforeCleanup = await network.checkTcRulesExist(session.ip);
+          console.log(`[DEBUG] TC rules for old IP ${session.ip} before cleanup:`, beforeCleanup);
+        } catch (e) {
+          console.log(`[DEBUG] Could not check TC rules for ${session.ip}:`, e.message);
+        }
+        
         // Block and clean up old IP (removes TC rules from old VLAN interface)
         await network.blockMAC(mac, session.ip);
+        
+        // Add extra delay to ensure complete cleanup
+        await new Promise(r => setTimeout(r, 300));
+        
+        // Log current TC rules status after cleanup
+        try {
+          const afterCleanup = await network.checkTcRulesExist(session.ip);
+          console.log(`[DEBUG] TC rules for old IP ${session.ip} after cleanup:`, afterCleanup);
+        } catch (e) {
+          console.log(`[DEBUG] Could not check TC rules for ${session.ip}:`, e.message);
+        }
+        
         // Whitelist and re-apply limits on new IP (applies TC rules to new VLAN interface)
         await network.whitelistMAC(mac, clientIp);
+        
         // Update session with new IP
         await db.run('UPDATE sessions SET ip = ? WHERE mac = ?', [clientIp, mac]);
+        
+        // Log current TC rules status after re-application
+        try {
+          const afterApply = await network.checkTcRulesExist(clientIp);
+          console.log(`[DEBUG] TC rules for new IP ${clientIp} after apply:`, afterApply);
+        } catch (e) {
+          console.log(`[DEBUG] Could not check TC rules for ${clientIp}:`, e.message);
+        }
+        
         console.log(`[NET] Session limits re-applied for ${mac} on new interface`);
       }
       
@@ -1246,13 +1277,13 @@ app.get('/api/devices/:id', requireAdmin, async (req, res) => {
 
 app.post('/api/devices', requireAdmin, async (req, res) => {
   try {
-    const { mac, ip, hostname, interface, ssid, signal, customName } = req.body;
+    const { mac, ip, hostname, interface: iface, ssid, signal, customName } = req.body;
     const id = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const now = Date.now();
     
     await db.run(
       'INSERT INTO wifi_devices (id, mac, ip, hostname, interface, ssid, signal, connected_at, last_seen, is_active, custom_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, mac.toUpperCase(), ip, hostname || '', interface, ssid || '', signal || 0, now, now, 1, customName || '']
+      [id, mac.toUpperCase(), ip, hostname || '', iface, ssid || '', signal || 0, now, now, 1, customName || '']
     );
     
     const newDevice = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [id]);
@@ -1498,6 +1529,55 @@ setInterval(async () => {
     await db.run('UPDATE sessions SET remaining_seconds = remaining_seconds - 1 WHERE remaining_seconds > 0');
   } catch (e) { console.error(e); }
 }, 1000);
+
+// Periodic TC rule cleanup (every 30 seconds) to prevent accumulation of stale rules
+setInterval(async () => {
+  try {
+    // Clean up TC rules for inactive sessions
+    const inactiveSessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds <= 0');
+    for (const session of inactiveSessions) {
+      await network.removeSpeedLimit(session.mac, session.ip);
+    }
+    
+    // Also clean up any orphaned TC rules that don't correspond to active sessions
+    const activeSessions = await db.all('SELECT ip FROM sessions WHERE remaining_seconds > 0');
+    const activeIPs = new Set(activeSessions.map(s => s.ip));
+    
+    // Get all interfaces and check for orphaned rules
+    const { stdout: interfacesOutput } = await execPromise(`ip link show | grep -E "eth|wlan|br|vlan" | awk '{print $2}' | sed 's/:$//'`).catch(() => ({ stdout: '' }));
+    const interfaces = interfacesOutput.trim().split('\n').filter(i => i);
+    
+    for (const iface of interfaces) {
+      try {
+        // Check for download filters with IPs that are no longer active
+        const { stdout: downloadFilters } = await execPromise(`tc filter show dev ${iface} parent 1:0 2>/dev/null || echo ""`).catch(() => ({ stdout: '' }));
+        const downloadIPs = downloadFilters.match(/\d+\.\d+\.\d+\.\d+/g) || [];
+        
+        for (const ip of downloadIPs) {
+          if (!activeIPs.has(ip)) {
+            await execPromise(`tc filter del dev ${iface} parent 1:0 protocol ip prio 1 u32 match ip dst ${ip} 2>/dev/null || true`).catch(() => {});
+            console.log(`[CLEANUP] Removed orphaned download rule for ${ip} on ${iface}`);
+          }
+        }
+        
+        // Check for upload filters with IPs that are no longer active
+        const { stdout: uploadFilters } = await execPromise(`tc filter show dev ${iface} parent ffff: 2>/dev/null || echo ""`).catch(() => ({ stdout: '' }));
+        const uploadIPs = uploadFilters.match(/\d+\.\d+\.\d+\.\d+/g) || [];
+        
+        for (const ip of uploadIPs) {
+          if (!activeIPs.has(ip)) {
+            await execPromise(`tc filter del dev ${iface} parent ffff: protocol ip prio 1 u32 match ip src ${ip} 2>/dev/null || true`).catch(() => {});
+            console.log(`[CLEANUP] Removed orphaned upload rule for ${ip} on ${iface}`);
+          }
+        }
+      } catch (e) {
+        // Ignore errors for individual interfaces
+      }
+    }
+  } catch (e) { 
+    console.error('[CLEANUP] Periodic TC cleanup error:', e.message); 
+  }
+}, 30000); // Run every 30 seconds
 
 async function bootupRestore() {
   console.log('[AJC] Starting System Restoration...');

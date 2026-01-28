@@ -245,7 +245,7 @@ void startHTTPServer() {
   server.begin();
 }
 
-void coinInterrupt() {
+void IRAM_ATTR coinInterrupt() {
   for (int i = 0; i < 4; i++) {
     if (config.slotEnabled[i] && digitalRead(config.coinPins[i]) == LOW) {
       unsigned long now = millis();

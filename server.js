@@ -509,43 +509,14 @@ app.use(async (req, res, next) => {
       // If IP has changed, update the whitelist rule
       if (session.ip !== clientIp) {
         console.log(`[NET] Client ${mac} moved from IP ${session.ip} to ${clientIp} (likely different SSID). Re-applying limits...`);
-        
-        // Log current TC rules status before cleanup
-        try {
-          const beforeCleanup = await network.checkTcRulesExist(session.ip);
-          console.log(`[DEBUG] TC rules for old IP ${session.ip} before cleanup:`, beforeCleanup);
-        } catch (e) {
-          console.log(`[DEBUG] Could not check TC rules for ${session.ip}:`, e.message);
-        }
-        
         // Block and clean up old IP (removes TC rules from old VLAN interface)
         await network.blockMAC(mac, session.ip);
-        
         // Add extra delay to ensure complete cleanup
         await new Promise(r => setTimeout(r, 300));
-        
-        // Log current TC rules status after cleanup
-        try {
-          const afterCleanup = await network.checkTcRulesExist(session.ip);
-          console.log(`[DEBUG] TC rules for old IP ${session.ip} after cleanup:`, afterCleanup);
-        } catch (e) {
-          console.log(`[DEBUG] Could not check TC rules for ${session.ip}:`, e.message);
-        }
-        
         // Whitelist and re-apply limits on new IP (applies TC rules to new VLAN interface)
         await network.whitelistMAC(mac, clientIp);
-        
         // Update session with new IP
         await db.run('UPDATE sessions SET ip = ? WHERE mac = ?', [clientIp, mac]);
-        
-        // Log current TC rules status after re-application
-        try {
-          const afterApply = await network.checkTcRulesExist(clientIp);
-          console.log(`[DEBUG] TC rules for new IP ${clientIp} after apply:`, afterApply);
-        } catch (e) {
-          console.log(`[DEBUG] Could not check TC rules for ${clientIp}:`, e.message);
-        }
-        
         console.log(`[NET] Session limits re-applied for ${mac} on new interface`);
       }
       

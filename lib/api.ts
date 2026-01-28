@@ -421,5 +421,77 @@ export const apiClient = {
       body: JSON.stringify(settings)
     });
     await handleResponse(res);
+  },
+
+  // NodeMCU Device Management APIs
+  async registerNodeMCU(macAddress: string, ipAddress: string, authenticationKey: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/register`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ macAddress, ipAddress, authenticationKey })
+    });
+    return handleResponse(res);
+  },
+
+  async authenticateNodeMCU(macAddress: string, authenticationKey: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/authenticate`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ macAddress, authenticationKey })
+    });
+    return handleResponse(res);
+  },
+
+  async updateNodeMCUStatus(deviceId: string, status: 'pending' | 'accepted' | 'rejected'): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/${deviceId}/status`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ status })
+    });
+    return handleResponse(res);
+  },
+
+  async acceptNodeMCUDevice(deviceId: string): Promise<any> {
+    return this.updateNodeMCUStatus(deviceId, 'accepted');
+  },
+
+  async rejectNodeMCUDevice(deviceId: string): Promise<any> {
+    return this.updateNodeMCUStatus(deviceId, 'rejected');
+  },
+
+  async removeNodeMCUDevice(deviceId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/${deviceId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
+  async updateNodeMCURates(deviceId: string, rates: any[]): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/${deviceId}/rates`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ rates })
+    });
+    return handleResponse(res);
+  },
+
+  async getNodeMCUDevices(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/nodemcu/devices`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async sendNodeMCUConfig(deviceId: string, config: any): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/${deviceId}/config`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(config)
+    });
+    return handleResponse(res);
+  },
+
+  async getNodeMCUDevice(deviceId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/${deviceId}`, { headers: getHeaders() });
+    return handleResponse(res);
   }
 };

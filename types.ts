@@ -9,6 +9,8 @@ export interface SystemConfig {
   // For ESP WiFi connection
   espIpAddress?: string;
   espPort?: number;
+  // For multi-NodeMCU setup
+  nodemcuDevices?: NodeMCUDevice[];
   // Deprecated - kept for backward compatibility
   serialPort?: string;
 }
@@ -19,6 +21,23 @@ export interface CoinSlotConfig {
   pin: number; // GPIO pin on ESP board
   denomination: number; // 1, 5, 10 pesos
   name?: string; // Optional custom name
+}
+
+export interface NodeMCUDevice {
+  id: string;
+  name: string;
+  ipAddress: string;
+  macAddress: string;
+  pin: number; // GPIO pin for coin detection (default D6)
+  status: 'pending' | 'accepted' | 'rejected' | 'disconnected';
+  vlanId?: number;
+  lastSeen: string;
+  authenticationKey: string;
+  createdAt: string;
+  // Pricing configuration
+  rates: Rate[]; // Independent pricing rules for this device
+  totalPulses: number;
+  totalRevenue: number;
 }
 
 export interface Rate {

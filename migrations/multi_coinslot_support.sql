@@ -11,6 +11,9 @@ INSERT OR IGNORE INTO config (key, value) VALUES ('espPort', '80');
 -- Add coin slots configuration (JSON array)
 INSERT OR IGNORE INTO config (key, value) VALUES ('coinSlots', '[]');
 
+-- Add multi-NodeMCU devices configuration
+INSERT OR IGNORE INTO config (key, value) VALUES ('nodemcuDevices', '[]');
+
 -- Migration: Add multi-slot tracking to existing tables if needed
 -- This would be for future analytics/reporting on per-slot performance
 

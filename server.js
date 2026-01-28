@@ -7,6 +7,7 @@ const fs = require('fs');
 const si = require('systeminformation');
 const db = require('./lib/db');
 const { initGPIO, updateGPIO, registerSlotCallback, unregisterSlotCallback } = require('./lib/gpio');
+const NodeMCUListener = require('./lib/nodemcu-listener');
 const network = require('./lib/network');
 const { verifyPassword, hashPassword } = require('./lib/auth');
 const crypto = require('crypto');
@@ -873,6 +874,7 @@ app.get('/api/config', requireAdmin, async (req, res) => {
     const coinSlots = await db.get('SELECT value FROM config WHERE key = ?', ['coinSlots']);
     const espIpAddress = await db.get('SELECT value FROM config WHERE key = ?', ['espIpAddress']);
     const espPort = await db.get('SELECT value FROM config WHERE key = ?', ['espPort']);
+    const nodemcuDevices = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
     
     res.json({ 
       boardType: board?.value || 'none', 
@@ -881,7 +883,8 @@ app.get('/api/config', requireAdmin, async (req, res) => {
       serialPort: serialPort?.value || '/dev/ttyUSB0',
       espIpAddress: espIpAddress?.value || '192.168.4.1',
       espPort: parseInt(espPort?.value || '80'),
-      coinSlots: coinSlots?.value ? JSON.parse(coinSlots.value) : []
+      coinSlots: coinSlots?.value ? JSON.parse(coinSlots.value) : [],
+      nodemcuDevices: nodemcuDevices?.value ? JSON.parse(nodemcuDevices.value) : []
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -897,13 +900,138 @@ app.post('/api/config', requireAdmin, async (req, res) => {
       await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['espIpAddress', req.body.espIpAddress || '192.168.4.1']);
       await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['espPort', req.body.espPort || '80']);
       await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['coinSlots', JSON.stringify(req.body.coinSlots || [])]);
-      updateGPIO(req.body.boardType, req.body.coinPin, req.body.boardModel, req.body.espIpAddress, req.body.espPort, req.body.coinSlots);
+      updateGPIO(req.body.boardType, req.body.coinPin, req.body.boardModel, req.body.espIpAddress, req.body.espPort, req.body.coinSlots, req.body.nodemcuDevices);
     } else {
-      updateGPIO(req.body.boardType, req.body.coinPin, req.body.boardModel);
+      updateGPIO(req.body.boardType, req.body.coinPin, req.body.boardModel, null, null, null, req.body.nodemcuDevices);
+    }
+    
+    // Handle multi-NodeMCU devices
+    if (req.body.nodemcuDevices !== undefined) {
+      await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(req.body.nodemcuDevices)]);
     }
     
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// NODEMCU DEVICE REGISTRATION API
+app.post('/api/nodemcu/register', async (req, res) => {
+  try {
+    const { macAddress, ipAddress, authenticationKey } = req.body;
+    
+    if (!macAddress || !ipAddress || !authenticationKey) {
+      return res.status(400).json({ error: 'Missing required fields: macAddress, ipAddress, authenticationKey' });
+    }
+    
+    // Load existing devices
+    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    const existingDevices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
+    
+    // Check if device already exists
+    const existingDevice = existingDevices.find(d => d.macAddress === macAddress);
+    if (existingDevice) {
+      return res.status(409).json({ error: 'Device with this MAC address already registered' });
+    }
+    
+    // Create new pending device
+    const newDevice = {
+      id: `nodemcu_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: `NodeMCU-${macAddress.replace(/[:]/g, '').substring(0, 6)}`,
+      ipAddress,
+      macAddress,
+      pin: 12, // D6 on ESP8266 (GPIO 12)
+      status: 'pending',
+      vlanId: 13, // As requested
+      lastSeen: new Date().toISOString(),
+      authenticationKey,
+      createdAt: new Date().toISOString(),
+      rates: [],
+      totalPulses: 0,
+      totalRevenue: 0
+    };
+    
+    // Add to devices list
+    const updatedDevices = [...existingDevices, newDevice];
+    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(updatedDevices)]);
+    
+    res.json({ success: true, device: newDevice });
+  } catch (err) {
+    console.error('Error registering NodeMCU device:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// NodeMCU device authentication
+app.post('/api/nodemcu/authenticate', async (req, res) => {
+  try {
+    const { macAddress, authenticationKey } = req.body;
+    
+    if (!macAddress || !authenticationKey) {
+      return res.status(400).json({ error: 'Missing required fields: macAddress, authenticationKey' });
+    }
+    
+    // Load existing devices
+    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    const existingDevices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
+    
+    // Find device by MAC address
+    const device = existingDevices.find(d => d.macAddress === macAddress);
+    
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    // Check authentication key
+    if (device.authenticationKey !== authenticationKey) {
+      return res.status(401).json({ error: 'Invalid authentication key' });
+    }
+    
+    // Update last seen timestamp
+    const updatedDevices = existingDevices.map(d => 
+      d.macAddress === macAddress 
+        ? { ...d, lastSeen: new Date().toISOString() } 
+        : d
+    );
+    
+    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(updatedDevices)]);
+    
+    res.json({ success: true, device: { ...device, status: device.status } });
+  } catch (err) {
+    console.error('Error authenticating NodeMCU device:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin endpoint to accept/reject NodeMCU device
+app.post('/api/nodemcu/:deviceId/status', requireAdmin, async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const { status } = req.body;
+    
+    if (!['pending', 'accepted', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status. Must be pending, accepted, or rejected' });
+    }
+    
+    // Load existing devices
+    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    const existingDevices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
+    
+    // Find and update device
+    const deviceIndex = existingDevices.findIndex(d => d.id === deviceId);
+    if (deviceIndex === -1) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    const updatedDevices = [...existingDevices];
+    updatedDevices[deviceIndex] = { ...updatedDevices[deviceIndex], status };
+    
+    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(updatedDevices)]);
+    
+    res.json({ success: true, device: updatedDevices[deviceIndex] });
+  } catch (err) {
+    console.error('Error updating NodeMCU device status:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // PORTAL CONFIG API
@@ -1680,6 +1808,7 @@ async function bootupRestore() {
   const espIpAddress = await db.get('SELECT value FROM config WHERE key = ?', ['espIpAddress']);
   const espPort = await db.get('SELECT value FROM config WHERE key = ?', ['espPort']);
   const coinSlots = await db.get('SELECT value FROM config WHERE key = ?', ['coinSlots']);
+  const nodemcuDevices = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
   
   const coinCallback = (pesos) => {
     io.emit('coin-pulse', { pesos });
@@ -1695,7 +1824,8 @@ async function bootupRestore() {
     serialPort?.value,
     espIpAddress?.value,
     parseInt(espPort?.value || '80'),
-    coinSlots?.value ? JSON.parse(coinSlots.value) : []
+    coinSlots?.value ? JSON.parse(coinSlots.value) : [],
+    nodemcuDevices?.value ? JSON.parse(nodemcuDevices.value) : []
   );
   
   // Register callbacks for individual slots (if multi-slot)

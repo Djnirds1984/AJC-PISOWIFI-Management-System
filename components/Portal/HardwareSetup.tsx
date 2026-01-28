@@ -12,7 +12,7 @@ const HardwareSetup: React.FC<Props> = ({ onClose, onSaved }) => {
   const [board, setBoard] = useState<BoardType>('none');
   const [pin, setPin] = useState(3);
   const [boardModel, setBoardModel] = useState<string>('orange_pi_one');
-  const [serialPort, setSerialPort] = useState<string>('/dev/ttyUSB0');
+
   const [coinSlots, setCoinSlots] = useState<CoinSlotConfig[]>([
     { id: 1, enabled: true, pin: 4, denomination: 1, name: '1 Peso Slot' },
     { id: 2, enabled: true, pin: 5, denomination: 5, name: '5 Peso Slot' },
@@ -27,7 +27,7 @@ const HardwareSetup: React.FC<Props> = ({ onClose, onSaved }) => {
       setBoard(cfg.boardType);
       setPin(cfg.coinPin);
       if (cfg.boardModel) setBoardModel(cfg.boardModel);
-      if (cfg.serialPort) setSerialPort(cfg.serialPort);
+
       if (cfg.coinSlots && cfg.coinSlots.length > 0) {
         setCoinSlots(cfg.coinSlots);
       }
@@ -42,7 +42,7 @@ const HardwareSetup: React.FC<Props> = ({ onClose, onSaved }) => {
         boardType: board, 
         coinPin: pin,
         boardModel: board === 'orange_pi' ? boardModel : null,
-        serialPort: board === 'nodemcu_esp' ? serialPort : null,
+
         coinSlots: board === 'nodemcu_esp' ? coinSlots : null
       });
       onSaved();
@@ -120,20 +120,6 @@ const HardwareSetup: React.FC<Props> = ({ onClose, onSaved }) => {
             
             {board === 'nodemcu_esp' && (
               <div className="mt-4 space-y-4">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Serial Port</label>
-                  <select 
-                    value={serialPort} 
-                    onChange={(e) => setSerialPort(e.target.value)}
-                    className="w-full p-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:border-blue-500"
-                  >
-                    <option value="/dev/ttyUSB0">/dev/ttyUSB0</option>
-                    <option value="/dev/ttyUSB1">/dev/ttyUSB1</option>
-                    <option value="/dev/ttyACM0">/dev/ttyACM0</option>
-                    <option value="/dev/ttyS0">/dev/ttyS0</option>
-                  </select>
-                </div>
-                
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Multi-Coin Slots Configuration</label>
                   <div className="space-y-3">

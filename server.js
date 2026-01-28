@@ -1358,6 +1358,40 @@ app.get('/api/devices', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Firmware download endpoint
+app.get('/api/firmware/nodemcu', requireAdmin, (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Check if firmware file exists
+    const firmwarePath = path.join(__dirname, 'firmware', 'NodeMCU_ESP8266', 'NodeMCU_ESP8266.ino');
+    
+    if (!fs.existsSync(firmwarePath)) {
+      return res.status(404).json({ error: 'Firmware file not found' });
+    }
+    
+    // Set headers for file download
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'attachment; filename="NodeMCU_ESP8266.ino"');
+    
+    // Stream the file
+    const fileStream = fs.createReadStream(firmwarePath);
+    fileStream.pipe(res);
+    
+    fileStream.on('error', (err) => {
+      console.error('Error streaming firmware file:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to download firmware' });
+      }
+    });
+    
+  } catch (err) {
+    console.error('Error downloading firmware:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/devices/scan', requireAdmin, async (req, res) => {
   try {
     const scannedDevices = await network.scanWifiDevices();

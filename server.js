@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const si = require('systeminformation');
 const db = require('./lib/db');
-const { initGPIO, updateGPIO } = require('./lib/gpio');
+const { initGPIO, updateGPIO, registerSlotCallback, unregisterSlotCallback } = require('./lib/gpio');
 const network = require('./lib/network');
 const { verifyPassword, hashPassword } = require('./lib/auth');
 const crypto = require('crypto');
@@ -869,10 +869,19 @@ app.get('/api/config', requireAdmin, async (req, res) => {
     const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
     const pin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
     const model = await db.get('SELECT value FROM config WHERE key = ?', ['boardModel']);
+    const serialPort = await db.get('SELECT value FROM config WHERE key = ?', ['serialPort']);
+    const coinSlots = await db.get('SELECT value FROM config WHERE key = ?', ['coinSlots']);
+    const espIpAddress = await db.get('SELECT value FROM config WHERE key = ?', ['espIpAddress']);
+    const espPort = await db.get('SELECT value FROM config WHERE key = ?', ['espPort']);
+    
     res.json({ 
       boardType: board?.value || 'none', 
       coinPin: parseInt(pin?.value || '2'),
-      boardModel: model?.value || null 
+      boardModel: model?.value || null,
+      serialPort: serialPort?.value || '/dev/ttyUSB0',
+      espIpAddress: espIpAddress?.value || '192.168.4.1',
+      espPort: parseInt(espPort?.value || '80'),
+      coinSlots: coinSlots?.value ? JSON.parse(coinSlots.value) : []
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -882,7 +891,17 @@ app.post('/api/config', requireAdmin, async (req, res) => {
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['boardType', req.body.boardType]);
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['coinPin', req.body.coinPin]);
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['boardModel', req.body.boardModel]);
-    updateGPIO(req.body.boardType, req.body.coinPin, req.body.boardModel);
+    
+    // Handle NodeMCU ESP configuration
+    if (req.body.boardType === 'nodemcu_esp') {
+      await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['espIpAddress', req.body.espIpAddress || '192.168.4.1']);
+      await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['espPort', req.body.espPort || '80']);
+      await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['coinSlots', JSON.stringify(req.body.coinSlots || [])]);
+      updateGPIO(req.body.boardType, req.body.coinPin, req.body.boardModel, req.body.espIpAddress, req.body.espPort, req.body.coinSlots);
+    } else {
+      updateGPIO(req.body.boardType, req.body.coinPin, req.body.boardModel);
+    }
+    
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1657,7 +1676,43 @@ async function bootupRestore() {
   const board = await db.get('SELECT value FROM config WHERE key = ?', ['boardType']);
   const pin = await db.get('SELECT value FROM config WHERE key = ?', ['coinPin']);
   const model = await db.get('SELECT value FROM config WHERE key = ?', ['boardModel']);
-  initGPIO((pesos) => io.emit('coin-pulse', { pesos }), board?.value || 'none', parseInt(pin?.value || '2'), model?.value);
+  const serialPort = await db.get('SELECT value FROM config WHERE key = ?', ['serialPort']);
+  const espIpAddress = await db.get('SELECT value FROM config WHERE key = ?', ['espIpAddress']);
+  const espPort = await db.get('SELECT value FROM config WHERE key = ?', ['espPort']);
+  const coinSlots = await db.get('SELECT value FROM config WHERE key = ?', ['coinSlots']);
+  
+  const coinCallback = (pesos) => {
+    io.emit('coin-pulse', { pesos });
+    // Also emit multi-slot event for tracking
+    io.emit('multi-coin-pulse', { denomination: pesos, slot_id: null });
+  };
+  
+  initGPIO(
+    coinCallback, 
+    board?.value || 'none', 
+    parseInt(pin?.value || '2'), 
+    model?.value,
+    serialPort?.value,
+    espIpAddress?.value,
+    parseInt(espPort?.value || '80'),
+    coinSlots?.value ? JSON.parse(coinSlots.value) : []
+  );
+  
+  // Register callbacks for individual slots (if multi-slot)
+  if (board?.value === 'nodemcu_esp' && coinSlots?.value) {
+    const slots = JSON.parse(coinSlots.value);
+    slots.forEach(slot => {
+      if (slot.enabled) {
+        registerSlotCallback(slot.id, (denomination) => {
+          io.emit('multi-coin-pulse', { 
+            denomination, 
+            slot_id: slot.id,
+            slot_name: slot.name || `Slot ${slot.id}`
+          });
+        });
+      }
+    });
+  }
   
   // 5. Restore Active Sessions
   // Initialize QoS on LAN interface before restoring sessions

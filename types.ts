@@ -1,9 +1,24 @@
-export type BoardType = 'raspberry_pi' | 'orange_pi' | 'x64_pc' | 'none';
+export type BoardType = 'raspberry_pi' | 'orange_pi' | 'x64_pc' | 'nodemcu_esp' | 'none';
 
 export interface SystemConfig {
   boardType: BoardType;
   coinPin: number;
   boardModel?: string | null;
+  // Multi-coin slot support
+  coinSlots?: CoinSlotConfig[];
+  // For ESP WiFi connection
+  espIpAddress?: string;
+  espPort?: number;
+  // Deprecated - kept for backward compatibility
+  serialPort?: string;
+}
+
+export interface CoinSlotConfig {
+  id: number; // Slot identifier (1, 2, 3, 4)
+  enabled: boolean;
+  pin: number; // GPIO pin on ESP board
+  denomination: number; // 1, 5, 10 pesos
+  name?: string; // Optional custom name
 }
 
 export interface Rate {
@@ -205,6 +220,12 @@ export interface VendorMachine {
   cpu_temp?: number;
   uptime_seconds?: number;
   active_sessions_count?: number;
+  // Multi-coin slot data
+  coin_slots_data?: {
+    slot_id: number;
+    pulses: number;
+    revenue: number;
+  }[];
 }
 
 export interface SalesLog {

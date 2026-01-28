@@ -11,8 +11,6 @@ interface Props {
 const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
   const [newPeso, setNewPeso] = useState('');
   const [newMinutes, setNewMinutes] = useState('');
-  const [newDownload, setNewDownload] = useState('');
-  const [newUpload, setNewUpload] = useState('');
   const [qosDiscipline, setQoSDiscipline] = useState<'cake' | 'fq_codel'>('cake');
   const [loading, setLoading] = useState(false);
   const [savingQoS, setSavingQoS] = useState(false);
@@ -37,15 +35,11 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
     try {
       await apiClient.addRate(
         parseInt(newPeso), 
-        parseInt(newMinutes), 
-        newDownload ? parseInt(newDownload) : 0, 
-        newUpload ? parseInt(newUpload) : 0
+        parseInt(newMinutes)
       );
       await setRates();
       setNewPeso('');
       setNewMinutes('');
-      setNewDownload('');
-      setNewUpload('');
     } finally {
       setLoading(false);
     }
@@ -98,7 +92,7 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
 
       <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
         <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6">Create Rate Definition</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Currency (₱)</label>
             <input 
@@ -119,26 +113,6 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
               placeholder="10"
             />
           </div>
-          <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">DL Limit (Mbps)</label>
-            <input 
-              type="number" 
-              value={newDownload}
-              onChange={(e) => setNewDownload(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all font-bold"
-              placeholder="0 (Unl)"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">UL Limit (Mbps)</label>
-            <input 
-              type="number" 
-              value={newUpload}
-              onChange={(e) => setNewUpload(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all font-bold"
-              placeholder="0 (Unl)"
-            />
-          </div>
           <div className="flex items-end">
             <button 
               onClick={addRate}
@@ -149,6 +123,13 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
             </button>
           </div>
         </div>
+        <div className="mt-6 bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+          <div className="text-amber-800 text-sm font-bold flex items-center gap-2">
+            <span>⚠️</span>
+            Bandwidth limits are now managed in the <span className="font-black">Bandwidth</span> section
+          </div>
+          <p className="text-amber-700 text-xs mt-1">Set default download/upload limits for all devices in the Bandwidth Management page.</p>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -157,7 +138,6 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
             <tr>
               <th className="px-6 py-5">Denomination</th>
               <th className="px-6 py-5">Internet Duration</th>
-              <th className="px-6 py-5">Speed Limit (DL/UL)</th>
               <th className="px-6 py-5 text-right">Admin Action</th>
             </tr>
           </thead>
@@ -172,15 +152,6 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
                     ? `${Math.floor(rate.minutes / 60)}h ${rate.minutes % 60 > 0 ? (rate.minutes % 60) + 'm' : ''}`
                     : `${rate.minutes} Minutes`}
                 </td>
-                <td className="px-6 py-5 text-slate-600 font-bold text-xs">
-                  {rate.download_limit || rate.upload_limit ? (
-                    <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded">
-                      {rate.download_limit ? `${rate.download_limit}Mbps` : '∞'} / {rate.upload_limit ? `${rate.upload_limit}Mbps` : '∞'}
-                    </span>
-                  ) : (
-                    <span className="text-slate-400">Unlimited</span>
-                  )}
-                </td>
                 <td className="px-6 py-5 text-right">
                   <button 
                     onClick={() => deleteRate(rate.id)}
@@ -192,7 +163,7 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
               </tr>
             )) : (
               <tr>
-                <td colSpan={4} className="px-6 py-20 text-center text-slate-400 text-xs font-black uppercase">No rates defined in database.</td>
+                <td colSpan={3} className="px-6 py-20 text-center text-slate-400 text-xs font-black uppercase">No rates defined in database.</td>
               </tr>
             )}
           </tbody>

@@ -2537,8 +2537,8 @@ server.listen(80, '0.0.0.0', async () => {
       systemHardwareId = await getUniqueHardwareId();
     }
 
-    const trialStatus = await checkTrialStatus(systemHardwareId);
     const verification = await licenseManager.verifyLicense();
+    const trialStatus = await checkTrialStatus(systemHardwareId);
     
     const isLicensed = verification.isValid && verification.isActivated;
     const isRevoked = verification.isRevoked || trialStatus.isRevoked;

@@ -10,7 +10,8 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  Edit2
+  Edit2,
+  Upload
 } from 'lucide-react';
 
 const HardwareManager: React.FC = () => {
@@ -25,6 +26,7 @@ const HardwareManager: React.FC = () => {
 
   const [coinSlots, setCoinSlots] = useState<CoinSlotConfig[]>([]);
   const [nodemcuDevices, setNodemcuDevices] = useState<NodeMCUDevice[]>([]);
+  const [isUpdating, setIsUpdating] = useState<string | null>(null);
   const [registrationKey, setRegistrationKey] = useState<string>('7B3F1A9');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -90,6 +92,23 @@ const HardwareManager: React.FC = () => {
       loadNodemcuDevices();
     } catch (e) {
       alert('Failed to update device configuration');
+    }
+  };
+
+  const handleUpdateFirmware = async (deviceId: string, file: File) => {
+    setIsUpdating(deviceId);
+    try {
+      const response = await apiClient.updateNodeMCUFirmware(deviceId, file);
+      if (response.success) {
+        alert('Firmware update started! The device will reboot once finished.');
+      } else {
+        throw new Error(response.error || 'Failed to update firmware');
+      }
+    } catch (error: any) {
+      console.error('Update failed:', error);
+      alert(error.message || 'Failed to update firmware. Make sure the device is online.');
+    } finally {
+      setIsUpdating(null);
     }
   };
 
@@ -353,9 +372,9 @@ const HardwareManager: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="p-3 bg-white border-t border-slate-100 grid grid-cols-2 gap-2">
+                  <div className="p-3 bg-white border-t border-slate-100 flex flex-col gap-2">
                     {device.status === 'pending' ? (
-                      <>
+                      <div className="grid grid-cols-2 gap-2">
                         <button 
                           onClick={() => handleUpdateDeviceStatus(device.id, 'accepted')}
                           className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-green-600 text-white text-[9px] font-black uppercase tracking-widest hover:bg-green-700 transition-all active:scale-95"
@@ -368,24 +387,49 @@ const HardwareManager: React.FC = () => {
                         >
                           <XCircle size={12} /> Reject
                         </button>
-                      </>
+                      </div>
                     ) : (
                       <>
-                        <button 
-                          onClick={() => {
-                            const newName = prompt('Enter device name:', device.name);
-                            if (newName) handleUpdateDeviceConfig(device.id, newName, device.pin);
-                          }}
-                          className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-slate-100 text-slate-600 text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
-                        >
-                          <Edit2 size={12} /> Rename
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteDevice(device.id)}
-                          className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-red-50 text-red-600 text-[9px] font-black uppercase tracking-widest hover:bg-red-100 transition-all active:scale-95"
-                        >
-                          <Trash2 size={12} /> Remove
-                        </button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button 
+                            onClick={() => {
+                              const newName = prompt('Enter device name:', device.name);
+                              if (newName) handleUpdateDeviceConfig(device.id, newName, device.pin);
+                            }}
+                            className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-slate-100 text-slate-600 text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                          >
+                            <Edit2 size={12} /> Rename
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteDevice(device.id)}
+                            className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-red-50 text-red-600 text-[9px] font-black uppercase tracking-widest hover:bg-red-100 transition-all active:scale-95"
+                          >
+                            <Trash2 size={12} /> Remove
+                          </button>
+                        </div>
+                        <label className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-blue-50 text-blue-600 text-[9px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all active:scale-95 cursor-pointer">
+                          {isUpdating === device.id ? (
+                            <>
+                              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                              Updating...
+                            </>
+                          ) : (
+                            <>
+                              <Upload size={12} /> Update Firmware
+                            </>
+                          )}
+                          <input 
+                            type="file" 
+                            className="hidden" 
+                            accept=".bin"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleUpdateFirmware(device.id, file);
+                              e.target.value = '';
+                            }}
+                            disabled={isUpdating !== null}
+                          />
+                        </label>
                       </>
                     )}
                   </div>

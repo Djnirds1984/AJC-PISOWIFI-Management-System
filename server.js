@@ -1112,6 +1112,84 @@ app.post('/api/config/qos', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// GAMING PRIORITY API
+app.get('/api/gaming/config', requireAdmin, async (req, res) => {
+  try {
+    const enabled = await db.get("SELECT value FROM config WHERE key = 'gaming_priority_enabled'");
+    const percentage = await db.get("SELECT value FROM config WHERE key = 'gaming_priority_percentage'");
+    res.json({
+      enabled: enabled?.value === '1',
+      percentage: parseInt(percentage?.value || '20')
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/gaming/config', requireAdmin, async (req, res) => {
+  const { enabled, percentage } = req.body;
+  try {
+    await db.run("INSERT INTO config (key, value) VALUES ('gaming_priority_enabled', ?) ON CONFLICT(key) DO UPDATE SET value = ?", [enabled ? '1' : '0', enabled ? '1' : '0']);
+    await db.run("INSERT INTO config (key, value) VALUES ('gaming_priority_percentage', ?) ON CONFLICT(key) DO UPDATE SET value = ?", [percentage, percentage]);
+    
+    // Apply changes
+    const lan = await network.getLanInterface();
+    if (lan) {
+      await network.applyGamingPriority(lan, enabled, percentage);
+    }
+    
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/gaming/rules', requireAdmin, async (req, res) => {
+  try {
+    const rules = await db.all("SELECT * FROM gaming_rules");
+    res.json(rules);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/gaming/rules', requireAdmin, async (req, res) => {
+  const { name, protocol, port_start, port_end } = req.body;
+  if (!name || !protocol || !port_start || !port_end) return res.status(400).json({ error: 'Missing fields' });
+  
+  try {
+    await db.run("INSERT INTO gaming_rules (name, protocol, port_start, port_end, enabled) VALUES (?, ?, ?, ?, 1)", 
+      [name, protocol, port_start, port_end]);
+    
+    // Re-apply rules
+    const enabled = (await db.get("SELECT value FROM config WHERE key = 'gaming_priority_enabled'"))?.value === '1';
+    const percentage = parseInt((await db.get("SELECT value FROM config WHERE key = 'gaming_priority_percentage'"))?.value || '20');
+    
+    if (enabled) {
+      const lan = await network.getLanInterface();
+      if (lan) {
+        await network.applyGamingPriority(lan, true, percentage);
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/gaming/rules/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.run("DELETE FROM gaming_rules WHERE id = ?", [id]);
+    
+    // Re-apply rules
+    const enabled = (await db.get("SELECT value FROM config WHERE key = 'gaming_priority_enabled'"))?.value === '1';
+    const percentage = parseInt((await db.get("SELECT value FROM config WHERE key = 'gaming_priority_percentage'"))?.value || '20');
+    
+    if (enabled) {
+      const lan = await network.getLanInterface();
+      if (lan) {
+        await network.applyGamingPriority(lan, true, percentage);
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // SYSTEM & CONFIG API
 app.get('/api/system/stats', requireAdmin, async (req, res) => {
   try {

@@ -104,6 +104,44 @@ export const apiClient = {
     await handleResponse(res);
   },
 
+  // Gaming Priority
+  async getGamingConfig(): Promise<{ enabled: boolean; percentage: number }> {
+    const res = await fetch(`${API_BASE}/gaming/config`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async saveGamingConfig(enabled: boolean, percentage: number): Promise<void> {
+    const res = await fetch(`${API_BASE}/gaming/config`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ enabled, percentage })
+    });
+    await handleResponse(res);
+  },
+
+  async getGamingRules(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/gaming/rules`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async addGamingRule(name: string, protocol: string, port_start: number, port_end: number): Promise<void> {
+    const res = await fetch(`${API_BASE}/gaming/rules`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ name, protocol, port_start, port_end })
+    });
+    await handleResponse(res);
+  },
+
+  async deleteGamingRule(id: number): Promise<void> {
+    const res = await fetch(`${API_BASE}/gaming/rules/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    await handleResponse(res);
+  },
+
+
   // Fetch available network interfaces from the kernel
   async getInterfaces(): Promise<NetworkInterface[]> {
     const res = await fetch(`${API_BASE}/interfaces`, { headers: getHeaders() });

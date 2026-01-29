@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Rate } from '../../types';
 import { apiClient } from '../../lib/api';
+import GamingPriority from './GamingPriority';
 
 interface Props {
   rates: Rate[];
@@ -129,6 +130,10 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
         </div>
       </div>
 
+      {/* Gaming Priority */}
+      <GamingPriority />
+
+      {/* Rates List */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">

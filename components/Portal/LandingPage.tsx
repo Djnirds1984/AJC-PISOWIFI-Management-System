@@ -139,6 +139,16 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
       const result = await apiClient.resumeSession(mySession.token);
       if (result.success) {
         if (refreshSessions) refreshSessions();
+        
+        // Proactive network refresh after resume
+        setTimeout(async () => {
+          try {
+            // Trigger a probe request to help the OS recognize internet is back
+            await fetch('http://connectivitycheck.gstatic.com/generate_204', { mode: 'no-cors' }).catch(() => {});
+            // Also try a common domain
+            await fetch('http://1.1.1.1', { mode: 'no-cors' }).catch(() => {});
+          } catch (e) {}
+        }, 1000);
       } else {
         alert('Resume failed: ' + result.message);
       }

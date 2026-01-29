@@ -114,11 +114,11 @@ const App: React.FC = () => {
         setActiveSessions(sessions);
         setDevices(fetchedDevices);
       } catch (e) {
-        // Local decrement as fallback for smooth UI
+        // Local decrement as fallback for smooth UI - skip if paused
         setActiveSessions(prev => 
           prev.map(s => ({
             ...s,
-            remainingSeconds: Math.max(0, s.remainingSeconds - 1)
+            remainingSeconds: s.isPaused ? s.remainingSeconds : Math.max(0, s.remainingSeconds - 1)
           })).filter(s => s.remainingSeconds > 0)
         );
       }

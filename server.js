@@ -733,7 +733,9 @@ app.post('/api/sessions/resume', async (req, res) => {
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
     await db.run('UPDATE sessions SET is_paused = 0 WHERE token = ?', [token]);
-    await network.whitelistMAC(session.mac, session.ip);
+    
+    // Use forceNetworkRefresh to ensure internet returns properly
+    await network.forceNetworkRefresh(session.mac, session.ip);
 
     console.log(`[AUTH] Session resumed for ${session.mac}`);
     res.json({ success: true, message: 'Time resumed. Internet access restored.' });

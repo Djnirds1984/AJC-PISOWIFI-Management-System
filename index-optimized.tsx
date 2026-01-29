@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import LandingPageOptimized from './components/Portal/LandingPageOptimized';
-import './dist/portal-lightweight.css';
+import './components/Portal/portal-lightweight.css';
 
 // Lightweight entry point for optimized bundle
 const root = createRoot(document.getElementById('root')!);

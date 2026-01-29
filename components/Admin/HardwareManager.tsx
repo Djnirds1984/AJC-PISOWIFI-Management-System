@@ -88,13 +88,14 @@ const HardwareManager: React.FC = () => {
     }
   };
 
-  const handleUpdateDeviceConfig = async (deviceId: string, name: string, pin: number) => {
-    try {
-      await apiClient.sendNodeMCUConfig(deviceId, { name, pin });
-      loadNodemcuDevices();
-    } catch (e) {
-      alert('Failed to update device configuration');
-    }
+  const openNodeEditor = (device: NodeMCUDevice) => {
+    const coinLabel = normalizeDPinLabel(device.coinPinLabel) || gpioToDPin(device.coinPin ?? device.pin) || 'D6';
+    const relayLabel = normalizeDPinLabel(device.relayPinLabel) || gpioToDPin(device.relayPin ?? 14) || 'D5';
+    setSelectedNode({
+      ...device,
+      coinPinLabel: coinLabel,
+      relayPinLabel: relayLabel
+    });
   };
 
   const handleSaveNodePins = async (device: NodeMCUDevice) => {
@@ -412,29 +413,12 @@ const HardwareManager: React.FC = () => {
                       <>
                         <button 
                           onClick={() => {
-                            const newName = prompt('Enter device name:', device.name);
-                            if (newName) handleUpdateDeviceConfig(device.id, newName, device.pin);
+                            openNodeEditor(device);
                           }}
                           className="p-1.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all"
-                          title="Rename"
+                          title="Edit"
                         >
                           <Edit2 size={12} />
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            const coinLabel = normalizeDPinLabel(device.coinPinLabel) || gpioToDPin(device.coinPin ?? device.pin) || 'D6';
-                            const relayLabel = normalizeDPinLabel(device.relayPinLabel) || gpioToDPin(device.relayPin ?? 14) || 'D5';
-                            setSelectedNode({
-                              ...device,
-                              coinPinLabel: coinLabel,
-                              relayPinLabel: relayLabel
-                            });
-                          }}
-                          className="px-2 py-1.5 rounded bg-emerald-50 text-emerald-700 text-[9px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all"
-                          title="Pins"
-                        >
-                          Pins
                         </button>
 
                         <label className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-blue-50 text-blue-600 text-[9px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all cursor-pointer">

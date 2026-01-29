@@ -1668,6 +1668,18 @@ app.delete('/api/network/pppoe/billing-profiles/:id', requireAdmin, async (req, 
 });
 
 // PPPoE Logs API
+app.post('/api/network/pppoe/restart', requireAdmin, async (req, res) => {
+  try {
+    const config = await db.get('SELECT * FROM pppoe_server WHERE enabled = 1');
+    if (!config) {
+      return res.status(404).json({ error: 'No active PPPoE server config found to restart' });
+    }
+    await network.stopPPPoEServer(config.interface);
+    await network.startPPPoEServer(config);
+    res.json({ success: true, message: 'PPPoE Server restarted' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/network/pppoe/logs', requireAdmin, async (req, res) => {
   try {
     // Try multiple log files commonly used by pppd

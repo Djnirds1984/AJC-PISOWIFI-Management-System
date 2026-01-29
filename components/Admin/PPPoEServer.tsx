@@ -107,6 +107,19 @@ const PPPoEServer: React.FC = () => {
     }
   };
 
+  const restartPPPoEServerHandler = async () => {
+    try {
+      setLoading(true);
+      await apiClient.restartPPPoEServer();
+      await loadData();
+      alert('PPPoE Server restarted successfully!');
+    } catch (e: any) {
+      alert(`Failed to restart server: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const addPPPoEUserHandler = async () => {
     if (!newPppoeUser.username || !newPppoeUser.password) {
       return alert('Username and password required!');
@@ -225,9 +238,14 @@ const PPPoEServer: React.FC = () => {
                 </div>
               </div>
               {pppoeStatus?.running && (
-                <button onClick={stopPPPoEServerHandler} disabled={loading} className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-md text-[9px] font-black uppercase transition-all active:scale-95 disabled:opacity-50">
-                  Stop Server
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={restartPPPoEServerHandler} disabled={loading} className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-md text-[9px] font-black uppercase transition-all active:scale-95 disabled:opacity-50">
+                    Restart
+                  </button>
+                  <button onClick={stopPPPoEServerHandler} disabled={loading} className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-md text-[9px] font-black uppercase transition-all active:scale-95 disabled:opacity-50">
+                    Stop Server
+                  </button>
+                </div>
               )}
             </div>
 

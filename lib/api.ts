@@ -372,6 +372,14 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  async restartPPPoEServer(): Promise<{ success: boolean }> {
+    const res = await fetch(`${API_BASE}/network/pppoe/restart`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
   async getPPPoESessions(): Promise<PPPoESession[]> {
     const res = await fetch(`${API_BASE}/network/pppoe/sessions`, { headers: getHeaders() });
     return handleResponse(res);

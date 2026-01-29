@@ -480,11 +480,13 @@ export const apiClient = {
     const formData = new FormData();
     formData.append('firmware', file);
     
+    // Get headers but remove Content-Type to let browser set boundary for FormData
+    const headers = getHeaders({});
+    delete headers['Content-Type'];
+    
     const res = await fetch(`${API_BASE}/nodemcu/${deviceId}/update`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
+      headers,
       body: formData
     });
     return handleResponse(res);

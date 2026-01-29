@@ -184,6 +184,7 @@ app.get('/api/license/status', async (req, res) => {
     res.json({
       hardwareId: systemHardwareId,
       isLicensed: verification.isValid && verification.isActivated,
+      isRevoked: verification.isRevoked || trialStatus.isRevoked,
       licenseKey: verification.licenseKey,
       trial: {
         isActive: trialStatus.isTrialActive,
@@ -191,7 +192,7 @@ app.get('/api/license/status', async (req, res) => {
         daysRemaining: trialStatus.daysRemaining,
         expiresAt: trialStatus.expiresAt
       },
-      canOperate: verification.isValid || trialStatus.isTrialActive
+      canOperate: (verification.isValid || trialStatus.isTrialActive) && !(verification.isRevoked || trialStatus.isRevoked)
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -594,7 +595,39 @@ app.use(async (req, res, next) => {
 app.get('/api/whoami', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
   const mac = await getMacFromIp(clientIp);
-  res.json({ ip: clientIp, mac: mac || 'unknown' });
+  
+  // Check license status for portal restrictions
+  let isRevoked = false;
+  let canInsertCoin = true;
+  
+  try {
+    if (!systemHardwareId) systemHardwareId = await getUniqueHardwareId();
+    const trialStatus = await checkTrialStatus(systemHardwareId);
+    const verification = await licenseManager.verifyLicense();
+    isRevoked = verification.isRevoked || trialStatus.isRevoked;
+    
+    if (isRevoked) {
+      // If revoked, only 1 device can use insert coin
+      // Check if any other MAC has an active session
+      const activeSessions = await db.all('SELECT mac FROM sessions WHERE remaining_seconds > 0');
+      if (activeSessions.length > 0) {
+        // If there's an active session, only that device can "add more time"
+        const isMySessionActive = activeSessions.some(s => s.mac === mac);
+        if (!isMySessionActive) {
+          canInsertCoin = false;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[WhoAmI] License check error:', e);
+  }
+
+  res.json({ 
+    ip: clientIp, 
+    mac: mac || 'unknown',
+    isRevoked,
+    canInsertCoin
+  });
 });
 
 app.get('/api/sessions', async (req, res) => {
@@ -615,6 +648,17 @@ app.post('/api/sessions/start', async (req, res) => {
   }
 
   try {
+    // Enforce 1-device limit if revoked
+    if (!systemHardwareId) systemHardwareId = await getUniqueHardwareId();
+    const trialStatus = await checkTrialStatus(systemHardwareId);
+    const verification = await licenseManager.verifyLicense();
+    if (verification.isRevoked || trialStatus.isRevoked) {
+      const activeSessions = await db.all('SELECT mac FROM sessions WHERE remaining_seconds > 0 AND mac != ?', [mac]);
+      if (activeSessions.length > 0) {
+        return res.status(403).json({ error: 'System License Revoked: Only 1 device allowed at a time.' });
+      }
+    }
+
     // Lookup matching rate to apply speed limits
     // Prioritize exact match on pesos and minutes, then fallback to pesos
     let rate = await db.get('SELECT * FROM rates WHERE pesos = ? AND minutes = ?', [pesos, minutes]);
@@ -2417,13 +2461,27 @@ server.listen(80, '0.0.0.0', async () => {
     const verification = await licenseManager.verifyLicense();
     
     const isLicensed = verification.isValid && verification.isActivated;
-    const canOperate = isLicensed || trialStatus.isTrialActive;
+    const isRevoked = verification.isRevoked || trialStatus.isRevoked;
+    const canOperate = (isLicensed || trialStatus.isTrialActive) && !isRevoked;
 
     console.log(`[License] Hardware ID: ${systemHardwareId}`);
     console.log(`[License] Licensed: ${isLicensed ? 'YES' : 'NO'}`);
     console.log(`[License] Trial Active: ${trialStatus.isTrialActive ? 'YES' : 'NO'}`);
+    console.log(`[License] Revoked: ${isRevoked ? 'YES' : 'NO'}`);
     
-    if (trialStatus.isTrialActive && !isLicensed) {
+    if (isRevoked) {
+      console.error('╔════════════════════════════════════════════════════════════╗');
+      console.error('║                   LICENSE REVOKED                          ║');
+      console.error('╠════════════════════════════════════════════════════════════╣');
+      console.error('║  Your system license has been revoked.                     ║');
+      console.error('║  Trial mode is disabled for revoked licenses.             ║');
+      console.error('║                                                            ║');
+      console.error('║  Hardware ID: ' + systemHardwareId.padEnd(41) + '║');
+      console.error('║                                                            ║');
+      console.error('║  Only 1 device can use the PisoWiFi service at a time.     ║');
+      console.error('║  Dashboard access is restricted to System Settings.        ║');
+      console.error('╚════════════════════════════════════════════════════════════╝');
+    } else if (trialStatus.isTrialActive && !isLicensed) {
       console.log(`[License] Trial Mode - ${trialStatus.daysRemaining} days remaining`);
       console.log(`[License] Trial expires: ${trialStatus.expiresAt}`);
     }

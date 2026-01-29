@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import React, { useState, useEffect } from 'react';
 import { Rate, UserSession } from '../../types';
 import CoinModal from './CoinModal';
 import { apiClient } from '../../lib/api';
@@ -23,6 +22,8 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   const [availableSlots, setAvailableSlots] = useState<{id: string, name: string, macAddress: string, isOnline: boolean}[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<string>('main');
   const [slotError, setSlotError] = useState<string | null>(null);
+  const [canInsertCoin, setCanInsertCoin] = useState(true);
+  const [isRevoked, setIsRevoked] = useState(false);
 
   // Hardcoded default rates in case the API fetch returns nothing
   const defaultRates: Rate[] = [
@@ -75,6 +76,8 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
         if (data.mac && data.mac !== 'unknown') {
           setMyMac(data.mac);
         }
+        setCanInsertCoin(data.canInsertCoin !== false);
+        setIsRevoked(data.isRevoked === true);
       } catch (e) {
         console.error('Failed to identify client');
       }
@@ -91,6 +94,11 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   const handleOpenModal = async (e: React.MouseEvent) => {
     e.preventDefault();
     setSlotError(null);
+
+    if (!canInsertCoin) {
+      setSlotError("System License Revoked: Only 1 device can use the insert coin button at a time. Another device is currently active.");
+      return;
+    }
 
     if (selectedSlot !== 'main') {
       const slot = availableSlots.find(s => s.macAddress === selectedSlot);
@@ -357,6 +365,15 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
               <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">📡</div>
               <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Insert Coins to Connect</h2>
               <p className="text-slate-500 text-sm mb-6 font-medium px-4">Drop physical coins into the slot to enable high-speed internet access.</p>
+            </div>
+          )}
+
+          {isRevoked && (
+            <div className="mx-6 mb-6 p-4 bg-orange-50 border border-orange-100 rounded-2xl text-orange-600 text-center animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="text-xl mb-1">🛡️</div>
+              <p className="text-[10px] font-black uppercase tracking-widest leading-relaxed">
+                System License Revoked: Limited Service Mode Active
+              </p>
             </div>
           )}
 

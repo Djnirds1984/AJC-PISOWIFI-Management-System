@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BoardType, SystemConfig, CoinSlotConfig, NodeMCUDevice } from '../../types';
 import { apiClient } from '../../lib/api';
+import { gpioToDPin } from '../../lib/nodemcuPins';
 import { 
   Save, 
   Cpu,
@@ -362,7 +363,7 @@ const HardwareManager: React.FC = () => {
                        </div>
                        <div className="flex items-center gap-1">
                           <Cpu size={10} />
-                          GPIO {device.pin}
+                          {device.coinPinLabel || gpioToDPin(device.coinPin ?? device.pin) || 'D6'}
                        </div>
                     </div>
                   </div>

@@ -29,13 +29,19 @@
 #define EEPROM_KEY_ADDR 32
 #define EEPROM_CONFIGURED_ADDR 64
 
+#define EEPROM_COIN_PIN_ADDR 68
+#define EEPROM_RELAY_PIN_ADDR 69
+#define EEPROM_PIN_MARKER_ADDR 70
+#define EEPROM_PIN_MARKER_VALUE 0xA5
+
 // Default values
 #define DEFAULT_AP_SSID "AJC-SubVendo-Setup"
 #define DEFAULT_AP_PASSWORD ""
 #define REGISTRATION_INTERVAL 2000 // 2 seconds heartbeat
 
-// GPIO pin for coin detection (D6 = GPIO 12)
-#define COIN_PIN 12 
+// Defaults (physical pin labels: Coin=D6, Relay=D5)
+#define DEFAULT_COIN_GPIO 12
+#define DEFAULT_RELAY_GPIO 14
 
 // Global variables
 String configuredSSID = "";
@@ -45,6 +51,12 @@ bool isAccepted = false;
 unsigned long lastRegistrationAttempt = 0;
 volatile int pendingPulses = 0;
 volatile unsigned long lastPulseTime = 0;
+volatile unsigned long lastRelayTriggerTime = 0;
+
+uint8_t coinPinGpio = DEFAULT_COIN_GPIO;
+uint8_t relayPinGpio = DEFAULT_RELAY_GPIO;
+
+const unsigned long RELAY_HOLD_MS = 3000;
 
 // Web server and DNS server
 ESP8266WebServer server(80);
@@ -59,12 +71,19 @@ void setupUpdateServer();
 void handleRoot();
 void handleScan();
 void handleConfigure();
+void handleGetPins();
+void handleSetPins();
 void handleCoinPulse();
 void saveConfiguration();
 void loadConfiguration();
 void connectToPisoWiFi();
 void registerWithServer();
 void sendPulse(int denomination);
+
+bool isAllowedGpio(int gpio);
+bool isAllowedCoinGpio(int gpio);
+void savePinConfiguration();
+void loadPinConfiguration();
 
 void setup() {
   Serial.begin(115200);
@@ -75,14 +94,17 @@ void setup() {
 
   // Load configuration from EEPROM
   loadConfiguration();
+  loadPinConfiguration();
 
   // Set up WiFi properties
   WiFi.setAutoReconnect(true);
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
 
-  // Set up coin detection pin
-  pinMode(COIN_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(COIN_PIN), handleCoinPulse, FALLING);
+  pinMode(relayPinGpio, OUTPUT);
+  digitalWrite(relayPinGpio, LOW);
+
+  pinMode(coinPinGpio, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(coinPinGpio), handleCoinPulse, FALLING);
 
   // If not configured, start access point
   setupUpdateServer();
@@ -99,6 +121,8 @@ void setupUpdateServer() {
   server.on("/", handleRoot);
   server.on("/scan", handleScan);
   server.on("/configure", handleConfigure);
+  server.on("/api/pins", HTTP_GET, handleGetPins);
+  server.on("/api/pins", HTTP_POST, handleSetPins);
   server.onNotFound(handleRoot);
   server.begin();
   Serial.println("HTTP Server & Update Server started");
@@ -108,6 +132,14 @@ void loop() {
   if (!isConfigured) {
     dnsServer.processNextRequest();
   } else {
+    unsigned long relayNow = millis();
+    unsigned long lastRelay = lastRelayTriggerTime;
+    if (lastRelay != 0 && (relayNow - lastRelay) < RELAY_HOLD_MS) {
+      digitalWrite(relayPinGpio, HIGH);
+    } else {
+      digitalWrite(relayPinGpio, LOW);
+    }
+
     // Accumulate pulses and send total after 500ms of inactivity
     if (pendingPulses > 0 && millis() - lastPulseTime > 500) {
       int totalToSend = pendingPulses;
@@ -234,11 +266,45 @@ void handleConfigure() {
   }
 }
 
+void handleGetPins() {
+  String json = "{\"success\":true,\"coinPin\":" + String(coinPinGpio) + ",\"relayPin\":" + String(relayPinGpio) + "}";
+  server.send(200, "application/json", json);
+}
+
+void handleSetPins() {
+  if (!server.hasArg("key") || server.arg("key") != systemKey) {
+    server.send(401, "application/json", "{\"success\":false,\"message\":\"Unauthorized\"}");
+    return;
+  }
+
+  if (!server.hasArg("coinPin") || !server.hasArg("relayPin")) {
+    server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing pins\"}");
+    return;
+  }
+
+  int nextCoin = server.arg("coinPin").toInt();
+  int nextRelay = server.arg("relayPin").toInt();
+
+  if (!isAllowedCoinGpio(nextCoin) || !isAllowedGpio(nextRelay)) {
+    server.send(400, "application/json", "{\"success\":false,\"message\":\"Invalid pin mapping\"}");
+    return;
+  }
+
+  coinPinGpio = (uint8_t)nextCoin;
+  relayPinGpio = (uint8_t)nextRelay;
+  savePinConfiguration();
+
+  server.send(200, "application/json", "{\"success\":true,\"message\":\"Rebooting\"}");
+  delay(500);
+  ESP.restart();
+}
+
 void ICACHE_RAM_ATTR handleCoinPulse() {
   unsigned long now = millis();
   if (now - lastPulseTime > 30) { // Reduced debounce to 30ms for multi-coin accuracy
     pendingPulses++;
     lastPulseTime = now;
+    lastRelayTriggerTime = now;
   }
 }
 
@@ -299,6 +365,58 @@ void loadConfiguration() {
     for (int i = 0; i < 32; i++) { k[i] = EEPROM.read(EEPROM_KEY_ADDR + i); if (k[i] == '\0') break; }
     configuredSSID = String(s);
     systemKey = String(k);
+  }
+}
+
+void savePinConfiguration() {
+  EEPROM.write(EEPROM_COIN_PIN_ADDR, coinPinGpio);
+  EEPROM.write(EEPROM_RELAY_PIN_ADDR, relayPinGpio);
+  EEPROM.write(EEPROM_PIN_MARKER_ADDR, EEPROM_PIN_MARKER_VALUE);
+  EEPROM.commit();
+}
+
+void loadPinConfiguration() {
+  if (EEPROM.read(EEPROM_PIN_MARKER_ADDR) == EEPROM_PIN_MARKER_VALUE) {
+    coinPinGpio = EEPROM.read(EEPROM_COIN_PIN_ADDR);
+    relayPinGpio = EEPROM.read(EEPROM_RELAY_PIN_ADDR);
+    if (!isAllowedCoinGpio(coinPinGpio)) coinPinGpio = DEFAULT_COIN_GPIO;
+    if (!isAllowedGpio(relayPinGpio)) relayPinGpio = DEFAULT_RELAY_GPIO;
+  } else {
+    coinPinGpio = DEFAULT_COIN_GPIO;
+    relayPinGpio = DEFAULT_RELAY_GPIO;
+  }
+}
+
+bool isAllowedCoinGpio(int gpio) {
+  switch (gpio) {
+    case 5:
+    case 4:
+    case 0:
+    case 2:
+    case 14:
+    case 12:
+    case 13:
+    case 15:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool isAllowedGpio(int gpio) {
+  switch (gpio) {
+    case 16:
+    case 5:
+    case 4:
+    case 0:
+    case 2:
+    case 14:
+    case 12:
+    case 13:
+    case 15:
+      return true;
+    default:
+      return false;
   }
 }
 

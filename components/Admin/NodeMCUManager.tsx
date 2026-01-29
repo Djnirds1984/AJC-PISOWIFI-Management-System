@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NodeMCUDevice, Rate } from '../../types';
 import { apiClient } from '../../lib/api';
+import { NODEMCU_D_PINS, gpioToDPin, normalizeDPinLabel } from '../../lib/nodemcuPins';
 
 interface NodeMCUManagerProps {
   devices: NodeMCUDevice[];
@@ -133,6 +134,39 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
     }
   };
 
+  const handleSaveDeviceConfig = async (device: NodeMCUDevice) => {
+    const coinPinLabel = normalizeDPinLabel(device.coinPinLabel) || 'D6';
+    const relayPinLabel = normalizeDPinLabel(device.relayPinLabel) || 'D5';
+
+    try {
+      await apiClient.updateNodeMCURates(device.id, device.rates);
+      const configResponse = await apiClient.sendNodeMCUConfig(device.id, {
+        name: device.name,
+        coinPinLabel,
+        relayPinLabel
+      });
+
+      const updatedDevices = localDevices.map(d =>
+        d.id === device.id
+          ? { ...d, ...configResponse.device, rates: device.rates }
+          : d
+      );
+      setLocalDevices(updatedDevices);
+      onUpdateDevices(updatedDevices);
+
+      if (configResponse?.applied?.ok) {
+        alert('Na-save ang config. Nagre-reboot ang NodeMCU para ma-apply ang pin settings.');
+      } else if (configResponse?.applied && configResponse.applied.ok === false) {
+        alert(`Na-save ang config, pero hindi na-push sa NodeMCU: ${configResponse.applied.error || 'unknown error'}`);
+      } else {
+        alert('Na-save ang config.');
+      }
+    } catch (error: any) {
+      console.error('Failed to save NodeMCU config:', error);
+      alert(error?.message || 'Failed to save NodeMCU configuration');
+    }
+  };
+
   const pendingDevices = localDevices.filter(device => device.status === 'pending');
   const acceptedDevices = localDevices.filter(device => device.status === 'accepted');
 
@@ -251,7 +285,15 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
                     <td className="px-4 py-2 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <button 
-                          onClick={() => setSelectedDevice(device)}
+                          onClick={() => {
+                            const coinLabel = normalizeDPinLabel(device.coinPinLabel) || gpioToDPin(device.coinPin ?? device.pin) || 'D6';
+                            const relayLabel = normalizeDPinLabel(device.relayPinLabel) || gpioToDPin(device.relayPin ?? 14) || 'D5';
+                            setSelectedDevice({
+                              ...device,
+                              coinPinLabel: coinLabel,
+                              relayPinLabel: relayLabel
+                            });
+                          }}
                           className="px-2 py-1 bg-slate-900 text-white text-[8px] font-black uppercase tracking-widest rounded hover:bg-black transition-all"
                         >
                           Config
@@ -306,6 +348,33 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
                   onChange={(e) => setSelectedDevice({ ...selectedDevice, name: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold outline-none focus:ring-1 focus:ring-blue-500"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Coin Pulse Pin</label>
+                  <select
+                    value={normalizeDPinLabel(selectedDevice.coinPinLabel) || 'D6'}
+                    onChange={(e) => setSelectedDevice({ ...selectedDevice, coinPinLabel: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-black outline-none"
+                  >
+                    {NODEMCU_D_PINS.map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Relay Pin</label>
+                  <select
+                    value={normalizeDPinLabel(selectedDevice.relayPinLabel) || 'D5'}
+                    onChange={(e) => setSelectedDevice({ ...selectedDevice, relayPinLabel: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-black outline-none"
+                  >
+                    {NODEMCU_D_PINS.map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               
               <div>
@@ -371,7 +440,7 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
               <div className="flex gap-2 pt-2">
                 <button
                   onClick={() => {
-                    handleUpdateRates(selectedDevice.id, selectedDevice.rates);
+                    handleSaveDeviceConfig(selectedDevice);
                     setSelectedDevice(null);
                   }}
                   className="flex-1 py-2.5 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg active:scale-95"

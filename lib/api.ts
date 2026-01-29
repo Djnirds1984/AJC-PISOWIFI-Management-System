@@ -1,5 +1,5 @@
 
-import { Rate, NetworkInterface, SystemConfig, WanConfig, VlanConfig, WifiDevice, DeviceSession, PPPoEServerConfig, PPPoEUser, PPPoESession, QoSConfig } from '../types';
+import { Rate, NetworkInterface, SystemConfig, WanConfig, VlanConfig, WifiDevice, DeviceSession, PPPoEServerConfig, PPPoEUser, PPPoESession, QoSConfig, PPPoEProfile, PPPoEBillingProfile } from '../types';
 
 const API_BASE = '/api';
 
@@ -110,7 +110,7 @@ export const apiClient = {
     return handleResponse(res);
   },
 
-  async whoAmI(): Promise<{ ip: string; mac: string }> {
+  async whoAmI(): Promise<{ ip: string; mac: string; canInsertCoin?: boolean; isRevoked?: boolean }> {
     const res = await fetch(`${API_BASE}/whoami`);
     return handleResponse(res);
   },

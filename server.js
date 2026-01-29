@@ -85,6 +85,75 @@ const uploadFirmware = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit for firmware
 });
 
+const NODEMCU_D_PIN_TO_GPIO = {
+  D0: 16,
+  D1: 5,
+  D2: 4,
+  D3: 0,
+  D4: 2,
+  D5: 14,
+  D6: 12,
+  D7: 13,
+  D8: 15
+};
+
+const NODEMCU_GPIO_TO_D_PIN = Object.fromEntries(
+  Object.entries(NODEMCU_D_PIN_TO_GPIO).map(([dPin, gpio]) => [String(gpio), dPin])
+);
+
+function normalizeNodeMcuDPinLabel(label) {
+  if (typeof label !== 'string') return null;
+  const trimmed = label.trim().toUpperCase();
+  return NODEMCU_D_PIN_TO_GPIO[trimmed] !== undefined ? trimmed : null;
+}
+
+function nodeMcuDPinLabelToGpio(label) {
+  const normalized = normalizeNodeMcuDPinLabel(label);
+  if (!normalized) return null;
+  return NODEMCU_D_PIN_TO_GPIO[normalized];
+}
+
+function nodeMcuGpioToDPinLabel(gpio) {
+  const key = String(gpio);
+  return NODEMCU_GPIO_TO_D_PIN[key] || null;
+}
+
+async function pushNodeMCUPinsToDevice(device, { coinPinGpio, relayPinGpio }) {
+  if (!device?.ipAddress) {
+    return { ok: false, error: 'Device IP address not found' };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  try {
+    const params = new URLSearchParams();
+    params.set('key', device.authenticationKey);
+    params.set('coinPin', String(coinPinGpio));
+    params.set('relayPin', String(relayPinGpio));
+
+    const response = await fetch(`http://${device.ipAddress}/api/pins`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: params.toString(),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      return { ok: false, error: `Device rejected pin update (${response.status}) ${text}`.trim() };
+    }
+
+    return { ok: true };
+  } catch (err) {
+    const msg = err?.name === 'AbortError' ? 'Pin push timed out' : (err?.message || String(err));
+    return { ok: false, error: msg };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 app.use(express.json());
 
 // Prevent caching of API responses
@@ -1229,7 +1298,11 @@ app.post('/api/nodemcu/register', async (req, res) => {
       name: `NodeMCU-${macAddress.replace(/[:]/g, '').substring(0, 6)}`,
       ipAddress,
       macAddress,
-      pin: 12, // D6 on ESP8266 (GPIO 12)
+      pin: 12,
+      coinPinLabel: 'D6',
+      coinPin: 12,
+      relayPinLabel: 'D5',
+      relayPin: 14,
       status: 'pending',
       vlanId: 13, // Default VLAN, can be changed later
       lastSeen: new Date().toISOString(),
@@ -1533,7 +1606,7 @@ app.get('/api/nodemcu/:deviceId', requireAdmin, async (req, res) => {
 app.post('/api/nodemcu/:deviceId/config', requireAdmin, async (req, res) => {
   try {
     const { deviceId } = req.params;
-    const { name, vlanId, pin } = req.body;
+    const { name, vlanId, pin, coinPinLabel, coinPin, relayPinLabel, relayPin } = req.body;
     
     const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
     const existingDevices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
@@ -1542,18 +1615,82 @@ app.post('/api/nodemcu/:deviceId/config', requireAdmin, async (req, res) => {
     if (deviceIndex === -1) {
       return res.status(404).json({ error: 'Device not found' });
     }
-    
+
+    const previousDevice = existingDevices[deviceIndex];
+
+    const requestedCoinLabel = normalizeNodeMcuDPinLabel(coinPinLabel);
+    const requestedRelayLabel = normalizeNodeMcuDPinLabel(relayPinLabel);
+
+    if (coinPinLabel !== undefined && requestedCoinLabel === null) {
+      return res.status(400).json({ error: 'Invalid coinPinLabel. Use D0-D8.' });
+    }
+
+    if (requestedCoinLabel === 'D0') {
+      return res.status(400).json({ error: 'Coin pin cannot be D0 on ESP8266 (no interrupt).' });
+    }
+
+    if (relayPinLabel !== undefined && requestedRelayLabel === null) {
+      return res.status(400).json({ error: 'Invalid relayPinLabel. Use D0-D8.' });
+    }
+
+    const requestedCoinGpio =
+      typeof coinPin === 'number' ? coinPin :
+      typeof pin === 'number' ? pin :
+      requestedCoinLabel ? nodeMcuDPinLabelToGpio(requestedCoinLabel) :
+      null;
+
+    const requestedRelayGpio =
+      typeof relayPin === 'number' ? relayPin :
+      requestedRelayLabel ? nodeMcuDPinLabelToGpio(requestedRelayLabel) :
+      null;
+
+    if (typeof requestedCoinGpio === 'number' && nodeMcuGpioToDPinLabel(requestedCoinGpio) === null) {
+      return res.status(400).json({ error: 'Invalid coinPin GPIO for NodeMCU. Use D0-D8 mapping.' });
+    }
+
+    if (typeof requestedCoinGpio === 'number' && requestedCoinGpio === 16) {
+      return res.status(400).json({ error: 'Coin pin cannot be D0/GPIO16 on ESP8266 (no interrupt).' });
+    }
+
+    if (typeof requestedRelayGpio === 'number' && nodeMcuGpioToDPinLabel(requestedRelayGpio) === null) {
+      return res.status(400).json({ error: 'Invalid relayPin GPIO for NodeMCU. Use D0-D8 mapping.' });
+    }
+
+    const nextCoinGpio = typeof requestedCoinGpio === 'number' ? requestedCoinGpio : (previousDevice.coinPin ?? previousDevice.pin ?? 12);
+    const nextRelayGpio = typeof requestedRelayGpio === 'number' ? requestedRelayGpio : (previousDevice.relayPin ?? 14);
+
+    const nextCoinLabel = requestedCoinLabel || previousDevice.coinPinLabel || nodeMcuGpioToDPinLabel(nextCoinGpio) || 'D6';
+    const nextRelayLabel = requestedRelayLabel || previousDevice.relayPinLabel || nodeMcuGpioToDPinLabel(nextRelayGpio) || 'D5';
+
     const updatedDevices = [...existingDevices];
-    updatedDevices[deviceIndex] = { 
-      ...updatedDevices[deviceIndex], 
-      name: typeof name === 'string' && name.trim().length > 0 ? name.trim() : updatedDevices[deviceIndex].name,
-      vlanId: typeof vlanId === 'number' ? vlanId : updatedDevices[deviceIndex].vlanId,
-      pin: typeof pin === 'number' ? pin : updatedDevices[deviceIndex].pin
+    updatedDevices[deviceIndex] = {
+      ...previousDevice,
+      name: typeof name === 'string' && name.trim().length > 0 ? name.trim() : previousDevice.name,
+      vlanId: typeof vlanId === 'number' ? vlanId : previousDevice.vlanId,
+      pin: nextCoinGpio,
+      coinPin: nextCoinGpio,
+      coinPinLabel: nextCoinLabel,
+      relayPin: nextRelayGpio,
+      relayPinLabel: nextRelayLabel
     };
     
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(updatedDevices)]);
-    
-    res.json({ success: true, device: updatedDevices[deviceIndex] });
+
+    const pinsChanged =
+      requestedCoinGpio !== null ||
+      requestedRelayGpio !== null ||
+      requestedCoinLabel !== null ||
+      requestedRelayLabel !== null;
+
+    let deviceApply = null;
+    if (pinsChanged) {
+      deviceApply = await pushNodeMCUPinsToDevice(updatedDevices[deviceIndex], {
+        coinPinGpio: nextCoinGpio,
+        relayPinGpio: nextRelayGpio
+      });
+    }
+
+    res.json({ success: true, device: updatedDevices[deviceIndex], applied: deviceApply });
   } catch (err) {
     console.error('Error updating NodeMCU device config:', err);
     res.status(500).json({ error: err.message });

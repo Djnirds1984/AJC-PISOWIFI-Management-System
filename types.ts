@@ -29,7 +29,11 @@ export interface NodeMCUDevice {
   name: string;
   ipAddress: string;
   macAddress: string;
-  pin: number; // GPIO pin for coin detection (default D6)
+  pin: number;
+  coinPinLabel?: string;
+  coinPin?: number;
+  relayPinLabel?: string;
+  relayPin?: number;
   status: 'pending' | 'accepted' | 'rejected' | 'disconnected';
   vlanId?: number;
   lastSeen: string;

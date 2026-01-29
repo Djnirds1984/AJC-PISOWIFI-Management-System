@@ -18,7 +18,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const COINSLOT_LOCK_TTL_MS = 5 * 60 * 1000;
+const COINSLOT_LOCK_TTL_MS = 60 * 1000;
 const coinSlotLocks = new Map();
 
 function normalizeCoinSlot(slot) {

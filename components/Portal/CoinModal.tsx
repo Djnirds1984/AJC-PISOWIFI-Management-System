@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Rate } from '../../types';
 import { io } from 'socket.io-client';
 import { apiClient } from '../../lib/api';
@@ -19,6 +19,7 @@ const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc, inser
   const [totalPesos, setTotalPesos] = useState(0);
   const [totalMinutes, setTotalMinutes] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
+  const didAutoClose = useRef(false);
 
   // Handle Background Audio (Insert Coin Loop)
   useEffect(() => {
@@ -41,16 +42,7 @@ const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc, inser
     };
   }, [insertCoinAudioSrc]);
 
-  useEffect(() => {
-    if (!coinSlot || !coinSlotLockId) return;
-    const interval = setInterval(async () => {
-      const hb = await apiClient.heartbeatCoinSlot(coinSlot, coinSlotLockId).catch(() => null);
-      if (!hb || hb.status === 409) {
-        onClose();
-      }
-    }, 15_000);
-    return () => clearInterval(interval);
-  }, [coinSlot, coinSlotLockId, onClose]);
+  
 
   useEffect(() => {
     console.log('[COIN] Connecting to Hardware Socket...');
@@ -89,6 +81,10 @@ const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc, inser
       }
       
       setTimeLeft(60); // Reset timeout on drop
+
+      if (coinSlot && coinSlotLockId) {
+        apiClient.heartbeatCoinSlot(coinSlot, coinSlotLockId).catch(() => {});
+      }
     };
 
     socket.on('coin-pulse', (data: { pesos: number }) => {
@@ -117,7 +113,19 @@ const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc, inser
       clearInterval(timer);
       socket.disconnect();
     };
-  }, [rates, selectedSlot, audioSrc]);
+  }, [rates, selectedSlot, audioSrc, coinSlot, coinSlotLockId]);
+
+  useEffect(() => {
+    if (!coinSlot || !coinSlotLockId) return;
+    apiClient.heartbeatCoinSlot(coinSlot, coinSlotLockId).catch(() => {});
+  }, [coinSlot, coinSlotLockId]);
+
+  useEffect(() => {
+    if (timeLeft !== 0) return;
+    if (didAutoClose.current) return;
+    didAutoClose.current = true;
+    onClose();
+  }, [timeLeft, onClose]);
 
   return (
     <div className="modal-overlay">

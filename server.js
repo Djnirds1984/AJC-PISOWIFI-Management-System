@@ -123,35 +123,48 @@ async function pushNodeMCUPinsToDevice(device, { coinPinGpio, relayPinGpio }) {
     return { ok: false, error: 'Device IP address not found' };
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4000);
-  try {
-    const params = new URLSearchParams();
-    params.set('key', device.authenticationKey);
-    params.set('coinPin', String(coinPinGpio));
-    params.set('relayPin', String(relayPinGpio));
+  const http = require('http');
+  const body = new URLSearchParams({
+    key: String(device.authenticationKey || ''),
+    coinPin: String(coinPinGpio),
+    relayPin: String(relayPinGpio)
+  }).toString();
 
-    const response = await fetch(`http://${device.ipAddress}/api/pins`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
+  return await new Promise((resolve) => {
+    const req = http.request(
+      {
+        hostname: device.ipAddress,
+        port: 80,
+        path: '/api/pins',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body)
+        },
+        timeout: 4000
       },
-      body: params.toString(),
-      signal: controller.signal
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk.toString(); });
+        res.on('end', () => {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            resolve({ ok: true });
+          } else {
+            resolve({ ok: false, error: `Device rejected pin update (${res.statusCode || 0}) ${data}`.trim() });
+          }
+        });
+      }
+    );
+
+    req.on('timeout', () => {
+      req.destroy(new Error('Pin push timed out'));
     });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      return { ok: false, error: `Device rejected pin update (${response.status}) ${text}`.trim() };
-    }
-
-    return { ok: true };
-  } catch (err) {
-    const msg = err?.name === 'AbortError' ? 'Pin push timed out' : (err?.message || String(err));
-    return { ok: false, error: msg };
-  } finally {
-    clearTimeout(timeout);
-  }
+    req.on('error', (err) => {
+      resolve({ ok: false, error: err?.message || String(err) });
+    });
+    req.write(body);
+    req.end();
+  });
 }
 
 app.use(express.json());
@@ -1676,11 +1689,12 @@ app.post('/api/nodemcu/:deviceId/config', requireAdmin, async (req, res) => {
     
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(updatedDevices)]);
 
-    const pinsChanged =
-      requestedCoinGpio !== null ||
-      requestedRelayGpio !== null ||
-      requestedCoinLabel !== null ||
-      requestedRelayLabel !== null;
+    const prevCoinGpio = previousDevice.coinPin ?? previousDevice.pin ?? 12;
+    const prevRelayGpio = previousDevice.relayPin ?? 14;
+    const prevCoinLabel = previousDevice.coinPinLabel || nodeMcuGpioToDPinLabel(prevCoinGpio) || 'D6';
+    const prevRelayLabel = previousDevice.relayPinLabel || nodeMcuGpioToDPinLabel(prevRelayGpio) || 'D5';
+
+    const pinsChanged = (nextCoinGpio !== prevCoinGpio) || (nextRelayGpio !== prevRelayGpio) || (nextCoinLabel !== prevCoinLabel) || (nextRelayLabel !== prevRelayLabel);
 
     let deviceApply = null;
     if (pinsChanged) {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BoardType, SystemConfig, CoinSlotConfig, NodeMCUDevice } from '../../types';
 import { apiClient } from '../../lib/api';
-import { gpioToDPin } from '../../lib/nodemcuPins';
+import { NODEMCU_D_PINS, gpioToDPin, normalizeDPinLabel } from '../../lib/nodemcuPins';
 import { 
   Save, 
   Cpu,
@@ -29,6 +29,7 @@ const HardwareManager: React.FC = () => {
   const [nodemcuDevices, setNodemcuDevices] = useState<NodeMCUDevice[]>([]);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
   const [registrationKey, setRegistrationKey] = useState<string>('7B3F1A9');
+  const [selectedNode, setSelectedNode] = useState<NodeMCUDevice | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -93,6 +94,29 @@ const HardwareManager: React.FC = () => {
       loadNodemcuDevices();
     } catch (e) {
       alert('Failed to update device configuration');
+    }
+  };
+
+  const handleSaveNodePins = async (device: NodeMCUDevice) => {
+    const coinPinLabel = normalizeDPinLabel(device.coinPinLabel) || 'D6';
+    const relayPinLabel = normalizeDPinLabel(device.relayPinLabel) || 'D5';
+    try {
+      const response = await apiClient.sendNodeMCUConfig(device.id, {
+        name: device.name,
+        coinPinLabel,
+        relayPinLabel
+      });
+      await loadNodemcuDevices();
+
+      if (response?.applied?.ok) {
+        alert('Na-save ang pins. Nagre-reboot ang NodeMCU para ma-apply.');
+      } else if (response?.applied && response.applied.ok === false) {
+        alert(`Na-save ang pins, pero hindi na-push sa NodeMCU: ${response.applied.error || 'unknown error'}`);
+      } else {
+        alert('Na-save ang pins.');
+      }
+    } catch (e: any) {
+      alert(e?.message || 'Failed to save NodeMCU pins');
     }
   };
 
@@ -396,6 +420,23 @@ const HardwareManager: React.FC = () => {
                         >
                           <Edit2 size={12} />
                         </button>
+
+                        <button
+                          onClick={() => {
+                            const coinLabel = normalizeDPinLabel(device.coinPinLabel) || gpioToDPin(device.coinPin ?? device.pin) || 'D6';
+                            const relayLabel = normalizeDPinLabel(device.relayPinLabel) || gpioToDPin(device.relayPin ?? 14) || 'D5';
+                            setSelectedNode({
+                              ...device,
+                              coinPinLabel: coinLabel,
+                              relayPinLabel: relayLabel
+                            });
+                          }}
+                          className="px-2 py-1.5 rounded bg-emerald-50 text-emerald-700 text-[9px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all"
+                          title="Pins"
+                        >
+                          Pins
+                        </button>
+
                         <label className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-blue-50 text-blue-600 text-[9px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all cursor-pointer">
                           {isUpdating === device.id ? (
                             <div className="w-2.5 h-2.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -432,6 +473,74 @@ const HardwareManager: React.FC = () => {
           )}
         </div>
       </div>
+
+      {selectedNode && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">NodeMCU Pins</h3>
+              <button onClick={() => setSelectedNode(null)} className="text-slate-400 hover:text-slate-600 transition-colors">✕</button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Device Name</label>
+                <input
+                  type="text"
+                  value={selectedNode.name}
+                  onChange={(e) => setSelectedNode({ ...selectedNode, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Coin Pulse Pin</label>
+                  <select
+                    value={normalizeDPinLabel(selectedNode.coinPinLabel) || 'D6'}
+                    onChange={(e) => setSelectedNode({ ...selectedNode, coinPinLabel: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-black outline-none"
+                  >
+                    {NODEMCU_D_PINS.filter(p => p !== 'D0').map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Relay Pin</label>
+                  <select
+                    value={normalizeDPinLabel(selectedNode.relayPinLabel) || 'D5'}
+                    onChange={(e) => setSelectedNode({ ...selectedNode, relayPinLabel: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-black outline-none"
+                  >
+                    {NODEMCU_D_PINS.map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => {
+                    handleSaveNodePins(selectedNode);
+                    setSelectedNode(null);
+                  }}
+                  className="flex-1 py-2.5 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg active:scale-95"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => setSelectedNode(null)}
+                  className="px-4 py-2.5 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

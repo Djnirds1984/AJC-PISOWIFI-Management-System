@@ -115,6 +115,36 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  async reserveCoinSlot(slot: string): Promise<{ success: boolean; slot?: string; lockId?: string; expiresAt?: number; code?: string; busyUntil?: number; error?: string; status: number }> {
+    const res = await fetch(`${API_BASE}/coinslot/reserve`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ slot })
+    });
+    const data = await res.json().catch(() => ({}));
+    return { status: res.status, ...(data || {}) };
+  },
+
+  async heartbeatCoinSlot(slot: string, lockId: string): Promise<{ success: boolean; expiresAt?: number; error?: string; status: number }> {
+    const res = await fetch(`${API_BASE}/coinslot/heartbeat`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ slot, lockId })
+    });
+    const data = await res.json().catch(() => ({}));
+    return { status: res.status, ...(data || {}) };
+  },
+
+  async releaseCoinSlot(slot: string, lockId: string): Promise<{ success: boolean; status: number }> {
+    const res = await fetch(`${API_BASE}/coinslot/release`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ slot, lockId })
+    });
+    const data = await res.json().catch(() => ({}));
+    return { status: res.status, ...(data || {}) };
+  },
+
   // Toggle interface up/down status
   async setInterfaceStatus(name: string, status: 'up' | 'down'): Promise<void> {
     const res = await fetch(`${API_BASE}/network/status`, {

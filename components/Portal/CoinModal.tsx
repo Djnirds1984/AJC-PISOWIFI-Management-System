@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Rate } from '../../types';
 import { io } from 'socket.io-client';
+import { apiClient } from '../../lib/api';
 
 interface Props {
   onClose: () => void;
@@ -9,9 +10,11 @@ interface Props {
   audioSrc?: string; // Coin Drop Audio
   insertCoinAudioSrc?: string; // Background Loop
   selectedSlot?: string; // 'main' or NodeMCU MAC address
+  coinSlot?: string;
+  coinSlotLockId?: string;
 }
 
-const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc, insertCoinAudioSrc, selectedSlot = 'main' }) => {
+const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc, insertCoinAudioSrc, selectedSlot = 'main', coinSlot, coinSlotLockId }) => {
   const [timeLeft, setTimeLeft] = useState(60);
   const [totalPesos, setTotalPesos] = useState(0);
   const [totalMinutes, setTotalMinutes] = useState(0);
@@ -37,6 +40,17 @@ const CoinModal: React.FC<Props> = ({ onClose, onSuccess, rates, audioSrc, inser
       }
     };
   }, [insertCoinAudioSrc]);
+
+  useEffect(() => {
+    if (!coinSlot || !coinSlotLockId) return;
+    const interval = setInterval(async () => {
+      const hb = await apiClient.heartbeatCoinSlot(coinSlot, coinSlotLockId).catch(() => null);
+      if (!hb || hb.status === 409) {
+        onClose();
+      }
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, [coinSlot, coinSlotLockId, onClose]);
 
   useEffect(() => {
     console.log('[COIN] Connecting to Hardware Socket...');

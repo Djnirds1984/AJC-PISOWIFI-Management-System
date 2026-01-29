@@ -24,6 +24,8 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   const [slotError, setSlotError] = useState<string | null>(null);
   const [canInsertCoin, setCanInsertCoin] = useState(true);
   const [isRevoked, setIsRevoked] = useState(false);
+  const [coinSlotLockId, setCoinSlotLockId] = useState<string | null>(null);
+  const [reservedSlot, setReservedSlot] = useState<string | null>(null);
 
   // Hardcoded default rates in case the API fetch returns nothing
   const defaultRates: Rate[] = [
@@ -119,7 +121,28 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
       }
     }
 
+    const reserve = await apiClient.reserveCoinSlot(selectedSlot);
+    if (!reserve.success || !reserve.lockId) {
+      if (reserve.status === 409) {
+        setSlotError(reserve.error || 'JUST WAIT SOMEONE IS PAYING.');
+        return;
+      }
+      setSlotError(reserve.error || 'Failed to open coinslot. Please try again.');
+      return;
+    }
+
+    setReservedSlot(selectedSlot);
+    setCoinSlotLockId(reserve.lockId);
     setShowModal(true);
+  };
+
+  const handleCloseModal = async () => {
+    if (reservedSlot && coinSlotLockId) {
+      await apiClient.releaseCoinSlot(reservedSlot, coinSlotLockId).catch(() => {});
+    }
+    setShowModal(false);
+    setReservedSlot(null);
+    setCoinSlotLockId(null);
   };
 
   const handleGoToInternet = () => {
@@ -492,19 +515,25 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
 
       {showModal && (
         <CoinModal 
-          onClose={() => setShowModal(false)} 
+          onClose={handleCloseModal}
           audioSrc={config.coinDropAudio}
           insertCoinAudioSrc={config.insertCoinAudio}
           selectedSlot={selectedSlot}
+          coinSlot={reservedSlot || selectedSlot}
+          coinSlotLockId={coinSlotLockId || undefined}
           onSuccess={(pesos, minutes) => {
             onSessionStart({
               mac: myMac,
               remainingSeconds: minutes * 60,
               totalPaid: pesos,
-              connectedAt: Date.now()
+              connectedAt: Date.now(),
+              coinSlot: reservedSlot || selectedSlot,
+              coinSlotLockId: coinSlotLockId || undefined
               // Don't send IP - server will detect it
             });
             setShowModal(false);
+            setReservedSlot(null);
+            setCoinSlotLockId(null);
           }}
           rates={activeRates}
         />

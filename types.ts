@@ -149,6 +149,8 @@ export interface UserSession {
   uploadLimit?: number;
   isPaused?: boolean;
   token?: string;
+  coinSlot?: string;
+  coinSlotLockId?: string;
 }
 
 export interface WifiDevice {

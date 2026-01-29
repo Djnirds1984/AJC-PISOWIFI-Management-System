@@ -18,6 +18,26 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+const COINSLOT_LOCK_TTL_MS = 5 * 60 * 1000;
+const coinSlotLocks = new Map();
+
+function normalizeCoinSlot(slot) {
+  if (!slot || typeof slot !== 'string') return null;
+  if (slot === 'main') return 'main';
+  return slot.trim().toUpperCase();
+}
+
+function cleanupExpiredCoinSlotLocks() {
+  const now = Date.now();
+  for (const [slot, lock] of coinSlotLocks.entries()) {
+    if (!lock || typeof lock.expiresAt !== 'number' || lock.expiresAt <= now) {
+      coinSlotLocks.delete(slot);
+    }
+  }
+}
+
+setInterval(cleanupExpiredCoinSlotLocks, 30_000).unref?.();
+
 // Configure Multer for Audio Uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -658,6 +678,83 @@ app.get('/api/whoami', async (req, res) => {
   });
 });
 
+app.post('/api/coinslot/reserve', async (req, res) => {
+  cleanupExpiredCoinSlotLocks();
+
+  const slot = normalizeCoinSlot(req.body?.slot);
+  if (!slot) {
+    return res.status(400).json({ success: false, error: 'Invalid coinslot.' });
+  }
+
+  let clientIp = req.ip.replace('::ffff:', '');
+  if (clientIp === '::1') clientIp = '127.0.0.1';
+  let mac = await getMacFromIp(clientIp);
+  if (!mac && clientIp === '127.0.0.1') mac = 'DEV-LOCALHOST';
+  if (!mac) return res.status(400).json({ success: false, error: 'Could not identify your device MAC.' });
+
+  const now = Date.now();
+  const existing = coinSlotLocks.get(slot);
+  if (existing && existing.expiresAt > now) {
+    if (existing.ownerMac === mac) {
+      existing.expiresAt = now + COINSLOT_LOCK_TTL_MS;
+      return res.json({ success: true, slot, lockId: existing.lockId, expiresAt: existing.expiresAt });
+    }
+    return res.status(409).json({
+      success: false,
+      code: 'COINSLOT_BUSY',
+      slot,
+      busyUntil: existing.expiresAt,
+      error: 'JUST WAIT SOMEONE IS PAYING.'
+    });
+  }
+
+  const lockId = crypto.randomBytes(16).toString('hex');
+  const expiresAt = now + COINSLOT_LOCK_TTL_MS;
+  coinSlotLocks.set(slot, { lockId, ownerMac: mac, ownerIp: clientIp, createdAt: now, expiresAt });
+  res.json({ success: true, slot, lockId, expiresAt });
+});
+
+app.post('/api/coinslot/heartbeat', async (req, res) => {
+  cleanupExpiredCoinSlotLocks();
+
+  const slot = normalizeCoinSlot(req.body?.slot);
+  const lockId = req.body?.lockId;
+  if (!slot || !lockId) {
+    return res.status(400).json({ success: false, error: 'Invalid request.' });
+  }
+
+  let clientIp = req.ip.replace('::ffff:', '');
+  if (clientIp === '::1') clientIp = '127.0.0.1';
+  let mac = await getMacFromIp(clientIp);
+  if (!mac && clientIp === '127.0.0.1') mac = 'DEV-LOCALHOST';
+  if (!mac) return res.status(400).json({ success: false, error: 'Could not identify your device MAC.' });
+
+  const existing = coinSlotLocks.get(slot);
+  if (!existing || existing.lockId !== lockId || existing.ownerMac !== mac) {
+    return res.status(409).json({ success: false, code: 'COINSLOT_NOT_OWNED', error: 'Coinslot reservation expired.' });
+  }
+
+  existing.expiresAt = Date.now() + COINSLOT_LOCK_TTL_MS;
+  res.json({ success: true, slot, expiresAt: existing.expiresAt });
+});
+
+app.post('/api/coinslot/release', async (req, res) => {
+  cleanupExpiredCoinSlotLocks();
+
+  const slot = normalizeCoinSlot(req.body?.slot);
+  const lockId = req.body?.lockId;
+  if (!slot || !lockId) {
+    return res.status(400).json({ success: false, error: 'Invalid request.' });
+  }
+
+  const existing = coinSlotLocks.get(slot);
+  if (existing && existing.lockId === lockId) {
+    coinSlotLocks.delete(slot);
+  }
+
+  res.json({ success: true });
+});
+
 app.get('/api/sessions', async (req, res) => {
   try {
     const rows = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt, is_paused as isPaused, token FROM sessions');
@@ -666,13 +763,28 @@ app.get('/api/sessions', async (req, res) => {
 });
 
 app.post('/api/sessions/start', async (req, res) => {
-  const { minutes, pesos } = req.body;
-  const clientIp = req.ip.replace('::ffff:', '');
-  const mac = await getMacFromIp(clientIp);
+  const { minutes, pesos, slot: requestedSlot, lockId } = req.body;
+  let clientIp = req.ip.replace('::ffff:', '');
+  if (clientIp === '::1') clientIp = '127.0.0.1';
+  let mac = await getMacFromIp(clientIp);
+  if (!mac && clientIp === '127.0.0.1') mac = 'DEV-LOCALHOST';
 
   if (!mac) {
     console.error(`[AUTH] Failed to resolve MAC for IP: ${clientIp}`);
     return res.status(400).json({ error: 'Could not identify your device MAC. Please try reconnecting.' });
+  }
+
+  cleanupExpiredCoinSlotLocks();
+  const slot = normalizeCoinSlot(requestedSlot);
+  if (!slot || !lockId) {
+    return res.status(400).json({ error: 'Coinslot lock required. Please press Insert Coin again.' });
+  }
+  const slotLock = coinSlotLocks.get(slot);
+  if (!slotLock || slotLock.lockId !== lockId || slotLock.ownerMac !== mac) {
+    if (slotLock && slotLock.expiresAt > Date.now() && slotLock.ownerMac !== mac) {
+      return res.status(409).json({ error: 'JUST WAIT SOMEONE IS PAYING.' });
+    }
+    return res.status(409).json({ error: 'Coinslot reservation expired. Please press Insert Coin again.' });
   }
 
   try {
@@ -738,6 +850,7 @@ app.post('/api/sessions/start', async (req, res) => {
       console.error('[Sync] Failed to sync sale to cloud:', err);
     });
     
+    coinSlotLocks.delete(slot);
     res.json({ success: true, mac, token, message: 'Internet access granted. Please refresh your browser or wait a moment for connection to activate.' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

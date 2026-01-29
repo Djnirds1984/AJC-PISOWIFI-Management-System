@@ -156,13 +156,18 @@ const App: React.FC = () => {
   const handleAddSession = async (session: UserSession) => {
     try {
       setLoading(true);
+
+      const coinSlot = (session as any).coinSlot as string | undefined;
+      const coinSlotLockId = (session as any).coinSlotLockId as string | undefined;
       const res = await fetch('/api/sessions/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mac: session.mac,
           minutes: Math.ceil(session.remainingSeconds / 60),
-          pesos: session.totalPaid
+          pesos: session.totalPaid,
+          slot: coinSlot || 'main',
+          lockId: coinSlotLockId
           // Don't send IP - server will detect it
         })
       });
@@ -191,6 +196,15 @@ const App: React.FC = () => {
     } catch (e) {
       alert('❌ Network error authorizing connection.');
     } finally {
+      const coinSlot = (session as any).coinSlot as string | undefined;
+      const coinSlotLockId = (session as any).coinSlotLockId as string | undefined;
+      if (coinSlot && coinSlotLockId) {
+        fetch('/api/coinslot/release', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slot: coinSlot, lockId: coinSlotLockId })
+        }).catch(() => {});
+      }
       setLoading(false);
     }
   };

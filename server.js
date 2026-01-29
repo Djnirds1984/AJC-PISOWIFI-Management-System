@@ -2278,66 +2278,9 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Background Timer
-setInterval(async () => {
-  try {
-    const expired = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds <= 0');
-    for (const s of expired) {
-      await network.blockMAC(s.mac, s.ip);
-      await db.run('DELETE FROM sessions WHERE mac = ?', [s.mac]);
-    }
-    await db.run('UPDATE sessions SET remaining_seconds = remaining_seconds - 1 WHERE remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)');
-  } catch (e) { console.error(e); }
-}, 1000);
+// Background Timer has been moved inside server.listen to ensure DB initialization
 
-// Periodic TC rule cleanup (every 30 seconds) to prevent accumulation of stale rules
-setInterval(async () => {
-  try {
-    // Clean up TC rules for inactive sessions
-    const inactiveSessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds <= 0');
-    for (const session of inactiveSessions) {
-      await network.removeSpeedLimit(session.mac, session.ip);
-    }
-    
-    // Also clean up any orphaned TC rules that don't correspond to active sessions
-    const activeSessions = await db.all('SELECT ip FROM sessions WHERE remaining_seconds > 0');
-    const activeIPs = new Set(activeSessions.map(s => s.ip));
-    
-    // Get all interfaces and check for orphaned rules
-    const { stdout: interfacesOutput } = await execPromise(`ip link show | grep -E "eth|wlan|br|vlan" | awk '{print $2}' | sed 's/:$//'`).catch(() => ({ stdout: '' }));
-    const interfaces = interfacesOutput.trim().split('\n').filter(i => i);
-    
-    for (const iface of interfaces) {
-      try {
-        // Check for download filters with IPs that are no longer active
-        const { stdout: downloadFilters } = await execPromise(`tc filter show dev ${iface} parent 1:0 2>/dev/null || echo ""`).catch(() => ({ stdout: '' }));
-        const downloadIPs = downloadFilters.match(/\d+\.\d+\.\d+\.\d+/g) || [];
-        
-        for (const ip of downloadIPs) {
-          if (!activeIPs.has(ip)) {
-            await execPromise(`tc filter del dev ${iface} parent 1:0 protocol ip prio 1 u32 match ip dst ${ip} 2>/dev/null || true`).catch(() => {});
-            console.log(`[CLEANUP] Removed orphaned download rule for ${ip} on ${iface}`);
-          }
-        }
-        
-        // Check for upload filters with IPs that are no longer active
-        const { stdout: uploadFilters } = await execPromise(`tc filter show dev ${iface} parent ffff: 2>/dev/null || echo ""`).catch(() => ({ stdout: '' }));
-        const uploadIPs = uploadFilters.match(/\d+\.\d+\.\d+\.\d+/g) || [];
-        
-        for (const ip of uploadIPs) {
-          if (!activeIPs.has(ip)) {
-            await execPromise(`tc filter del dev ${iface} parent ffff: protocol ip prio 1 u32 match ip src ${ip} 2>/dev/null || true`).catch(() => {});
-            console.log(`[CLEANUP] Removed orphaned upload rule for ${ip} on ${iface}`);
-          }
-        }
-      } catch (e) {
-        // Ignore errors for individual interfaces
-      }
-    }
-  } catch (e) { 
-    console.error('[CLEANUP] Periodic TC cleanup error:', e.message); 
-  }
-}, 30000); // Run every 30 seconds
+// TC cleanup moved inside server.listen
 
 async function bootupRestore(isRevoked = false) {
   console.log(`[AJC] Starting System Restoration (Mode: ${isRevoked ? 'RESTRICTED' : 'NORMAL'})...`);
@@ -2538,7 +2481,7 @@ server.listen(80, '0.0.0.0', async () => {
     }
 
     const verification = await licenseManager.verifyLicense();
-    const trialStatus = await checkTrialStatus(systemHardwareId);
+    const trialStatus = await checkTrialStatus(systemHardwareId, verification);
     
     const isLicensed = verification.isValid && verification.isActivated;
     const isRevoked = verification.isRevoked || trialStatus.isRevoked;
@@ -2574,11 +2517,54 @@ server.listen(80, '0.0.0.0', async () => {
   } else {
     console.warn('[EdgeSync] Cloud sync disabled - MACHINE_ID or VENDOR_ID not set in .env');
   }
+
+  // Start Background Timers only after DB is initialized
+  setInterval(async () => {
+    try {
+      const expired = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds <= 0');
+      for (const s of expired) {
+        await network.blockMAC(s.mac, s.ip);
+        await db.run('DELETE FROM sessions WHERE mac = ?', [s.mac]);
+      }
+      await db.run('UPDATE sessions SET remaining_seconds = remaining_seconds - 1 WHERE remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)');
+    } catch (e) { console.error(e); }
+  }, 1000);
+
+  setInterval(async () => {
+    try {
+      const inactiveSessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds <= 0');
+      for (const session of inactiveSessions) {
+        await network.removeSpeedLimit(session.mac, session.ip);
+      }
+      const activeSessions = await db.all('SELECT ip FROM sessions WHERE remaining_seconds > 0');
+      const activeIPs = new Set(activeSessions.map(s => s.ip));
+      const { stdout: interfacesOutput } = await execPromise(`ip link show | grep -E "eth|wlan|br|vlan" | awk '{print $2}' | sed 's/:$//'`).catch(() => ({ stdout: '' }));
+      const interfaces = interfacesOutput.trim().split('\n').filter(i => i);
+      for (const iface of interfaces) {
+        try {
+          const { stdout: downloadFilters } = await execPromise(`tc filter show dev ${iface} parent 1:0 2>/dev/null || echo ""`).catch(() => ({ stdout: '' }));
+          const downloadIPs = downloadFilters.match(/\d+\.\d+\.\d+\.\d+/g) || [];
+          for (const ip of downloadIPs) {
+            if (!activeIPs.has(ip)) {
+              await execPromise(`tc filter del dev ${iface} parent 1:0 protocol ip prio 1 u32 match ip dst ${ip} 2>/dev/null || true`).catch(() => {});
+            }
+          }
+          const { stdout: uploadFilters } = await execPromise(`tc filter show dev ${iface} parent ffff: 2>/dev/null || echo ""`).catch(() => ({ stdout: '' }));
+          const uploadIPs = uploadFilters.match(/\d+\.\d+\.\d+\.\d+/g) || [];
+          for (const ip of uploadIPs) {
+            if (!activeIPs.has(ip)) {
+              await execPromise(`tc filter del dev ${iface} parent ffff: protocol ip prio 1 u32 match ip src ${ip} 2>/dev/null || true`).catch(() => {});
+            }
+          }
+        } catch (e) {}
+      }
+    } catch (e) { console.error('[CLEANUP] Periodic TC cleanup error:', e.message); }
+  }, 30000);
   
   // Always call bootupRestore but pass revocation status if needed
   // We can fetch it inside bootupRestore or pass it
   const verificationStatus = await licenseManager.verifyLicense();
-  const trialStatusInfo = await checkTrialStatus(systemHardwareId);
+  const trialStatusInfo = await checkTrialStatus(systemHardwareId, verificationStatus);
   const isCurrentlyRevoked = verificationStatus.isRevoked || trialStatusInfo.isRevoked;
   
   await bootupRestore(isCurrentlyRevoked);

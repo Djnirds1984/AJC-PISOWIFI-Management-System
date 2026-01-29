@@ -2316,7 +2316,13 @@ async function bootupRestore() {
       processedInterfaces.add(h.interface);
 
       console.log(`[AJC] Restoring Hotspot on ${h.interface}...`);
-      await network.setupHotspot(h).catch(e => console.error(`[AJC] Hotspot Restore Failed: ${e.message}`));
+      await network.setupHotspot(h, true).catch(e => console.error(`[AJC] Hotspot Restore Failed: ${e.message}`));
+    }
+    
+    // Final dnsmasq restart after all hotspot configs are restored
+    if (hotspots.length > 0) {
+      console.log('[AJC] Finalizing DNS/DHCP configuration...');
+      await network.restartDnsmasq().catch(e => console.error(`[AJC] Global dnsmasq restart failed: ${e.message}`));
     }
   } catch (e) { console.error('[AJC] Failed to load hotspots from DB'); }
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../../lib/api';
-import { NetworkInterface, PPPoEServerConfig, PPPoEUser, PPPoESession } from '../../types';
+import { NetworkInterface, PPPoEServerConfig, PPPoEUser, PPPoESession, PPPoEProfile, PPPoEBillingProfile } from '../../types';
 
 const PPPoEServer: React.FC = () => {
   const [interfaces, setInterfaces] = useState<NetworkInterface[]>([]);
@@ -19,27 +19,49 @@ const PPPoEServer: React.FC = () => {
   const [pppoeStatus, setPppoeStatus] = useState<any>(null);
   const [pppoeUsers, setPppoeUsers] = useState<PPPoEUser[]>([]);
   const [pppoeSessions, setPppoeSessions] = useState<PPPoESession[]>([]);
-  const [newPppoeUser, setNewPppoeUser] = useState({ username: '', password: '' });
+  const [pppoeProfiles, setPppoeProfiles] = useState<PPPoEProfile[]>([]);
+  const [pppoeBillingProfiles, setPppoeBillingProfiles] = useState<PPPoEBillingProfile[]>([]);
+  const [pppoeLogs, setPppoeLogs] = useState<string[]>([]);
+  
+  const [newPppoeUser, setNewPppoeUser] = useState({ username: '', password: '', billing_profile_id: '' });
+  const [newProfile, setNewProfile] = useState<PPPoEProfile>({ name: '', rate_limit_dl: 5, rate_limit_ul: 5 });
+  const [newBillingProfile, setNewBillingProfile] = useState<Partial<PPPoEBillingProfile>>({ profile_id: 0, name: '', price: 0 });
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { 
+    loadData();
+    const logInterval = setInterval(loadLogs, 5000);
+    return () => clearInterval(logInterval);
+  }, []);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [ifaces, pppoeS, pppoeU, pppoeSess] = await Promise.all([
+      const [ifaces, pppoeS, pppoeU, pppoeSess, profiles, billingProfiles] = await Promise.all([
         apiClient.getInterfaces(),
         apiClient.getPPPoEServerStatus().catch(() => null),
         apiClient.getPPPoEUsers().catch(() => []),
-        apiClient.getPPPoESessions().catch(() => [])
+        apiClient.getPPPoESessions().catch(() => []),
+        apiClient.getPPPoEProfiles().catch(() => []),
+        apiClient.getPPPoEBillingProfiles().catch(() => [])
       ]);
       setInterfaces(ifaces.filter(i => !i.isLoopback));
       setPppoeStatus(pppoeS);
       setPppoeUsers(Array.isArray(pppoeU) ? pppoeU : []);
       setPppoeSessions(Array.isArray(pppoeSess) ? pppoeSess : []);
+      setPppoeProfiles(profiles);
+      setPppoeBillingProfiles(billingProfiles);
+      loadLogs();
     } catch (err) { 
       console.error('[UI] Data Load Error:', err); 
     }
     finally { setLoading(false); }
+  };
+
+  const loadLogs = async () => {
+    try {
+      const logs = await apiClient.getPPPoELogs();
+      setPppoeLogs(logs);
+    } catch (e) {}
   };
 
   // PPPoE Server Functions
@@ -82,8 +104,12 @@ const PPPoEServer: React.FC = () => {
     
     try {
       setLoading(true);
-      await apiClient.addPPPoEUser(newPppoeUser.username, newPppoeUser.password);
-      setNewPppoeUser({ username: '', password: '' });
+      await apiClient.addPPPoEUser(
+        newPppoeUser.username, 
+        newPppoeUser.password, 
+        newPppoeUser.billing_profile_id ? parseInt(newPppoeUser.billing_profile_id) : undefined
+      );
+      setNewPppoeUser({ username: '', password: '', billing_profile_id: '' });
       await loadData();
       alert(`User ${newPppoeUser.username} added!`);
     } catch (e: any) {
@@ -102,6 +128,60 @@ const PPPoEServer: React.FC = () => {
       await loadData();
     } catch (e: any) {
       alert(`Failed to delete user: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addProfileHandler = async () => {
+    if (!newProfile.name) return alert('Profile name required!');
+    try {
+      setLoading(true);
+      await apiClient.addPPPoEProfile(newProfile);
+      setNewProfile({ name: '', rate_limit_dl: 5, rate_limit_ul: 5 });
+      await loadData();
+    } catch (e: any) {
+      alert(`Failed to add profile: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteProfileHandler = async (id: number) => {
+    if (!confirm('Delete this profile?')) return;
+    try {
+      setLoading(true);
+      await apiClient.deletePPPoEProfile(id);
+      await loadData();
+    } catch (e: any) {
+      alert(`Failed to delete profile: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addBillingProfileHandler = async () => {
+    if (!newBillingProfile.name || !newBillingProfile.profile_id) return alert('Name and Profile selection required!');
+    try {
+      setLoading(true);
+      await apiClient.addPPPoEBillingProfile(newBillingProfile);
+      setNewBillingProfile({ profile_id: 0, name: '', price: 0 });
+      await loadData();
+    } catch (e: any) {
+      alert(`Failed to add billing profile: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteBillingProfileHandler = async (id: number) => {
+    if (!confirm('Delete this billing profile?')) return;
+    try {
+      setLoading(true);
+      await apiClient.deletePPPoEBillingProfile(id);
+      await loadData();
+    } catch (e: any) {
+      alert(`Failed to delete billing profile: ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -248,6 +328,123 @@ const PPPoEServer: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* Profiles Management */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* PPPoE Profiles */}
+              <div className="bg-white border border-slate-200 rounded-lg overflow-hidden flex flex-col">
+                <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                  <h4 className="text-[9px] font-black text-slate-900 uppercase tracking-widest">PPPoE Profiles</h4>
+                  <span className="text-[8px] font-bold text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200">{pppoeProfiles.length}</span>
+                </div>
+                <div className="p-3 border-b border-slate-100 bg-slate-50/30">
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <input 
+                      type="text" 
+                      placeholder="Profile Name"
+                      value={newProfile.name}
+                      onChange={e => setNewProfile({...newProfile, name: e.target.value})}
+                      className="col-span-2 w-full bg-white border border-slate-200 rounded px-2 py-1 text-[10px] font-bold outline-none"
+                    />
+                    <div className="relative">
+                      <span className="absolute right-2 top-1 text-[8px] font-black text-slate-300">DL</span>
+                      <input 
+                        type="number" 
+                        placeholder="DL Mbps"
+                        value={newProfile.rate_limit_dl}
+                        onChange={e => setNewProfile({...newProfile, rate_limit_dl: parseInt(e.target.value)})}
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[10px] font-mono outline-none"
+                      />
+                    </div>
+                    <div className="relative">
+                      <span className="absolute right-2 top-1 text-[8px] font-black text-slate-300">UL</span>
+                      <input 
+                        type="number" 
+                        placeholder="UL Mbps"
+                        value={newProfile.rate_limit_ul}
+                        onChange={e => setNewProfile({...newProfile, rate_limit_ul: parseInt(e.target.value)})}
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[10px] font-mono outline-none"
+                      />
+                    </div>
+                  </div>
+                  <button 
+                    onClick={addProfileHandler}
+                    className="w-full bg-slate-900 text-white py-1.5 rounded text-[9px] font-black uppercase tracking-widest hover:bg-black transition-all"
+                  >
+                    Add Profile
+                  </button>
+                </div>
+                <div className="max-h-[150px] overflow-y-auto divide-y divide-slate-100">
+                  {pppoeProfiles.map(p => (
+                    <div key={p.id} className="px-3 py-2 flex items-center justify-between group">
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-900">{p.name}</p>
+                        <p className="text-[8px] text-slate-400 font-bold uppercase">{p.rate_limit_dl}M/{p.rate_limit_ul}M Limit</p>
+                      </div>
+                      <button onClick={() => deleteProfileHandler(p.id!)} className="text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Billing Profiles */}
+              <div className="bg-white border border-slate-200 rounded-lg overflow-hidden flex flex-col">
+                <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                  <h4 className="text-[9px] font-black text-slate-900 uppercase tracking-widest">Billing Profiles</h4>
+                  <span className="text-[8px] font-bold text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200">{pppoeBillingProfiles.length}</span>
+                </div>
+                <div className="p-3 border-b border-slate-100 bg-slate-50/30">
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <input 
+                      type="text" 
+                      placeholder="Billing Name"
+                      value={newBillingProfile.name}
+                      onChange={e => setNewBillingProfile({...newBillingProfile, name: e.target.value})}
+                      className="col-span-2 w-full bg-white border border-slate-200 rounded px-2 py-1 text-[10px] font-bold outline-none"
+                    />
+                    <select 
+                      value={newBillingProfile.profile_id}
+                      onChange={e => setNewBillingProfile({...newBillingProfile, profile_id: parseInt(e.target.value)})}
+                      className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[10px] font-bold outline-none"
+                    >
+                      <option value="0">Select Profile...</option>
+                      {pppoeProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    <div className="relative">
+                      <span className="absolute left-2 top-1 text-[8px] font-black text-slate-300">₱</span>
+                      <input 
+                        type="number" 
+                        placeholder="Price"
+                        value={newBillingProfile.price}
+                        onChange={e => setNewBillingProfile({...newBillingProfile, price: parseInt(e.target.value)})}
+                        className="w-full bg-white border border-slate-200 rounded pl-5 pr-2 py-1 text-[10px] font-mono outline-none"
+                      />
+                    </div>
+                  </div>
+                  <button 
+                    onClick={addBillingProfileHandler}
+                    className="w-full bg-blue-600 text-white py-1.5 rounded text-[9px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all"
+                  >
+                    Add Billing
+                  </button>
+                </div>
+                <div className="max-h-[150px] overflow-y-auto divide-y divide-slate-100">
+                  {pppoeBillingProfiles.map(bp => (
+                    <div key={bp.id} className="px-3 py-2 flex items-center justify-between group">
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-900">{bp.name}</p>
+                        <p className="text-[8px] text-slate-400 font-bold uppercase">₱{bp.price} • {pppoeProfiles.find(p => p.id === bp.profile_id)?.name || 'Unknown'}</p>
+                      </div>
+                      <button onClick={() => deleteBillingProfileHandler(bp.id!)} className="text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* User Management (Right) */}
@@ -269,6 +466,14 @@ const PPPoEServer: React.FC = () => {
                   className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-[10px] font-mono outline-none focus:bg-white" 
                   placeholder="Password"
                 />
+                <select 
+                  value={newPppoeUser.billing_profile_id}
+                  onChange={e => setNewPppoeUser({...newPppoeUser, billing_profile_id: e.target.value})}
+                  className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-[10px] font-bold outline-none focus:bg-white"
+                >
+                  <option value="">Select Billing Profile (Optional)...</option>
+                  {pppoeBillingProfiles.map(bp => <option key={bp.id} value={bp.id}>{bp.name} (₱{bp.price})</option>)}
+                </select>
                 <button 
                   onClick={addPPPoEUserHandler} 
                   disabled={loading}
@@ -291,9 +496,16 @@ const PPPoEServer: React.FC = () => {
                       <div className={`w-1.5 h-1.5 rounded-full ${user.enabled ? 'bg-green-500' : 'bg-slate-300'}`}></div>
                       <div>
                         <p className="text-[10px] font-bold text-slate-900 leading-tight">{user.username}</p>
-                        <p className="text-[7px] text-slate-400 uppercase font-black tracking-tighter">
-                          ID: {user.id} • {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'NO DATE'}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-[7px] text-slate-400 uppercase font-black tracking-tighter">
+                            ID: {user.id} • {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'NO DATE'}
+                          </p>
+                          {user.billing_profile_id && (
+                            <span className="text-[6px] bg-blue-100 text-blue-600 px-1 rounded font-black">
+                              {pppoeBillingProfiles.find(bp => bp.id === user.billing_profile_id)?.name || 'BILLED'}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <button 
@@ -345,6 +557,29 @@ const PPPoEServer: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Debug Logs Output */}
+        <div className="px-4 pb-4">
+          <div className="bg-slate-900 rounded-lg overflow-hidden border border-slate-800">
+            <div className="px-3 py-1.5 bg-slate-800 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></div>
+                <h4 className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Server Logs (Real-time)</h4>
+              </div>
+              <button onClick={loadLogs} className="text-[7px] text-slate-400 hover:text-white uppercase font-black transition-colors">Refresh</button>
+            </div>
+            <div className="p-3 font-mono text-[9px] text-slate-300 h-32 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-slate-700">
+              {pppoeLogs.length > 0 ? pppoeLogs.map((log, i) => (
+                <div key={i} className="border-l border-slate-700 pl-2 py-0.5 hover:bg-slate-800/50 transition-colors">
+                  <span className="text-slate-500 mr-2">[{i+1}]</span>
+                  {log}
+                </div>
+              )) : (
+                <div className="text-slate-600 italic">Waiting for server logs...</div>
+              )}
+            </div>
+          </div>
+        </div>
       </section>
     </div>
   );

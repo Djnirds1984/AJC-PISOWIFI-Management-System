@@ -110,6 +110,23 @@ export interface PPPoEUser {
   password: string;
   enabled: number;
   ip_address?: string;
+  billing_profile_id?: number;
+  created_at?: string;
+}
+
+export interface PPPoEProfile {
+  id?: number;
+  name: string;
+  rate_limit_dl: number; // in Mbps
+  rate_limit_ul: number; // in Mbps
+  created_at?: string;
+}
+
+export interface PPPoEBillingProfile {
+  id?: number;
+  profile_id: number;
+  name: string;
+  price: number;
   created_at?: string;
 }
 

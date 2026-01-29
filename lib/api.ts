@@ -382,12 +382,64 @@ export const apiClient = {
     return handleResponse(res);
   },
 
-  async addPPPoEUser(username: string, password: string): Promise<{ success: boolean }> {
+  async addPPPoEUser(username: string, password: string, billing_profile_id?: number): Promise<{ success: boolean }> {
     const res = await fetch(`${API_BASE}/network/pppoe/users`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ username, password, billing_profile_id })
     });
+    return handleResponse(res);
+  },
+
+  // PPPoE Profile APIs
+  async getPPPoEProfiles(): Promise<PPPoEProfile[]> {
+    const res = await fetch(`${API_BASE}/network/pppoe/profiles`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async addPPPoEProfile(profile: PPPoEProfile): Promise<void> {
+    const res = await fetch(`${API_BASE}/network/pppoe/profiles`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(profile)
+    });
+    await handleResponse(res);
+  },
+
+  async deletePPPoEProfile(id: number): Promise<void> {
+    const res = await fetch(`${API_BASE}/network/pppoe/profiles/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    await handleResponse(res);
+  },
+
+  // PPPoE Billing Profile APIs
+  async getPPPoEBillingProfiles(): Promise<PPPoEBillingProfile[]> {
+    const res = await fetch(`${API_BASE}/network/pppoe/billing-profiles`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async addPPPoEBillingProfile(profile: Partial<PPPoEBillingProfile>): Promise<void> {
+    const res = await fetch(`${API_BASE}/network/pppoe/billing-profiles`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(profile)
+    });
+    await handleResponse(res);
+  },
+
+  async deletePPPoEBillingProfile(id: number): Promise<void> {
+    const res = await fetch(`${API_BASE}/network/pppoe/billing-profiles/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    await handleResponse(res);
+  },
+
+  // PPPoE Logs API
+  async getPPPoELogs(): Promise<string[]> {
+    const res = await fetch(`${API_BASE}/network/pppoe/logs`, { headers: getHeaders() });
     return handleResponse(res);
   },
 

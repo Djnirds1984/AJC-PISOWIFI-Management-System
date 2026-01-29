@@ -1607,15 +1607,91 @@ app.get('/api/network/pppoe/users', requireAdmin, async (req, res) => {
 
 app.post('/api/network/pppoe/users', requireAdmin, async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, billing_profile_id } = req.body;
     
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password required' });
     }
     
-    const result = await network.addPPPoEUser(username, password);
+    const result = await network.addPPPoEUser(username, password, billing_profile_id);
     res.json(result);
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PPPoE Profiles API
+app.get('/api/network/pppoe/profiles', requireAdmin, async (req, res) => {
+  try { res.json(await db.all('SELECT * FROM pppoe_profiles ORDER BY created_at DESC')); } 
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/network/pppoe/profiles', requireAdmin, async (req, res) => {
+  const { name, rate_limit_dl, rate_limit_ul } = req.body;
+  try {
+    await db.run('INSERT INTO pppoe_profiles (name, rate_limit_dl, rate_limit_ul) VALUES (?, ?, ?)', [name, rate_limit_dl, rate_limit_ul]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/network/pppoe/profiles/:id', requireAdmin, async (req, res) => {
+  try {
+    await db.run('DELETE FROM pppoe_profiles WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PPPoE Billing Profiles API
+app.get('/api/network/pppoe/billing-profiles', requireAdmin, async (req, res) => {
+  try { 
+    const rows = await db.all(`
+      SELECT bp.*, p.name as profile_name, p.rate_limit_dl, p.rate_limit_ul 
+      FROM pppoe_billing_profiles bp
+      JOIN pppoe_profiles p ON bp.profile_id = p.id
+      ORDER BY bp.created_at DESC
+    `);
+    res.json(rows); 
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/network/pppoe/billing-profiles', requireAdmin, async (req, res) => {
+  const { profile_id, name, price } = req.body;
+  try {
+    await db.run('INSERT INTO pppoe_billing_profiles (profile_id, name, price) VALUES (?, ?, ?)', [profile_id, name, price]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/network/pppoe/billing-profiles/:id', requireAdmin, async (req, res) => {
+  try {
+    await db.run('DELETE FROM pppoe_billing_profiles WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PPPoE Logs API
+app.get('/api/network/pppoe/logs', requireAdmin, async (req, res) => {
+  try {
+    // Try multiple log files commonly used by pppd
+    const logFiles = ['/var/log/pppd.log', '/var/log/messages', '/var/log/syslog'];
+    let logs = [];
+    
+    for (const file of logFiles) {
+      if (fs.existsSync(file)) {
+        const { stdout } = await execPromise(`grep -i "ppp" ${file} | tail -n 20`).catch(() => ({ stdout: '' }));
+        if (stdout) {
+          logs = stdout.split('\n').filter(l => l);
+          break;
+        }
+      }
+    }
+    
+    if (logs.length === 0) {
+      res.json(["No active PPPoE logs found. Check if server is running."]);
+    } else {
+      res.json(logs);
+    }
+  } catch (err) {
+    res.json(["Error reading logs: " + err.message]);
+  }
 });
 
 app.put('/api/network/pppoe/users/:id', requireAdmin, async (req, res) => {

@@ -185,6 +185,7 @@ app.get('/api/license/status', async (req, res) => {
       hardwareId: systemHardwareId,
       isLicensed: verification.isValid && verification.isActivated,
       isRevoked: verification.isRevoked || trialStatus.isRevoked,
+      hasHadLicense: trialStatus.hasHadLicense || false,
       licenseKey: verification.licenseKey,
       trial: {
         isActive: trialStatus.isTrialActive,
@@ -605,6 +606,17 @@ app.get('/api/whoami', async (req, res) => {
     const trialStatus = await checkTrialStatus(systemHardwareId);
     const verification = await licenseManager.verifyLicense();
     isRevoked = verification.isRevoked || trialStatus.isRevoked;
+    
+    if (trialStatus.isTrialActive && !isLicensed) {
+      console.log(`[License] Trial Mode - ${trialStatus.daysRemaining} days remaining`);
+      console.log(`[License] Trial expires: ${trialStatus.expiresAt}`);
+    } else if (!trialStatus.isTrialActive && !isLicensed && !isRevoked) {
+      if (trialStatus.hasHadLicense) {
+        console.warn('[License] Trial mode disabled - System has had a license previously.');
+      } else {
+        console.warn('[License] Trial mode expired.');
+      }
+    }
     
     if (isRevoked) {
        // If revoked, only 1 device can use insert coin

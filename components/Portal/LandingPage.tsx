@@ -405,35 +405,24 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
               <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 text-center">
                 Select Coinslot Location
               </label>
-              <div className="grid grid-cols-1 gap-2">
-                <button 
-                  onClick={() => setSelectedSlot('main')}
-                  className={`py-3 px-4 rounded-xl border-2 text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between ${
-                    selectedSlot === 'main' 
-                      ? 'border-blue-600 bg-blue-50 text-blue-700' 
-                      : 'border-slate-100 text-slate-400 hover:border-slate-200'
-                  }`}
+              <div className="relative">
+                <select
+                  value={selectedSlot}
+                  onChange={(e) => setSelectedSlot(e.target.value)}
+                  className="w-full appearance-none bg-white border-2 border-slate-100 rounded-xl py-3 px-4 text-xs font-black uppercase tracking-widest text-slate-700 focus:outline-none focus:border-blue-600 focus:ring-0 transition-all"
                 >
-                  <span>Main Machine</span>
-                  {selectedSlot === 'main' && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
-                </button>
-                {availableSlots.map(slot => (
-                  <button 
-                    key={slot.id}
-                    onClick={() => setSelectedSlot(slot.macAddress)}
-                    className={`py-3 px-4 rounded-xl border-2 text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between ${
-                      selectedSlot === slot.macAddress 
-                        ? 'border-blue-600 bg-blue-50 text-blue-700' 
-                        : 'border-slate-100 text-slate-400 hover:border-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className={`w-1.5 h-1.5 rounded-full ${slot.isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                      <span>{slot.name}</span>
-                    </div>
-                    {selectedSlot === slot.macAddress && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
-                  </button>
-                ))}
+                  <option value="main">🏠 Main Machine</option>
+                  {availableSlots.map(slot => (
+                    <option key={slot.id} value={slot.macAddress}>
+                      {slot.isOnline ? '🟢' : '🔴'} {slot.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
               </div>
             </div>
           )}

@@ -44,7 +44,17 @@ const PPPoEServer: React.FC = () => {
         apiClient.getPPPoEProfiles().catch(() => []),
         apiClient.getPPPoEBillingProfiles().catch(() => [])
       ]);
-      setInterfaces(ifaces.filter(i => !i.isLoopback));
+      const detectedIfaces = ifaces.filter(i => !i.isLoopback);
+      setInterfaces(detectedIfaces);
+
+      // Auto-select br0 if available and no interface selected
+      if (!pppoeServer.interface) {
+        const br0 = detectedIfaces.find(i => i.name === 'br0');
+        if (br0) {
+          setPppoeServer(prev => ({ ...prev, interface: 'br0' }));
+        }
+      }
+
       setPppoeStatus(pppoeS);
       setPppoeUsers(Array.isArray(pppoeU) ? pppoeU : []);
       setPppoeSessions(Array.isArray(pppoeSess) ? pppoeSess : []);
@@ -234,8 +244,10 @@ const PPPoEServer: React.FC = () => {
                       className="w-full bg-white border border-slate-200 rounded-md px-2 py-1.5 text-[10px] font-bold disabled:opacity-50 focus:ring-1 focus:ring-slate-900 outline-none"
                     >
                       <option value="">Select Interface...</option>
-                      {interfaces.filter(i => i.type === 'ethernet' || i.type === 'vlan').map(i => (
-                        <option key={i.name} value={i.name}>{i.name} ({i.type})</option>
+                      {interfaces.filter(i => i.type === 'ethernet' || i.type === 'vlan' || i.type === 'bridge').map(i => (
+                        <option key={i.name} value={i.name}>
+                          {i.name} ({i.type}){i.name === 'br0' ? ' - Recommended' : ''}
+                        </option>
                       ))}
                     </select>
                   </div>

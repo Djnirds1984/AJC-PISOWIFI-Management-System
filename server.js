@@ -607,17 +607,23 @@ app.get('/api/whoami', async (req, res) => {
     isRevoked = verification.isRevoked || trialStatus.isRevoked;
     
     if (isRevoked) {
-      // If revoked, only 1 device can use insert coin
-      // Check if any other MAC has an active session
-      const activeSessions = await db.all('SELECT mac FROM sessions WHERE remaining_seconds > 0');
-      if (activeSessions.length > 0) {
-        // If there's an active session, only that device can "add more time"
-        const isMySessionActive = activeSessions.some(s => s.mac === mac);
-        if (!isMySessionActive) {
-          canInsertCoin = false;
-        }
-      }
-    }
+       // If revoked, only 1 device can use insert coin
+       // Check if any other MAC has an active session
+       // EXEMPT NodeMCU devices from blocking others
+       const nodemcuResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+       const nodemcuMacs = nodemcuResult?.value ? JSON.parse(nodemcuResult.value).map(d => d.macAddress.toUpperCase()) : [];
+
+       const activeSessions = await db.all('SELECT mac FROM sessions WHERE remaining_seconds > 0');
+       const clientSessions = activeSessions.filter(s => !nodemcuMacs.includes(s.mac.toUpperCase()));
+
+       if (clientSessions.length > 0) {
+         // If there's an active client session, only that device can "add more time"
+         const isMySessionActive = clientSessions.some(s => s.mac === mac);
+         if (!isMySessionActive) {
+           canInsertCoin = false;
+         }
+       }
+     }
   } catch (e) {
     console.error('[WhoAmI] License check error:', e);
   }
@@ -653,9 +659,17 @@ app.post('/api/sessions/start', async (req, res) => {
     const trialStatus = await checkTrialStatus(systemHardwareId);
     const verification = await licenseManager.verifyLicense();
     if (verification.isRevoked || trialStatus.isRevoked) {
-      const activeSessions = await db.all('SELECT mac FROM sessions WHERE remaining_seconds > 0 AND mac != ?', [mac]);
-      if (activeSessions.length > 0) {
-        return res.status(403).json({ error: 'System License Revoked: Only 1 device allowed at a time.' });
+      const nodemcuResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+      const nodemcuMacs = nodemcuResult?.value ? JSON.parse(nodemcuResult.value).map(d => d.macAddress.toUpperCase()) : [];
+
+      // Only apply limit if the CURRENT user is NOT a NodeMCU (which they shouldn't be)
+      if (!nodemcuMacs.includes(mac.toUpperCase())) {
+        const activeSessions = await db.all('SELECT mac FROM sessions WHERE remaining_seconds > 0 AND mac != ?', [mac]);
+        const activeClients = activeSessions.filter(s => !nodemcuMacs.includes(s.mac.toUpperCase()));
+        
+        if (activeClients.length > 0) {
+          return res.status(403).json({ error: 'System License Revoked: Only 1 device allowed at a time.' });
+        }
       }
     }
 
@@ -2313,8 +2327,8 @@ setInterval(async () => {
   }
 }, 30000); // Run every 30 seconds
 
-async function bootupRestore() {
-  console.log('[AJC] Starting System Restoration...');
+async function bootupRestore(isRevoked = false) {
+  console.log(`[AJC] Starting System Restoration (Mode: ${isRevoked ? 'RESTRICTED' : 'NORMAL'})...`);
   
   // Auto-Provision Interfaces & Bridge if needed
   await network.autoProvisionNetwork();
@@ -2431,8 +2445,62 @@ async function bootupRestore() {
     await network.initQoS(lan, qosDiscipline?.value || 'cake');
   }
 
-  const sessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds > 0');
-  for (const s of sessions) await network.whitelistMAC(s.mac, s.ip);
+  // NodeMCU Exemption: Get NodeMCU MACs to ensure they are whitelisted even if revoked
+  let nodemcuMacs = [];
+  try {
+    const nodemcuResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    if (nodemcuResult?.value) {
+      const devices = JSON.parse(nodemcuResult.value);
+      nodemcuMacs = devices.map(d => d.macAddress.toUpperCase());
+    }
+  } catch (e) {
+    console.warn('[AJC] Failed to load NodeMCU devices for whitelisting:', e.message);
+  }
+
+  const sessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds > 0 ORDER BY connected_at DESC');
+  
+  // NodeMCU Exemption: Whitelist all NodeMCU devices regardless of sessions
+  try {
+    const nodemcuResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    if (nodemcuResult?.value) {
+      const devices = JSON.parse(nodemcuResult.value);
+      for (const d of devices) {
+        if (d.macAddress && d.ipAddress && d.ipAddress !== 'unknown') {
+          console.log(`[AJC] Whitelisting NodeMCU infrastructure: ${d.name} (${d.macAddress} @ ${d.ipAddress})`);
+          await network.whitelistMAC(d.macAddress, d.ipAddress);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[AJC] Failed to whitelist NodeMCU devices:', e.message);
+  }
+
+  if (isRevoked) {
+    console.log('[AJC] System is REVOKED. Limiting client sessions to 1.');
+    let clientWhitelistedCount = 0;
+    
+    for (const s of sessions) {
+      const mac = s.mac.toUpperCase();
+      const isNodeMCU = nodemcuMacs.includes(mac);
+      
+      // NodeMCUs are already whitelisted above, but we skip them here for the 1-client limit
+      if (isNodeMCU) {
+        await network.whitelistMAC(s.mac, s.ip);
+        continue;
+      }
+
+      if (clientWhitelistedCount < 1) {
+        console.log(`[AJC] Whitelisting primary client: ${mac}`);
+        await network.whitelistMAC(s.mac, s.ip);
+        clientWhitelistedCount++;
+      } else {
+        console.log(`[AJC] Blocking secondary client due to revocation: ${mac}`);
+        await network.blockMAC(s.mac, s.ip);
+      }
+    }
+  } else {
+    for (const s of sessions) await network.whitelistMAC(s.mac, s.ip);
+  }
   
   console.log('[AJC] System Restoration Complete.');
 }
@@ -2470,47 +2538,12 @@ server.listen(80, '0.0.0.0', async () => {
     console.log(`[License] Revoked: ${isRevoked ? 'YES' : 'NO'}`);
     
     if (isRevoked) {
-      console.error('╔════════════════════════════════════════════════════════════╗');
-      console.error('║                   LICENSE REVOKED                          ║');
-      console.error('╠════════════════════════════════════════════════════════════╣');
-      console.error('║  Your system license has been revoked.                     ║');
-      console.error('║  Trial mode is disabled for revoked licenses.             ║');
-      console.error('║                                                            ║');
-      console.error('║  Hardware ID: ' + systemHardwareId.padEnd(41) + '║');
-      console.error('║                                                            ║');
-      console.error('║  Only 1 device can use the PisoWiFi service at a time.     ║');
-      console.error('║  Dashboard access is restricted to System Settings.        ║');
-      console.error('╚════════════════════════════════════════════════════════════╝');
-    } else if (trialStatus.isTrialActive && !isLicensed) {
-      console.log(`[License] Trial Mode - ${trialStatus.daysRemaining} days remaining`);
-      console.log(`[License] Trial expires: ${trialStatus.expiresAt}`);
+      console.warn('[License] System in restricted mode (Revoked)');
+    } else if (!canOperate) {
+      console.warn('[License] System in restricted mode (Expired)');
+    } else {
+      console.log('[License] ✓ License verification passed - Starting services...');
     }
-    
-    if (!canOperate) {
-      console.error('╔════════════════════════════════════════════════════════════╗');
-      console.error('║                   LICENSE REQUIRED                         ║');
-      console.error('╠════════════════════════════════════════════════════════════╣');
-      console.error('║  Your 7-day trial has expired and no valid license        ║');
-      console.error('║  was found for this device.                                ║');
-      console.error('║                                                            ║');
-      console.error('║  Hardware ID: ' + systemHardwareId.padEnd(41) + '║');
-      console.error('║                                                            ║');
-      console.error('║  To activate:                                              ║');
-      console.error('║  1. Contact your vendor for a license key                 ║');
-      console.error('║  2. Navigate to http://[device-ip]/admin                  ║');
-      console.error('║  3. Go to System Settings > License Activation            ║');
-      console.error('║  4. Enter your license key                                 ║');
-      console.error('║                                                            ║');
-      console.error('║  The system will continue to run in demo mode but         ║');
-      console.error('║  PisoWiFi services are disabled.                          ║');
-      console.error('╚════════════════════════════════════════════════════════════╝');
-      
-      // Don't restore services if not licensed
-      console.log('[License] Skipping service restoration - License required');
-      return;
-    }
-    
-    console.log('[License] ✓ License verification passed - Starting services...');
   } catch (error) {
     console.error('[License] Error during license check:', error);
     console.warn('[License] Proceeding with caution...');
@@ -2530,5 +2563,11 @@ server.listen(80, '0.0.0.0', async () => {
     console.warn('[EdgeSync] Cloud sync disabled - MACHINE_ID or VENDOR_ID not set in .env');
   }
   
-  await bootupRestore();
+  // Always call bootupRestore but pass revocation status if needed
+  // We can fetch it inside bootupRestore or pass it
+  const verificationStatus = await licenseManager.verifyLicense();
+  const trialStatusInfo = await checkTrialStatus(systemHardwareId);
+  const isCurrentlyRevoked = verificationStatus.isRevoked || trialStatusInfo.isRevoked;
+  
+  await bootupRestore(isCurrentlyRevoked);
 });

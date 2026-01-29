@@ -4,6 +4,7 @@ import { apiClient } from '../../lib/api';
 interface LicenseStatus {
   hardwareId: string;
   isLicensed: boolean;
+  isRevoked?: boolean;
   licenseKey?: string;
   trial: {
     isActive: boolean;
@@ -92,7 +93,9 @@ const SystemSettings: React.FC = () => {
           </div>
           {licenseStatus && (
             <div className="flex gap-2">
-              {licenseStatus.isLicensed ? (
+              {licenseStatus.isRevoked ? (
+                <span className="bg-red-600 text-white text-[8px] font-black px-2 py-1 rounded font-bold uppercase animate-pulse">Revoked</span>
+              ) : licenseStatus.isLicensed ? (
                 <span className="bg-green-100 text-green-600 text-[8px] font-black px-2 py-1 rounded font-bold uppercase">Licensed</span>
               ) : licenseStatus.trial.isActive ? (
                 <span className="bg-yellow-100 text-yellow-600 text-[8px] font-black px-2 py-1 rounded font-bold uppercase">
@@ -115,7 +118,7 @@ const SystemSettings: React.FC = () => {
       </section>
 
       {/* System Diagnostics Card */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <section className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden transition-all ${licenseStatus?.isRevoked ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
         <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">System Diagnostics</h3>
           <span className="bg-green-100 text-green-600 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">Kernel: 5.15.0</span>
@@ -129,7 +132,7 @@ const SystemSettings: React.FC = () => {
       </section>
 
       {/* Security & Service Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 transition-all ${licenseStatus?.isRevoked ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
         {/* Security Settings Card */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Admin Security</h3>
@@ -148,7 +151,7 @@ const SystemSettings: React.FC = () => {
         </section>
       </div>
 
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <section className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden transition-all ${licenseStatus?.isRevoked ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
         <div className="px-4 py-2 border-b border-slate-100 bg-red-50/30">
           <h3 className="text-[10px] font-black text-red-600 uppercase tracking-widest">Danger Zone</h3>
         </div>

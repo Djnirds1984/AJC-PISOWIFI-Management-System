@@ -130,7 +130,8 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <table className="w-full text-left">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
           <thead className="bg-slate-50 text-[9px] text-slate-400 uppercase font-black tracking-widest border-b border-slate-100">
             <tr>
               <th className="px-4 py-3">Denomination</th>
@@ -165,6 +166,7 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

@@ -279,7 +279,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="fixed bottom-4 right-4 z-[999]">
+      <div className="fixed bottom-4 right-4 z-[999] hidden md:block">
         <button onClick={handleToggleAdmin} className="bg-slate-950 text-white px-5 py-3 rounded-full text-[10px] font-black tracking-widest uppercase hover:bg-blue-600 shadow-2xl border border-white/10 active:scale-95 transition-all flex items-center gap-2">
           <span>{isAdmin ? '🚪' : '🔐'}</span>
           {isAdmin ? 'Exit Admin' : 'Admin Login'}
@@ -290,17 +290,18 @@ const App: React.FC = () => {
         isAuthenticated ? (
           <div className="flex h-screen overflow-hidden bg-slate-100 font-sans selection:bg-blue-100">
             {/* Mobile Sidebar Overlay */}
-            {!sidebarOpen && (
+            {sidebarOpen && (
               <div 
                 className="fixed inset-0 bg-black/50 z-40 md:hidden animate-in fade-in duration-300" 
-                onClick={() => setSidebarOpen(true)}
+                onClick={() => setSidebarOpen(false)}
               />
             )}
 
             {/* Sidebar */}
             <aside className={`
-              ${sidebarOpen ? 'w-64' : 'w-0 -ml-64 md:w-20 md:ml-0'} 
-              bg-slate-900 text-white flex flex-col shrink-0 transition-all duration-300 ease-in-out z-50 relative border-r border-slate-800
+              fixed md:relative h-full
+              ${sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64 md:translate-x-0 md:w-20'} 
+              bg-slate-900 text-white flex flex-col shrink-0 transition-all duration-300 ease-in-out z-50 border-r border-slate-800
             `}>
               <div className={`p-4 border-b border-white/5 flex items-center ${sidebarOpen ? 'justify-between' : 'justify-center'}`}>
                 {sidebarOpen ? (
@@ -334,9 +335,21 @@ const App: React.FC = () => {
               </nav>
 
               <div className={`p-4 border-t border-white/5 bg-black/20 ${sidebarOpen ? 'block' : 'hidden md:block'}`}>
-                 <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    {sidebarOpen && <span className="text-slate-500 text-[9px] font-bold uppercase tracking-wider">v3.3.0 ONLINE</span>}
+                 <div className="flex flex-col gap-3">
+                   <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      {sidebarOpen && <span className="text-slate-500 text-[9px] font-bold uppercase tracking-wider">v3.3.0 ONLINE</span>}
+                   </div>
+                   
+                   {/* Mobile Exit Button */}
+                   {sidebarOpen && (
+                     <button 
+                       onClick={handleToggleAdmin}
+                       className="w-full bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-colors md:hidden"
+                     >
+                       <span>🚪</span> Exit Admin
+                     </button>
+                   )}
                  </div>
               </div>
             </aside>
@@ -354,7 +367,7 @@ const App: React.FC = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
                   </button>
-                  <h2 className="text-sm font-bold text-slate-800 uppercase tracking-tight hidden sm:block">
+                  <h2 className="text-sm font-bold text-slate-800 uppercase tracking-tight block">
                     {activeTab}
                   </h2>
                 </div>

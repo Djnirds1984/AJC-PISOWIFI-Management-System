@@ -98,7 +98,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
       {/* System Hardware Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* CPU Card */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-hidden">
            <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Processor</h3>
@@ -132,7 +132,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
         </div>
 
         {/* Memory Card */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-hidden">
            <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Memory</h3>
@@ -191,7 +191,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
 
         <div className="grid grid-cols-1 gap-4">
             {activeGraphs.map(iface => (
-                <div key={iface} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
+                <div key={iface} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
                     <div className="flex justify-between items-center mb-4">
                         <div className="flex items-center gap-2">
                             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
@@ -298,9 +298,9 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
 };
 
 const StatItem: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-    <div>
-        <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</span>
-        <span className="block text-sm font-bold text-slate-700">{value}</span>
+    <div className="min-w-0">
+        <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">{label}</span>
+        <span className="block text-sm font-bold text-slate-700 truncate">{value}</span>
     </div>
 );
 

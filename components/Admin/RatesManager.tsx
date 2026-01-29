@@ -52,21 +52,20 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="max-w-4xl mx-auto space-y-4">
       {/* Global QoS Settings */}
-      <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
-        <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6">Global Traffic Control</h3>
-        <div className="flex flex-col sm:flex-row items-center gap-6">
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-4">Global Traffic Control</h3>
+        <div className="flex flex-col sm:flex-row items-center gap-4">
           <div className="flex-1 w-full">
-            <p className="text-xs text-slate-500 mb-4 font-medium">
-              Select the Queue Discipline for traffic shaping. 
-              <span className="font-bold text-slate-700"> Cake</span> is generally recommended for better latency under load.
+            <p className="text-[10px] text-slate-500 mb-3 font-medium">
+              Select Queue Discipline. <span className="font-bold text-slate-700">Cake</span> is recommended.
             </p>
-            <div className="flex gap-4">
+            <div className="flex gap-2">
               <button
                 onClick={() => saveQoS('cake')}
                 disabled={savingQoS}
-                className={`flex-1 py-3 px-4 rounded-xl border-2 font-bold text-xs uppercase tracking-wider transition-all ${
+                className={`flex-1 py-2 px-3 rounded-lg border font-bold text-[10px] uppercase tracking-wider transition-all ${
                   qosDiscipline === 'cake' 
                     ? 'border-blue-600 bg-blue-50 text-blue-700' 
                     : 'border-slate-200 text-slate-400 hover:border-slate-300'
@@ -77,7 +76,7 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
               <button
                 onClick={() => saveQoS('fq_codel')}
                 disabled={savingQoS}
-                className={`flex-1 py-3 px-4 rounded-xl border-2 font-bold text-xs uppercase tracking-wider transition-all ${
+                className={`flex-1 py-2 px-3 rounded-lg border font-bold text-[10px] uppercase tracking-wider transition-all ${
                   qosDiscipline === 'fq_codel' 
                     ? 'border-blue-600 bg-blue-50 text-blue-700' 
                     : 'border-slate-200 text-slate-400 hover:border-slate-300'
@@ -90,26 +89,26 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
         </div>
       </div>
 
-      <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
-        <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6">Create Rate Definition</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-4">Create Rate Definition</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Currency (₱)</label>
+            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Currency (₱)</label>
             <input 
               type="number" 
               value={newPeso}
               onChange={(e) => setNewPeso(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all font-bold"
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 outline-none transition-all font-bold text-sm"
               placeholder="1"
             />
           </div>
           <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Duration (Mins)</label>
+            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Duration (Mins)</label>
             <input 
               type="number" 
               value={newMinutes}
               onChange={(e) => setNewMinutes(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all font-bold"
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 outline-none transition-all font-bold text-sm"
               placeholder="10"
             />
           </div>
@@ -117,53 +116,51 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
             <button 
               onClick={addRate}
               disabled={loading}
-              className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50"
+              className="w-full bg-blue-600 text-white py-2 rounded-lg font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md shadow-blue-500/10 disabled:opacity-50 h-[38px]"
             >
-              {loading ? '...' : 'Add'}
+              {loading ? '...' : 'Add Rate'}
             </button>
           </div>
         </div>
-        <div className="mt-6 bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-          <div className="text-amber-800 text-sm font-bold flex items-center gap-2">
-            <span>⚠️</span>
-            Bandwidth limits are now managed in the <span className="font-black">Bandwidth</span> section
-          </div>
-          <p className="text-amber-700 text-xs mt-1">Set default download/upload limits for all devices in the Bandwidth Management page.</p>
+        <div className="mt-4 bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+          <p className="text-amber-800 text-[10px] font-bold">
+            ⚠️ Limits are in the <span className="font-black">Bandwidth</span> section
+          </p>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <table className="w-full text-left">
-          <thead className="bg-slate-50 text-[10px] text-slate-400 uppercase font-black tracking-widest border-b border-slate-100">
+          <thead className="bg-slate-50 text-[9px] text-slate-400 uppercase font-black tracking-widest border-b border-slate-100">
             <tr>
-              <th className="px-6 py-5">Denomination</th>
-              <th className="px-6 py-5">Internet Duration</th>
-              <th className="px-6 py-5 text-right">Admin Action</th>
+              <th className="px-4 py-3">Denomination</th>
+              <th className="px-4 py-3">Duration</th>
+              <th className="px-4 py-3 text-right">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rates.length > 0 ? rates.sort((a,b) => a.pesos - b.pesos).map((rate) => (
               <tr key={rate.id} className="hover:bg-slate-50 transition-colors group">
-                <td className="px-6 py-5">
-                  <span className="font-black text-slate-900 text-lg">₱{rate.pesos}</span>
+                <td className="px-4 py-2">
+                  <span className="font-black text-slate-900 text-sm">₱{rate.pesos}</span>
                 </td>
-                <td className="px-6 py-5 text-slate-600 font-bold">
+                <td className="px-4 py-2 text-slate-600 font-bold text-xs">
                   {rate.minutes >= 60 
                     ? `${Math.floor(rate.minutes / 60)}h ${rate.minutes % 60 > 0 ? (rate.minutes % 60) + 'm' : ''}`
-                    : `${rate.minutes} Minutes`}
+                    : `${rate.minutes}m`}
                 </td>
-                <td className="px-6 py-5 text-right">
+                <td className="px-4 py-2 text-right">
                   <button 
                     onClick={() => deleteRate(rate.id)}
-                    className="text-red-500 hover:text-red-700 text-[10px] font-black uppercase tracking-widest transition-colors opacity-0 group-hover:opacity-100"
+                    className="text-red-500 hover:text-red-700 text-[9px] font-black uppercase tracking-widest transition-colors group-hover:opacity-100"
                   >
-                    Delete Entry
+                    Delete
                   </button>
                 </td>
               </tr>
             )) : (
               <tr>
-                <td colSpan={3} className="px-6 py-20 text-center text-slate-400 text-xs font-black uppercase">No rates defined in database.</td>
+                <td colSpan={3} className="px-4 py-10 text-center text-slate-400 text-[10px] font-black uppercase">No rates defined.</td>
               </tr>
             )}
           </tbody>

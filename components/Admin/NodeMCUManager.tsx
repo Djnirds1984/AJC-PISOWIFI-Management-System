@@ -137,73 +137,66 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
   const acceptedDevices = localDevices.filter(device => device.status === 'accepted');
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 max-w-7xl mx-auto pb-20 animate-in fade-in duration-500">
       {/* Firmware Download Section */}
-      <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-bold text-blue-800 mb-1">NodeMCU ESP8266 Firmware</h3>
-            <p className="text-sm text-blue-600">Download the latest firmware for your NodeMCU devices</p>
+      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-600 rounded-lg text-white">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-[10px] font-black text-blue-900 uppercase tracking-widest">NodeMCU Firmware</h3>
+              <p className="text-[8px] text-blue-600 font-bold uppercase tracking-tighter">ESP8266 Core v2.4.1</p>
+            </div>
           </div>
           <button
             onClick={handleDownloadFirmware}
             disabled={isDownloading}
-            className={`px-6 py-3 rounded-xl font-bold text-white transition-all ${
+            className={`px-6 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest text-white transition-all shadow-md ${
               isDownloading 
-                ? 'bg-gray-400 cursor-not-allowed' 
+                ? 'bg-slate-400 cursor-not-allowed' 
                 : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
             }`}
           >
-            {isDownloading ? (
-              <span className="flex items-center">
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Downloading...
-              </span>
-            ) : (
-              <span className="flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-                Download Firmware
-              </span>
-            )}
+            {isDownloading ? 'Downloading...' : 'Download Source'}
           </button>
-        </div>
-        <div className="mt-4 text-xs text-blue-500">
-          <p>• Compatible with NodeMCU ESP8266 modules</p>
-          <p>• Requires Arduino IDE with ESP8266 board support</p>
-          <p>• See README for flashing instructions</p>
         </div>
       </div>
 
       {/* Pending Devices Section */}
       {pendingDevices.length > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-6">
-          <h3 className="text-lg font-bold text-yellow-800 mb-4">Pending NodeMCU Connections</h3>
-          <div className="space-y-3">
+        <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+          <h3 className="text-[10px] font-black text-amber-900 uppercase tracking-widest mb-3">Pending Nodes</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {pendingDevices.map(device => (
-              <div key={device.id} className="bg-white rounded-xl border border-yellow-100 p-4 flex justify-between items-center">
+              <div key={device.id} className="bg-white rounded-lg border border-amber-200 p-3 flex justify-between items-center shadow-sm">
                 <div>
-                  <div className="font-semibold text-gray-800">{device.name}</div>
-                  <div className="text-sm text-gray-600">
-                    IP: {device.ipAddress} | MAC: {device.macAddress} | Last seen: {new Date(device.lastSeen).toLocaleString()}
+                  <div className="text-[10px] font-black text-slate-900 uppercase">{device.name}</div>
+                  <div className="text-[8px] text-slate-400 font-mono mt-0.5">
+                    {device.ipAddress} • {device.macAddress}
                   </div>
                 </div>
-                <div className="flex space-x-2">
+                <div className="flex gap-1.5">
                   <button 
                     onClick={() => handleAcceptDevice(device.id)}
-                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                    className="p-1.5 bg-emerald-500 text-white rounded hover:bg-emerald-600 transition-colors"
+                    title="Accept"
                   >
-                    Accept
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
                   </button>
                   <button 
                     onClick={() => handleRejectDevice(device.id)}
-                    className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                    className="p-1.5 bg-rose-500 text-white rounded hover:bg-rose-600 transition-colors"
+                    title="Reject"
                   >
-                    Reject
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
                   </button>
                 </div>
               </div>
@@ -214,69 +207,78 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
 
       {/* Accepted Devices Section */}
       {acceptedDevices.length > 0 && (
-        <div className="bg-green-50 border border-green-200 rounded-2xl p-6">
-          <h3 className="text-lg font-bold text-green-800 mb-4">Accepted NodeMCU Devices</h3>
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+            <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Registered Nodes</h3>
+            <span className="text-[8px] font-black text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded">{acceptedDevices.length} ACTIVE</span>
+          </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-slate-100">
+              <thead className="bg-slate-50/30">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP Address</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">MAC Address</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Seen</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Pulses</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th className="px-4 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">Identity</th>
+                  <th className="px-4 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">Network Info</th>
+                  <th className="px-4 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">Performance</th>
+                  <th className="px-4 py-2 text-right text-[8px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="divide-y divide-slate-50">
                 {acceptedDevices.map(device => (
-                  <tr key={device.id}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{device.name}</div>
+                  <tr key={device.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-4 py-2">
+                      <div className="text-[10px] font-black text-slate-900 uppercase">{device.name}</div>
+                      <div className="text-[8px] text-slate-400 font-bold uppercase tracking-tighter mt-0.5">
+                        Seen {new Date(device.lastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{device.ipAddress}</div>
+                    <td className="px-4 py-2">
+                      <div className="text-[9px] font-mono text-slate-600">{device.ipAddress}</div>
+                      <div className="text-[8px] font-mono text-slate-400 tracking-tighter">{device.macAddress}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{device.macAddress}</div>
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-3">
+                        <div>
+                          <div className="text-[8px] font-black text-slate-400 uppercase tracking-tighter leading-none">Revenue</div>
+                          <div className="text-[10px] font-black text-emerald-600">₱{device.totalRevenue.toFixed(2)}</div>
+                        </div>
+                        <div className="w-px h-6 bg-slate-100"></div>
+                        <div>
+                          <div className="text-[8px] font-black text-slate-400 uppercase tracking-tighter leading-none">Pulses</div>
+                          <div className="text-[10px] font-black text-slate-900">{device.totalPulses}</div>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{new Date(device.lastSeen).toLocaleString()}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{device.totalPulses}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">₱{device.totalRevenue.toFixed(2)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button 
-                        onClick={() => setSelectedDevice(device)}
-                        className="text-blue-600 hover:text-blue-900 mr-3"
-                      >
-                        Configure
-                      </button>
-                      <label className="text-green-600 hover:text-green-900 mr-3 cursor-pointer">
-                        {isUpdating === device.id ? 'Updating...' : 'Update Firmware'}
-                        <input 
-                          type="file" 
-                          className="hidden" 
-                          accept=".bin"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleUpdateFirmware(device.id, file);
-                            e.target.value = ''; // Reset input
-                          }}
-                          disabled={isUpdating !== null}
-                        />
-                      </label>
-                      <button 
-                        onClick={() => handleRemoveDevice(device.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Remove
-                      </button>
+                    <td className="px-4 py-2 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button 
+                          onClick={() => setSelectedDevice(device)}
+                          className="px-2 py-1 bg-slate-900 text-white text-[8px] font-black uppercase tracking-widest rounded hover:bg-black transition-all"
+                        >
+                          Config
+                        </button>
+                        <label className="px-2 py-1 bg-blue-50 text-blue-600 text-[8px] font-black uppercase tracking-widest rounded hover:bg-blue-100 transition-all cursor-pointer border border-blue-100">
+                          {isUpdating === device.id ? 'Busy' : 'Firmware'}
+                          <input 
+                            type="file" 
+                            className="hidden" 
+                            accept=".bin"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleUpdateFirmware(device.id, file);
+                              e.target.value = '';
+                            }}
+                            disabled={isUpdating !== null}
+                          />
+                        </label>
+                        <button 
+                          onClick={() => handleRemoveDevice(device.id)}
+                          className="p-1 text-rose-400 hover:text-rose-600 transition-colors"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -288,99 +290,97 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
 
       {/* Configuration Modal */}
       {selectedDevice && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-gray-800">Configure {selectedDevice.name}</h3>
-                <button 
-                  onClick={() => setSelectedDevice(null)}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  ✕
-                </button>
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Device Name</label>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Configure Node</h3>
+              <button onClick={() => setSelectedDevice(null)} className="text-slate-400 hover:text-slate-600 transition-colors">✕</button>
+            </div>
+            
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Display Name</label>
                 <input
                   type="text"
                   value={selectedDevice.name}
-                  onChange={(e) => {
-                    const updatedDevice = { ...selectedDevice, name: e.target.value };
-                    setSelectedDevice(updatedDevice);
-                  }}
-                  className="w-full p-2 border border-gray-300 rounded-lg"
+                  onChange={(e) => setSelectedDevice({ ...selectedDevice, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
               
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Pricing Configuration</label>
-                <div className="space-y-2">
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">Pricing Matrix</label>
+                  <button
+                    onClick={() => {
+                      const newRate: Rate = { id: Date.now().toString(), pesos: 1, minutes: 1 };
+                      setSelectedDevice({ ...selectedDevice, rates: [...selectedDevice.rates, newRate] });
+                    }}
+                    className="text-[8px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+                  >
+                    + Add Rate
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
                   {selectedDevice.rates.map((rate, index) => (
-                    <div key={index} className="flex space-x-2">
-                      <input
-                        type="number"
-                        value={rate.pesos}
-                        onChange={(e) => {
-                          const updatedRates = [...selectedDevice.rates];
-                          updatedRates[index].pesos = Number(e.target.value);
-                          const updatedDevice = { ...selectedDevice, rates: updatedRates };
-                          setSelectedDevice(updatedDevice);
-                        }}
-                        className="flex-1 p-2 border border-gray-300 rounded-lg"
-                        placeholder="Pesos"
-                      />
-                      <input
-                        type="number"
-                        value={rate.minutes}
-                        onChange={(e) => {
-                          const updatedRates = [...selectedDevice.rates];
-                          updatedRates[index].minutes = Number(e.target.value);
-                          const updatedDevice = { ...selectedDevice, rates: updatedRates };
-                          setSelectedDevice(updatedDevice);
-                        }}
-                        className="flex-1 p-2 border border-gray-300 rounded-lg"
-                        placeholder="Minutes"
-                      />
+                    <div key={index} className="flex gap-2 items-center bg-slate-50 p-2 rounded-lg border border-slate-100">
+                      <div className="flex-1 flex gap-2">
+                        <div className="relative flex-1">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[8px] font-black text-slate-400">₱</span>
+                          <input
+                            type="number"
+                            value={rate.pesos}
+                            onChange={(e) => {
+                              const updatedRates = [...selectedDevice.rates];
+                              updatedRates[index].pesos = Number(e.target.value);
+                              setSelectedDevice({ ...selectedDevice, rates: updatedRates });
+                            }}
+                            className="w-full pl-5 pr-2 py-1.5 bg-white border border-slate-200 rounded text-[10px] font-black outline-none"
+                          />
+                        </div>
+                        <div className="relative flex-1">
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-black text-slate-400">MIN</span>
+                          <input
+                            type="number"
+                            value={rate.minutes}
+                            onChange={(e) => {
+                              const updatedRates = [...selectedDevice.rates];
+                              updatedRates[index].minutes = Number(e.target.value);
+                              setSelectedDevice({ ...selectedDevice, rates: updatedRates });
+                            }}
+                            className="w-full pl-2 pr-7 py-1.5 bg-white border border-slate-200 rounded text-[10px] font-black outline-none"
+                          />
+                        </div>
+                      </div>
                       <button
                         onClick={() => {
                           const updatedRates = selectedDevice.rates.filter((_, i) => i !== index);
-                          const updatedDevice = { ...selectedDevice, rates: updatedRates };
-                          setSelectedDevice(updatedDevice);
+                          setSelectedDevice({ ...selectedDevice, rates: updatedRates });
                         }}
-                        className="px-3 py-2 bg-red-500 text-white rounded-lg"
+                        className="p-1.5 text-rose-400 hover:text-rose-600 transition-colors"
                       >
-                        Remove
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
                       </button>
                     </div>
                   ))}
                 </div>
-                <button
-                  onClick={() => {
-                    const newRate: Rate = { id: Date.now().toString(), pesos: 1, minutes: 1 };
-                    const updatedDevice = { ...selectedDevice, rates: [...selectedDevice.rates, newRate] };
-                    setSelectedDevice(updatedDevice);
-                  }}
-                  className="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg"
-                >
-                  Add Rate
-                </button>
               </div>
               
-              <div className="flex justify-end space-x-3 mt-6">
+              <div className="flex gap-2 pt-2">
                 <button
                   onClick={() => {
                     handleUpdateRates(selectedDevice.id, selectedDevice.rates);
                     setSelectedDevice(null);
                   }}
-                  className="px-4 py-2 bg-green-500 text-white rounded-lg"
+                  className="flex-1 py-2.5 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg active:scale-95"
                 >
                   Save Configuration
                 </button>
                 <button
                   onClick={() => setSelectedDevice(null)}
-                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg"
+                  className="px-4 py-2.5 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
                 >
                   Cancel
                 </button>
@@ -392,9 +392,10 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
 
       {/* No Devices Message */}
       {localDevices.length === 0 && (
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-8 text-center">
-          <p className="text-gray-600">No NodeMCU devices connected yet.</p>
-          <p className="text-sm text-gray-500 mt-2">Connect your NodeMCU boards to the network with the correct authentication key.</p>
+        <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl p-8 text-center">
+          <div className="text-3xl mb-2 opacity-20">📡</div>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No NodeMCU devices detected</p>
+          <p className="text-[8px] text-slate-400 uppercase tracking-tighter mt-1">Connect your boards using the system authentication key</p>
         </div>
       )}
     </div>

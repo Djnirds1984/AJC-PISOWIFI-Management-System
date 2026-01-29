@@ -139,107 +139,113 @@ const HardwareManager: React.FC = () => {
   );
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
+    <div className="max-w-7xl mx-auto space-y-4 animate-in fade-in duration-500 pb-20">
       
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         
         {/* Hardware Architecture (Legacy/Main Board) */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden h-full">
-          <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-             <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-               <Cpu size={16} className="text-slate-700" /> Main Controller
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden h-full">
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+             <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+               <Cpu size={14} className="text-slate-700" /> Main Controller
              </h3>
+             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Hardware Selection</span>
           </div>
-          <div className="p-6 space-y-6">
-             <div className="grid grid-cols-2 gap-4">
+          <div className="p-4 space-y-4">
+             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <button 
                   onClick={() => setBoard('raspberry_pi')}
-                  className={`p-4 rounded-2xl border-2 text-left transition-all ${board === 'raspberry_pi' ? 'border-blue-600 bg-blue-50' : 'border-slate-100 hover:border-slate-300'}`}
+                  className={`p-3 rounded-lg border-2 text-left transition-all ${board === 'raspberry_pi' ? 'border-blue-600 bg-blue-50' : 'border-slate-100 hover:border-slate-300'}`}
                 >
-                  <div className="text-xs font-black uppercase tracking-wide mb-1">Raspberry Pi</div>
-                  <div className="text-[10px] text-slate-500">Direct BCM GPIO</div>
+                  <div className="text-[10px] font-black uppercase tracking-wide mb-0.5">Raspberry Pi</div>
+                  <div className="text-[9px] text-slate-500">BCM GPIO</div>
                 </button>
                 <button 
                   onClick={() => setBoard('orange_pi')}
-                  className={`p-4 rounded-2xl border-2 text-left transition-all ${board === 'orange_pi' ? 'border-orange-500 bg-orange-50' : 'border-slate-100 hover:border-slate-300'}`}
+                  className={`p-3 rounded-lg border-2 text-left transition-all ${board === 'orange_pi' ? 'border-orange-500 bg-orange-50' : 'border-slate-100 hover:border-slate-300'}`}
                 >
-                  <div className="text-xs font-black uppercase tracking-wide mb-1">Orange Pi</div>
-                  <div className="text-[10px] text-slate-500">Physical Pin Map</div>
+                  <div className="text-[10px] font-black uppercase tracking-wide mb-0.5">Orange Pi</div>
+                  <div className="text-[9px] text-slate-500">Physical Map</div>
                 </button>
                 
                 <button 
                   onClick={() => setBoard('x64_pc')}
-                  className={`p-4 rounded-2xl border-2 text-left transition-all ${board === 'x64_pc' ? 'border-green-600 bg-green-50' : 'border-slate-100 hover:border-slate-300'}`}
+                  className={`p-3 rounded-lg border-2 text-left transition-all ${board === 'x64_pc' ? 'border-green-600 bg-green-50' : 'border-slate-100 hover:border-slate-300'}`}
                 >
-                  <div className="text-xs font-black uppercase tracking-wide mb-1">x64 PC</div>
-                  <div className="text-[10px] text-slate-500">Serial Bridge</div>
+                  <div className="text-[10px] font-black uppercase tracking-wide mb-0.5">x64 PC</div>
+                  <div className="text-[9px] text-slate-500">Serial Bridge</div>
                 </button>
                 
                 <button 
                   onClick={() => setBoard('none')}
-                  className={`p-4 rounded-2xl border-2 text-left transition-all ${board === 'none' ? 'border-slate-400 bg-slate-50' : 'border-slate-100 hover:border-slate-300'}`}
+                  className={`p-3 rounded-lg border-2 text-left transition-all ${board === 'none' ? 'border-slate-400 bg-slate-50' : 'border-slate-100 hover:border-slate-300'}`}
                 >
-                  <div className="text-xs font-black uppercase tracking-wide mb-1">Simulated</div>
-                  <div className="text-[10px] text-slate-500">No Hardware</div>
+                  <div className="text-[10px] font-black uppercase tracking-wide mb-0.5">Simulated</div>
+                  <div className="text-[9px] text-slate-500">Virtual</div>
                 </button>
              </div>
 
-             <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-               <div className="flex justify-between items-center mb-2">
-                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Coin Pin (Main)</label>
-                 <div className="text-xs font-bold text-slate-900 bg-white px-2 py-1 rounded border border-slate-200">GPIO {pin}</div>
+             <div className="flex flex-col sm:flex-row gap-4">
+               <div className="flex-1 bg-slate-50 rounded-lg p-3 border border-slate-200">
+                 <div className="flex justify-between items-center mb-2">
+                   <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Coin Pin (Main)</label>
+                   <div className="text-[10px] font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">GPIO {pin}</div>
+                 </div>
+                 <input 
+                   type="range" 
+                   min="2" 
+                   max="27" 
+                   value={pin} 
+                   onChange={(e) => setPin(parseInt(e.target.value))}
+                   className="w-full accent-slate-900 h-1.5 rounded-lg appearance-none bg-slate-200 cursor-pointer"
+                 />
                </div>
-               <input 
-                 type="range" 
-                 min="2" 
-                 max="27" 
-                 value={pin} 
-                 onChange={(e) => setPin(parseInt(e.target.value))}
-                 className="w-full accent-slate-900"
-               />
+               
+               <button
+                 onClick={handleSave}
+                 disabled={saving}
+                 className="sm:w-48 py-3 rounded-lg bg-slate-900 text-white font-black text-[10px] uppercase tracking-[0.2em] hover:bg-black transition-all shadow-lg active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2"
+               >
+                 <Save size={12} />
+                 {saving ? 'Saving...' : 'Apply Config'}
+               </button>
              </div>
-
-             <button
-               onClick={handleSave}
-               disabled={saving}
-               className="w-full py-4 rounded-xl bg-slate-900 text-white font-black text-xs uppercase tracking-[0.2em] hover:bg-black transition-all shadow-lg active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2"
-             >
-               {saving ? 'Saving...' : 'Save Controller Config'}
-             </button>
           </div>
         </div>
 
         {/* System Monitor */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden h-full">
-          <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-             <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-               <Monitor size={16} className="text-slate-700" /> System Monitor
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden h-full">
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+             <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+               <Monitor size={14} className="text-slate-700" /> Monitor
              </h3>
+             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
           </div>
-          <div className="p-6 space-y-4">
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-              <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Current Configuration</div>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Board Type:</span>
-                  <span className="font-mono text-slate-900">{board}</span>
+          <div className="p-4 space-y-3">
+            <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+              <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Active Spec</div>
+              <div className="space-y-1.5 text-[10px]">
+                <div className="flex justify-between border-b border-slate-200/50 pb-1">
+                  <span className="text-slate-500 uppercase">Board:</span>
+                  <span className="font-bold text-slate-900">{board.replace('_', ' ')}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Coin Pin:</span>
-                  <span className="font-mono text-slate-900">GPIO {pin}</span>
+                <div className="flex justify-between border-b border-slate-200/50 pb-1">
+                  <span className="text-slate-500 uppercase">Input:</span>
+                  <span className="font-bold text-slate-900">GPIO {pin}</span>
                 </div>
                 {board === 'orange_pi' && (
                   <div className="flex justify-between">
-                    <span className="text-slate-600">Model:</span>
-                    <span className="font-mono text-slate-900">{boardModel}</span>
+                    <span className="text-slate-500 uppercase">Model:</span>
+                    <span className="font-bold text-slate-900">{boardModel}</span>
                   </div>
                 )}
               </div>
             </div>
 
             {success && (
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                <div className="text-green-800 text-xs font-bold">Configuration saved successfully!</div>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-2 flex items-center gap-2">
+                <CheckCircle size={12} className="text-green-600" />
+                <div className="text-green-800 text-[9px] font-bold uppercase tracking-tight">Saved successfully</div>
               </div>
             )}
           </div>
@@ -247,30 +253,30 @@ const HardwareManager: React.FC = () => {
       </div>
 
       {/* Sub-Vendo Controller Section */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 bg-slate-950 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-600/20">
-              <Wifi size={20} />
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-950 flex flex-col sm:flex-row justify-between items-center gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-600 rounded-lg text-white">
+              <Wifi size={16} />
             </div>
             <div>
-              <h3 className="text-sm font-black text-white uppercase tracking-widest">
-                Sub-Vendo Controller
+              <h3 className="text-[10px] font-black text-white uppercase tracking-widest">
+                Sub-Vendo Bridge
               </h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                {nodemcuDevices.length} Connected Devices
+              <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">
+                {nodemcuDevices.length} ACTIVE NODES
               </p>
             </div>
           </div>
           
-          <div className="bg-white/5 rounded-2xl p-4 border border-white/10 flex items-center gap-6">
+          <div className="bg-white/5 rounded-lg px-3 py-2 border border-white/10 flex items-center gap-4 w-full sm:w-auto">
             <div>
-              <div className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em] mb-1">System Auth Key</div>
-              <div className="text-xl font-black text-white tracking-widest font-mono">
+              <div className="text-[8px] font-black text-blue-400 uppercase tracking-wider mb-0.5">System Auth</div>
+              <div className="text-sm font-black text-white tracking-widest font-mono">
                 {registrationKey}
               </div>
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex gap-1 ml-auto">
               <button 
                 onClick={() => {
                   const newKey = prompt('Enter new System Authentication Key:', registrationKey);
@@ -278,144 +284,123 @@ const HardwareManager: React.FC = () => {
                     setRegistrationKey(newKey.trim());
                   }
                 }}
-                className="px-3 py-1.5 rounded-lg bg-white/10 text-white text-[9px] font-black uppercase tracking-widest hover:bg-white/20 transition-all flex items-center gap-2"
+                className="p-1.5 rounded-md bg-white/10 text-white hover:bg-white/20 transition-all"
+                title="Change Key"
               >
-                <Edit2 size={12} /> Change
+                <Edit2 size={12} />
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-[9px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
+                className="p-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-all disabled:opacity-50"
+                title="Save Key"
               >
-                <Save size={12} /> {saving ? 'Saving...' : 'Save Key'}
+                <Save size={12} />
               </button>
             </div>
           </div>
         </div>
-        <div className="p-6">
+        <div className="p-4">
           {nodemcuDevices.length === 0 ? (
-            <div className="text-center py-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
-              <div className="text-slate-300 mb-2 flex justify-center"><Wifi size={48} /></div>
-              <p className="text-xs font-black text-slate-400 uppercase tracking-widest">No NodeMCU devices detected</p>
-              <p className="text-[10px] text-slate-400 mt-1">Make sure your NodeMCU is running the firmware and connected to the network</p>
+            <div className="text-center py-8 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+              <div className="text-slate-300 mb-1 flex justify-center"><Wifi size={24} /></div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No nodes detected</p>
+              <p className="text-[9px] text-slate-400 uppercase tracking-tighter mt-0.5">Ensure NodeMCU is powered and connected</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
               {nodemcuDevices.map((device) => (
-                <div key={device.id} className="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden flex flex-col">
-                  <div className="p-4 border-b border-slate-100 flex justify-between items-start">
-                    <div>
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Device Name</div>
-                      <div className="text-xs font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                <div key={device.id} className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden flex flex-col">
+                  <div className="px-3 py-2 border-b border-slate-200 bg-white flex justify-between items-center">
+                    <div className="flex flex-col">
+                      <div className="text-[10px] font-black text-slate-900 uppercase truncate max-w-[120px]">
                         {device.name}
-                        {device.status === 'accepted' ? (
-                          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                        ) : (
-                          <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
-                        )}
                       </div>
-                    </div>
-                    <div className="text-right flex flex-col items-end gap-1">
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Status</div>
-                      <div className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                        device.status === 'accepted' ? 'bg-green-100 text-green-700' : 
-                        device.status === 'pending' ? 'bg-amber-100 text-amber-700' : 
-                        'bg-red-100 text-red-700'
-                      }`}>
-                        {device.status}
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <div className={`w-1.5 h-1.5 rounded-full ${isDeviceOnline(device.lastSeen) ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                        <span className={`text-[8px] font-black uppercase tracking-widest ${isDeviceOnline(device.lastSeen) ? 'text-green-600' : 'text-red-600'}`}>
-                          {isDeviceOnline(device.lastSeen) ? 'Online' : 'Offline'}
+                      <div className="flex items-center gap-1">
+                        <div className={`w-1.5 h-1.5 rounded-full ${isDeviceOnline(device.lastSeen) ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">
+                          {isDeviceOnline(device.lastSeen) ? 'ONLINE' : 'OFFLINE'}
                         </span>
                       </div>
                     </div>
+                    <div className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${
+                      device.status === 'accepted' ? 'bg-green-100 text-green-700' : 
+                      device.status === 'pending' ? 'bg-amber-100 text-amber-700' : 
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {device.status}
+                    </div>
                   </div>
                   
-                  <div className="p-4 space-y-3 flex-grow">
-                    <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 space-y-2 flex-grow">
+                    <div className="grid grid-cols-2 gap-2 text-[9px]">
                       <div>
-                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">IP Address</div>
-                        <div className="text-[10px] font-mono text-slate-700">{device.ipAddress}</div>
+                        <div className="text-slate-400 uppercase font-bold tracking-tighter">IP</div>
+                        <div className="font-mono text-slate-700 truncate">{device.ipAddress}</div>
                       </div>
                       <div>
-                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">MAC Address</div>
-                        <div className="text-[10px] font-mono text-slate-700">{device.macAddress}</div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Revenue</div>
-                        <div className="text-xs font-black text-slate-900 tracking-tight">₱{device.totalRevenue}</div>
-                      </div>
-                      <div>
-                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Pulses</div>
-                        <div className="text-xs font-black text-slate-900 tracking-tight">{device.totalPulses}</div>
+                        <div className="text-slate-400 uppercase font-bold tracking-tighter">MAC</div>
+                        <div className="font-mono text-slate-700 truncate">{device.macAddress}</div>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                       <div className="flex items-center gap-1.5 text-slate-500">
-                          <Clock size={12} />
-                          <span className="text-[9px] font-bold uppercase tracking-widest">
-                            Seen {new Date(device.lastSeen).toLocaleTimeString()}
-                          </span>
+                    <div className="grid grid-cols-2 gap-2 bg-white/50 p-2 rounded border border-slate-100">
+                      <div>
+                        <div className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Revenue</div>
+                        <div className="text-[10px] font-black text-slate-900">₱{device.totalRevenue}</div>
+                      </div>
+                      <div>
+                        <div className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Pulses</div>
+                        <div className="text-[10px] font-black text-slate-900">{device.totalPulses}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[8px] font-bold text-slate-400 uppercase pt-1">
+                       <div className="flex items-center gap-1">
+                          <Clock size={10} />
+                          {new Date(device.lastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                        </div>
-                       <div className="flex items-center gap-1.5 text-slate-500">
-                          <Cpu size={12} />
-                          <span className="text-[9px] font-bold uppercase tracking-widest">
-                            GPIO {device.pin}
-                          </span>
+                       <div className="flex items-center gap-1">
+                          <Cpu size={10} />
+                          GPIO {device.pin}
                        </div>
                     </div>
                   </div>
 
-                  <div className="p-3 bg-white border-t border-slate-100 flex flex-col gap-2">
+                  <div className="p-2 bg-white border-t border-slate-100 flex gap-1">
                     {device.status === 'pending' ? (
-                      <div className="grid grid-cols-2 gap-2">
+                      <>
                         <button 
                           onClick={() => handleUpdateDeviceStatus(device.id, 'accepted')}
-                          className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-green-600 text-white text-[9px] font-black uppercase tracking-widest hover:bg-green-700 transition-all active:scale-95"
+                          className="flex-1 py-1.5 rounded bg-green-600 text-white text-[9px] font-black uppercase tracking-widest hover:bg-green-700 transition-all"
                         >
-                          <CheckCircle size={12} /> Accept
+                          Accept
                         </button>
                         <button 
                           onClick={() => handleUpdateDeviceStatus(device.id, 'rejected')}
-                          className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-slate-100 text-slate-600 text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                          className="flex-1 py-1.5 rounded bg-slate-100 text-slate-600 text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
                         >
-                          <XCircle size={12} /> Reject
+                          Reject
                         </button>
-                      </div>
+                      </>
                     ) : (
                       <>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button 
-                            onClick={() => {
-                              const newName = prompt('Enter device name:', device.name);
-                              if (newName) handleUpdateDeviceConfig(device.id, newName, device.pin);
-                            }}
-                            className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-slate-100 text-slate-600 text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
-                          >
-                            <Edit2 size={12} /> Rename
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteDevice(device.id)}
-                            className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-red-50 text-red-600 text-[9px] font-black uppercase tracking-widest hover:bg-red-100 transition-all active:scale-95"
-                          >
-                            <Trash2 size={12} /> Remove
-                          </button>
-                        </div>
-                        <label className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-blue-50 text-blue-600 text-[9px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all active:scale-95 cursor-pointer">
+                        <button 
+                          onClick={() => {
+                            const newName = prompt('Enter device name:', device.name);
+                            if (newName) handleUpdateDeviceConfig(device.id, newName, device.pin);
+                          }}
+                          className="p-1.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all"
+                          title="Rename"
+                        >
+                          <Edit2 size={12} />
+                        </button>
+                        <label className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-blue-50 text-blue-600 text-[9px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all cursor-pointer">
                           {isUpdating === device.id ? (
-                            <>
-                              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                              Updating...
-                            </>
+                            <div className="w-2.5 h-2.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                           ) : (
                             <>
-                              <Upload size={12} /> Update Firmware
+                              <Upload size={12} /> Firmware
                             </>
                           )}
                           <input 
@@ -430,6 +415,13 @@ const HardwareManager: React.FC = () => {
                             disabled={isUpdating !== null}
                           />
                         </label>
+                        <button 
+                          onClick={() => handleDeleteDevice(device.id)}
+                          className="p-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 transition-all"
+                          title="Remove"
+                        >
+                          <Trash2 size={12} />
+                        </button>
                       </>
                     )}
                   </div>

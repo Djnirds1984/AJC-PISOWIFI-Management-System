@@ -14,63 +14,65 @@ const ThemeSettings: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <section className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm">
-        <div className="mb-8">
-          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Interface Appearance</h3>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Admin Theme System</h2>
-          <p className="text-slate-500 text-sm mt-2">Select a visual system optimized for your specific hardware and environment.</p>
+    <div className="max-w-7xl mx-auto space-y-4 pb-20 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <section className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+        <div className="mb-6">
+          <h2 className="text-sm font-black text-slate-900 tracking-tight uppercase tracking-widest flex items-center gap-2">
+            <span className="p-1.5 bg-blue-600 rounded-lg text-white">🎨</span>
+            Theme Engine
+          </h2>
+          <p className="text-slate-400 text-[9px] font-bold uppercase tracking-tighter mt-1">Select visual architecture for admin dashboard</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           {THEMES.map((theme) => (
             <div 
               key={theme.id}
               onClick={() => handleThemeChange(theme.id)}
               className={`
-                relative cursor-pointer overflow-hidden rounded-3xl border-2 transition-all duration-300 group
+                relative cursor-pointer overflow-hidden rounded-xl border transition-all duration-200 group
                 ${currentTheme === theme.id 
-                  ? 'border-blue-600 shadow-xl scale-[1.02] bg-slate-50' 
-                  : 'border-slate-100 hover:border-slate-300 hover:scale-[1.01] bg-white'}
+                  ? 'border-blue-600 shadow-lg bg-blue-50/30' 
+                  : 'border-slate-100 hover:border-slate-300 bg-white'}
               `}
             >
-              <div className="p-6 h-full flex flex-col">
-                <div className="flex justify-between items-start mb-4">
+              <div className="p-3 h-full flex flex-col">
+                <div className="flex justify-between items-start mb-3">
                   <div>
-                    <h3 className="text-xl font-bold text-slate-900">{theme.name}</h3>
-                    <div className="flex items-center mt-2 space-x-2">
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${
+                    <h3 className="text-[11px] font-black text-slate-900 uppercase">{theme.name}</h3>
+                    <div className="flex items-center mt-1 space-x-1">
+                      <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${
                         theme.performanceScore === 100 ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
                       }`}>
-                        Perf Score: {theme.performanceScore}%
+                        PERF: {theme.performanceScore}%
                       </span>
                       {currentTheme === theme.id && (
-                        <span className="text-[10px] font-bold bg-blue-600 text-white px-2 py-1 rounded-full uppercase tracking-wider">
-                          Active
+                        <span className="text-[8px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded uppercase tracking-tighter">
+                          ACTIVE
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="flex -space-x-2">
+                  <div className="flex -space-x-1.5">
                     {theme.previewColors.map((color, i) => (
                       <div 
                         key={i} 
-                        className="w-8 h-8 rounded-full border-2 border-white shadow-sm" 
+                        className="w-5 h-5 rounded-full border border-white shadow-sm" 
                         style={{ backgroundColor: color }}
                       />
                     ))}
                   </div>
                 </div>
                 
-                <p className="text-sm text-slate-500 font-medium leading-relaxed mb-6 flex-grow">
+                <p className="text-[9px] text-slate-500 font-bold leading-tight mb-3 flex-grow uppercase tracking-tighter">
                   {theme.description}
                 </p>
 
-                <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                   <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${currentTheme === theme.id ? 'bg-blue-500 animate-pulse' : 'bg-slate-300'}`}></div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        {currentTheme === theme.id ? 'Currently Active' : 'Click to Apply'}
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                   <div className="flex items-center gap-1.5">
+                      <div className={`w-1.5 h-1.5 rounded-full ${currentTheme === theme.id ? 'bg-blue-500 animate-pulse' : 'bg-slate-200'}`}></div>
+                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                        {currentTheme === theme.id ? 'Running' : 'Select'}
                       </span>
                    </div>
                 </div>
@@ -80,13 +82,13 @@ const ThemeSettings: React.FC = () => {
         </div>
       </section>
 
-      <div className="bg-blue-50 rounded-3xl p-6 border border-blue-100 flex items-start gap-4">
-        <div className="text-2xl">💡</div>
+      <div className="bg-blue-900/5 rounded-xl p-3 border border-blue-100 flex items-start gap-3">
+        <div className="text-lg">⚡</div>
         <div>
-          <h4 className="text-sm font-black text-blue-900 uppercase tracking-tight mb-1">Performance Note</h4>
-          <p className="text-xs text-blue-800/80 font-medium leading-relaxed">
-            Using the "System Terminal" theme can reduce rendering load by up to 40% on single-board computers like Raspberry Pi Zero or Orange Pi One.
-            "Midnight" theme is recommended for screens to reduce power consumption.
+          <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-tight">Optimization Advisory</h4>
+          <p className="text-[9px] text-blue-800/70 font-bold uppercase tracking-tighter leading-normal">
+            Terminal theme reduces load by 40% on low-spec hardware (Pi Zero/Orange Pi One).
+            Midnight theme is optimized for OLED displays.
           </p>
         </div>
       </div>

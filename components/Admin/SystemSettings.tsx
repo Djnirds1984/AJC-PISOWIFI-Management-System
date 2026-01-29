@@ -83,31 +83,29 @@ const SystemSettings: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
+    <div className="max-w-4xl mx-auto space-y-4 pb-10">
       {/* License Status Card */}
-      <section className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-8 border-b border-slate-100 bg-blue-50/30 flex justify-between items-center">
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 bg-blue-50/30 flex justify-between items-center">
           <div>
-            <h3 className="text-xs font-black text-blue-600 uppercase tracking-widest">License & Trial Status</h3>
-            <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Hardware-Locked Activation System</p>
+            <h3 className="text-[10px] font-black text-blue-600 uppercase tracking-widest">License & Trial Status</h3>
           </div>
           {licenseStatus && (
             <div className="flex gap-2">
               {licenseStatus.isLicensed ? (
-                <span className="bg-green-100 text-green-600 text-[8px] font-black px-3 py-1.5 rounded-md uppercase">Licensed</span>
+                <span className="bg-green-100 text-green-600 text-[8px] font-black px-2 py-1 rounded font-bold uppercase">Licensed</span>
               ) : licenseStatus.trial.isActive ? (
-                <span className="bg-yellow-100 text-yellow-600 text-[8px] font-black px-3 py-1.5 rounded-md uppercase">
-                  Trial: {licenseStatus.trial.daysRemaining}d Left
+                <span className="bg-yellow-100 text-yellow-600 text-[8px] font-black px-2 py-1 rounded font-bold uppercase">
+                  Trial: {licenseStatus.trial.daysRemaining}d
                 </span>
               ) : (
-                <span className="bg-red-100 text-red-600 text-[8px] font-black px-3 py-1.5 rounded-md uppercase">Expired</span>
+                <span className="bg-red-100 text-red-600 text-[8px] font-black px-2 py-1 rounded font-bold uppercase">Expired</span>
               )}
             </div>
           )}
         </div>
-        <div className="p-8">
+        <div className="p-4">
           <LicenseActivation licenseStatus={licenseStatus} onActivated={() => {
-            // Refresh license status after activation
             fetch('/api/license/status')
               .then(res => res.json())
               .then(data => setLicenseStatus(data))
@@ -117,99 +115,95 @@ const SystemSettings: React.FC = () => {
       </section>
 
       {/* System Diagnostics Card */}
-      <section className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-          <div>
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">System Diagnostics</h3>
-            <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Live Hardware Monitor</p>
-          </div>
-          <div className="flex gap-2">
-            <span className="bg-green-100 text-green-600 text-[8px] font-black px-2 py-1 rounded-md uppercase">Kernel: 5.15.0-v8+</span>
-          </div>
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">System Diagnostics</h3>
+          <span className="bg-green-100 text-green-600 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">Kernel: 5.15.0</span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-slate-100">
           <DiagItem label="Uptime" value={systemStats.uptime} icon="⏱️" />
           <DiagItem label="Memory" value={systemStats.memory} icon="🧠" />
-          <DiagItem label="CPU Usage" value={systemStats.cpu} icon="📟" />
+          <DiagItem label="CPU" value={systemStats.cpu} icon="📟" />
           <DiagItem label="Storage" value={systemStats.disk} icon="💾" />
         </div>
       </section>
 
-      {/* Security Settings Card */}
-      <section className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden p-8">
-        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Admin Security</h3>
-        <ChangePasswordForm />
-      </section>
+      {/* Security & Service Controls */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Security Settings Card */}
+        <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Admin Security</h3>
+          <ChangePasswordForm />
+        </section>
 
-      <section className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-8 border-b border-slate-100 bg-red-50/30">
-          <h3 className="text-xs font-black text-red-600 uppercase tracking-widest">Danger Zone</h3>
-          <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Irreversible System Actions</p>
+        {/* Manual Controls Card */}
+        <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Service Management</h3>
+          <div className="grid grid-cols-2 gap-2">
+             <ServiceButton label="Restart App" icon="🔄" />
+             <ServiceButton label="Clear Logs" icon="🧹" />
+             <ServiceButton label="Export DB" icon="💾" />
+             <ServiceButton label="Kernel Check" icon="🔬" />
+          </div>
+        </section>
+      </div>
+
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-slate-100 bg-red-50/30">
+          <h3 className="text-[10px] font-black text-red-600 uppercase tracking-widest">Danger Zone</h3>
         </div>
         
-        <div className="p-8">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6 p-8 bg-red-50 rounded-3xl border border-red-100">
+        <div className="p-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-red-50 rounded-xl border border-red-100">
             <div className="flex-1">
-              <h4 className="text-sm font-black text-red-900 uppercase tracking-tight">Factory Reset System</h4>
-              <p className="text-[10px] text-red-700/70 font-bold mt-2 leading-relaxed uppercase tracking-tight">
-                This will wipe all network configurations, bridges, VLAN tags, pricing rates, and active user sessions. 
-                The system kernel networking state will be flushed and restored to hardware defaults.
+              <h4 className="text-xs font-black text-red-900 uppercase">Factory Reset System</h4>
+              <p className="text-[9px] text-red-700/70 font-bold mt-1 uppercase tracking-tight">
+                Wipe all configurations and user sessions. This action is irreversible.
               </p>
             </div>
             <button 
               onClick={() => setShowConfirm(true)}
               disabled={isResetting}
-              className="bg-red-600 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-red-600/20 hover:bg-red-700 active:scale-95 transition-all disabled:opacity-50 whitespace-nowrap"
+              className="bg-red-600 text-white px-6 py-2 rounded-lg font-black text-[10px] uppercase tracking-widest shadow-md shadow-red-600/10 hover:bg-red-700 transition-all disabled:opacity-50 whitespace-nowrap"
             >
-              {isResetting ? 'Wiping Engine...' : 'Wipe System'}
+              {isResetting ? 'Wiping...' : 'Wipe System'}
             </button>
           </div>
         </div>
       </section>
 
-      {/* Manual Controls Card */}
-      <section className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm p-8">
-        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Service Management</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-           <ServiceButton label="Restart App" icon="🔄" />
-           <ServiceButton label="Clear Logs" icon="🧹" />
-           <ServiceButton label="Export DB" icon="💾" />
-           <ServiceButton label="Kernel Check" icon="🔬" />
-        </div>
-      </section>
-
       {/* Confirmation Modal */}
       {showConfirm && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
-          <div className="bg-white w-full max-w-md rounded-[3rem] p-10 text-center shadow-2xl animate-in zoom-in duration-300">
-            <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">⚠️</div>
-            <h3 className="text-xl font-black text-slate-900 uppercase">Absolute Confirmation</h3>
-            <p className="text-xs text-slate-500 font-bold mt-4 uppercase leading-relaxed">
-              To proceed with wiping all AJC PISOWIFI settings, type <span className="text-red-600 font-black">FACTORY RESET</span> below.
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 text-center shadow-2xl border border-slate-200">
+            <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 text-xl">⚠️</div>
+            <h3 className="text-sm font-black text-slate-900 uppercase">Confirm Wipe</h3>
+            <p className="text-[10px] text-slate-500 font-bold mt-2 uppercase leading-relaxed">
+              Type <span className="text-red-600 font-black">FACTORY RESET</span> to proceed.
             </p>
             
             <input 
               type="text" 
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
-              className="w-full mt-6 bg-slate-50 border-2 border-slate-200 rounded-2xl px-6 py-4 text-center font-black text-sm outline-none focus:border-red-600 transition-all uppercase"
-              placeholder="Type here..."
+              className="w-full mt-4 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-center font-black text-sm outline-none focus:border-red-600 transition-all uppercase"
+              placeholder="..."
               autoFocus
             />
 
-            <div className="grid grid-cols-2 gap-3 mt-8">
+            <div className="grid grid-cols-2 gap-2 mt-6">
               <button 
                 onClick={() => { setShowConfirm(false); setConfirmText(''); }}
-                className="bg-slate-100 text-slate-600 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest"
+                className="bg-slate-100 text-slate-600 py-2.5 rounded-lg font-black text-[10px] uppercase"
               >
                 Abort
               </button>
               <button 
                 onClick={handleReset}
                 disabled={confirmText !== 'FACTORY RESET'}
-                className="bg-red-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-600/20 disabled:opacity-30"
+                className="bg-red-600 text-white py-2.5 rounded-lg font-black text-[10px] uppercase shadow-md shadow-red-600/10 disabled:opacity-30"
               >
-                Execute Wipe
+                Execute
               </button>
             </div>
           </div>
@@ -218,9 +212,8 @@ const SystemSettings: React.FC = () => {
 
       {isResetting && (
         <div className="fixed inset-0 z-[300] bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
-          <div className="w-16 h-16 border-4 border-white/20 border-t-white rounded-full animate-spin mb-6"></div>
-          <p className="text-white font-black text-xs uppercase tracking-[0.3em] mb-2">Restoring Kernel State...</p>
-          <p className="text-slate-500 text-[9px] font-bold uppercase tracking-widest">Applying network flush and database truncate</p>
+          <div className="w-12 h-12 border-4 border-white/20 border-t-white rounded-full animate-spin mb-4"></div>
+          <p className="text-white font-black text-[10px] uppercase tracking-widest">Restoring Kernel State...</p>
         </div>
       )}
     </div>
@@ -228,19 +221,19 @@ const SystemSettings: React.FC = () => {
 };
 
 const DiagItem: React.FC<{ label: string; value: string; icon: string }> = ({ label, value, icon }) => (
-  <div className="p-6 flex flex-col gap-2">
-    <div className="flex items-center gap-2">
-      <span className="text-sm">{icon}</span>
-      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label}</span>
+  <div className="p-3 flex flex-col gap-1">
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs">{icon}</span>
+      <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{label}</span>
     </div>
-    <span className="text-xs font-black text-slate-800 tracking-tight">{value}</span>
+    <span className="text-[10px] font-black text-slate-800 tracking-tight">{value}</span>
   </div>
 );
 
 const ServiceButton: React.FC<{ label: string; icon: string }> = ({ label, icon }) => (
-  <button className="bg-slate-50 border border-slate-200 p-6 rounded-3xl flex flex-col items-center gap-3 hover:bg-white hover:shadow-lg transition-all active:scale-95 group">
-    <span className="text-2xl group-hover:scale-110 transition-transform">{icon}</span>
-    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
+  <button className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex flex-col items-center gap-1.5 hover:bg-white hover:shadow-md transition-all active:scale-95 group">
+    <span className="text-lg group-hover:scale-110 transition-transform">{icon}</span>
+    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
   </button>
 );
 
@@ -257,45 +250,45 @@ const ChangePasswordForm: React.FC = () => {
 
     try {
       await apiClient.changePassword(oldPassword, newPassword);
-      setMessage('✅ Password updated successfully');
+      setMessage('✅ Updated');
       setOldPassword('');
       setNewPassword('');
     } catch (err: any) {
-      setMessage(err.message || 'Failed to update password');
+      setMessage(err.message || 'Failed');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleChangePassword} className="max-w-md space-y-4">
+    <form onSubmit={handleChangePassword} className="space-y-3">
       <div>
-        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Current Password</label>
+        <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Current</label>
         <input 
           type="password" 
           value={oldPassword}
           onChange={e => setOldPassword(e.target.value)}
-          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
           placeholder="••••••••"
         />
       </div>
       <div>
-        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">New Password</label>
+        <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">New</label>
         <input 
           type="password" 
           value={newPassword}
           onChange={e => setNewPassword(e.target.value)}
-          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
           placeholder="••••••••"
         />
       </div>
-      {message && <p className="text-xs font-bold">{message}</p>}
+      {message && <p className="text-[10px] font-bold">{message}</p>}
       <button 
         type="submit" 
         disabled={loading}
-        className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-600/20 disabled:opacity-50"
+        className="w-full bg-blue-600 text-white py-2 rounded-lg font-black text-[10px] uppercase tracking-widest shadow-md shadow-blue-600/10 disabled:opacity-50"
       >
-        {loading ? 'Updating...' : 'Update Password'}
+        {loading ? '...' : 'Update Password'}
       </button>
     </form>
   );

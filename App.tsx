@@ -28,6 +28,7 @@ const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(isCurrentlyAdminPath());
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState<AdminTab>(AdminTab.Analytics);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rates, setRates] = useState<Rate[]>([]);
   const [activeSessions, setActiveSessions] = useState<UserSession[]>([]);
   const [devices, setDevices] = useState<WifiDevice[]>([]);
@@ -260,70 +261,109 @@ const App: React.FC = () => {
 
       {isAdmin ? (
         isAuthenticated ? (
-          <div className="flex h-screen overflow-hidden animate-in fade-in duration-500 bg-slate-50">
-            <aside className="w-72 bg-slate-950 text-white flex flex-col shrink-0">
-            <div className="p-8 border-b border-white/5">
-              <h1 className="text-2xl font-black tracking-tighter text-blue-500 italic">AJC PISOWIFI</h1>
-              <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-[0.3em] font-black">SYSTEM ENGINE</p>
-            </div>
-            <nav className="flex-1 p-6 space-y-2 overflow-y-auto">
-              <SidebarItem active={activeTab === AdminTab.Analytics} onClick={() => setActiveTab(AdminTab.Analytics)} icon="📊" label="Dashboard" />
-              <SidebarItem active={activeTab === AdminTab.Rates} onClick={() => setActiveTab(AdminTab.Rates)} icon="💰" label="Pricing" />
-              <SidebarItem active={activeTab === AdminTab.Network} onClick={() => setActiveTab(AdminTab.Network)} icon="🌐" label="Network" />
-              <SidebarItem active={activeTab === AdminTab.Devices} onClick={() => setActiveTab(AdminTab.Devices)} icon="📱" label="Devices" />
-              <SidebarItem active={activeTab === AdminTab.Hardware} onClick={() => setActiveTab(AdminTab.Hardware)} icon="🔌" label="Hardware" />
-              <SidebarItem active={activeTab === AdminTab.Themes} onClick={() => setActiveTab(AdminTab.Themes)} icon="🎨" label="Themes" />
-              <SidebarItem active={activeTab === AdminTab.PortalEditor} onClick={() => setActiveTab(AdminTab.PortalEditor)} icon="🖥️" label="Portal" />
-              <SidebarItem active={activeTab === AdminTab.PPPoE} onClick={() => setActiveTab(AdminTab.PPPoE)} icon="📞" label="PPPoE Server" />
-              <SidebarItem active={activeTab === AdminTab.Bandwidth} onClick={() => setActiveTab(AdminTab.Bandwidth)} icon="📶" label="Bandwidth" />
-              <SidebarItem active={activeTab === AdminTab.Machines} onClick={() => setActiveTab(AdminTab.Machines)} icon="🤖" label="My Machines" />
-              <SidebarItem active={activeTab === AdminTab.System} onClick={() => setActiveTab(AdminTab.System)} icon="⚙️" label="System" />
-              <SidebarItem active={activeTab === AdminTab.Updater} onClick={() => setActiveTab(AdminTab.Updater)} icon="🚀" label="Updater" />
-            </nav>
-            <div className="p-6 border-t border-white/5 bg-black/20">
-               <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">v3.3.0 WAN ONLINE</span>
-               </div>
-            </div>
-          </aside>
+          <div className="flex h-screen overflow-hidden bg-slate-100 font-sans selection:bg-blue-100">
+            {/* Mobile Sidebar Overlay */}
+            {!sidebarOpen && (
+              <div 
+                className="fixed inset-0 bg-black/50 z-40 md:hidden animate-in fade-in duration-300" 
+                onClick={() => setSidebarOpen(true)}
+              />
+            )}
 
-          <main className="flex-1 overflow-y-auto bg-slate-50">
-            <div className="p-10 max-w-7xl mx-auto">
-              <header className="mb-10 flex justify-between items-center">
-                <div>
-                  <h2 className="text-4xl font-black text-slate-900 capitalize tracking-tighter">{activeTab}</h2>
-                  <p className="text-slate-500 text-sm font-medium mt-1">Management Interface & System Control.</p>
+            {/* Sidebar */}
+            <aside className={`
+              ${sidebarOpen ? 'w-64' : 'w-0 -ml-64 md:w-20 md:ml-0'} 
+              bg-slate-900 text-white flex flex-col shrink-0 transition-all duration-300 ease-in-out z-50 relative border-r border-slate-800
+            `}>
+              <div className={`p-4 border-b border-white/5 flex items-center ${sidebarOpen ? 'justify-between' : 'justify-center'}`}>
+                {sidebarOpen ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 bg-blue-600 rounded flex items-center justify-center font-black text-xs">AJC</div>
+                      <h1 className="text-lg font-bold tracking-tight text-white">PISOWIFI</h1>
+                    </div>
+                    <button onClick={() => setSidebarOpen(false)} className="p-1.5 hover:bg-white/10 rounded-md text-slate-400 md:hidden">
+                      ✕
+                    </button>
+                  </>
+                ) : (
+                  <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center font-black text-xs">A</div>
+                )}
+              </div>
+              
+              <nav className={`flex-1 ${sidebarOpen ? 'p-3' : 'p-2'} space-y-1 overflow-y-auto scrollbar-hide`}>
+                <SidebarItem active={activeTab === AdminTab.Analytics} onClick={() => setActiveTab(AdminTab.Analytics)} icon="📊" label="Dashboard" collapsed={!sidebarOpen} />
+                <SidebarItem active={activeTab === AdminTab.Rates} onClick={() => setActiveTab(AdminTab.Rates)} icon="💰" label="Pricing" collapsed={!sidebarOpen} />
+                <SidebarItem active={activeTab === AdminTab.Network} onClick={() => setActiveTab(AdminTab.Network)} icon="🌐" label="Network" collapsed={!sidebarOpen} />
+                <SidebarItem active={activeTab === AdminTab.Devices} onClick={() => setActiveTab(AdminTab.Devices)} icon="📱" label="Devices" collapsed={!sidebarOpen} />
+                <SidebarItem active={activeTab === AdminTab.Hardware} onClick={() => setActiveTab(AdminTab.Hardware)} icon="🔌" label="Hardware" collapsed={!sidebarOpen} />
+                <SidebarItem active={activeTab === AdminTab.Themes} onClick={() => setActiveTab(AdminTab.Themes)} icon="🎨" label="Themes" collapsed={!sidebarOpen} />
+                <SidebarItem active={activeTab === AdminTab.PortalEditor} onClick={() => setActiveTab(AdminTab.PortalEditor)} icon="🖥️" label="Portal" collapsed={!sidebarOpen} />
+                <SidebarItem active={activeTab === AdminTab.PPPoE} onClick={() => setActiveTab(AdminTab.PPPoE)} icon="📞" label="PPPoE" collapsed={!sidebarOpen} />
+                <SidebarItem active={activeTab === AdminTab.Bandwidth} onClick={() => setActiveTab(AdminTab.Bandwidth)} icon="📶" label="QoS" collapsed={!sidebarOpen} />
+                <SidebarItem active={activeTab === AdminTab.Machines} onClick={() => setActiveTab(AdminTab.Machines)} icon="🤖" label="Machines" collapsed={!sidebarOpen} />
+                <SidebarItem active={activeTab === AdminTab.System} onClick={() => setActiveTab(AdminTab.System)} icon="⚙️" label="System" collapsed={!sidebarOpen} />
+                <SidebarItem active={activeTab === AdminTab.Updater} onClick={() => setActiveTab(AdminTab.Updater)} icon="🚀" label="Updater" collapsed={!sidebarOpen} />
+              </nav>
+
+              <div className={`p-4 border-t border-white/5 bg-black/20 ${sidebarOpen ? 'block' : 'hidden md:block'}`}>
+                 <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    {sidebarOpen && <span className="text-slate-500 text-[9px] font-bold uppercase tracking-wider">v3.3.0 ONLINE</span>}
+                 </div>
+              </div>
+            </aside>
+
+            {/* Main Content */}
+            <main className="flex-1 flex flex-col min-w-0 bg-slate-100 overflow-hidden">
+              {/* Compact Top Bar */}
+              <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0 z-30">
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => setSidebarOpen(!sidebarOpen)}
+                    className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                  </button>
+                  <h2 className="text-sm font-bold text-slate-800 uppercase tracking-tight hidden sm:block">
+                    {activeTab}
+                  </h2>
                 </div>
-                <div className="flex items-center gap-4 bg-white p-2.5 pr-6 rounded-full border border-slate-200 shadow-sm">
-                  <div className="w-11 h-11 bg-blue-600 rounded-full flex items-center justify-center text-white font-black shadow-lg shadow-blue-600/20">A</div>
-                  <div className="flex flex-col">
-                    <span className="text-xs font-black text-slate-900 uppercase tracking-tight">System Admin</span>
-                    <span className="text-[9px] text-green-500 font-black flex items-center gap-1.5 uppercase tracking-widest">
-                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                      VERIFIED ACCESS
-                    </span>
+
+                <div className="flex items-center gap-3">
+                  <div className="hidden md:flex flex-col items-end mr-2">
+                    <span className="text-[10px] font-bold text-slate-900 uppercase">Administrator</span>
+                    <span className="text-[9px] text-green-600 font-bold uppercase tracking-tighter">System Verified</span>
+                  </div>
+                  <div className="w-8 h-8 bg-slate-800 rounded-md flex items-center justify-center text-white font-bold text-xs shadow-sm">
+                    AD
                   </div>
                 </div>
               </header>
 
-              <div className="pb-20">
-                {activeTab === AdminTab.Analytics && <Analytics sessions={activeSessions} />}
-                {activeTab === AdminTab.Rates && <RatesManager rates={rates} setRates={updateRates} />}
-                {activeTab === AdminTab.Network && <NetworkSettings />}
-                {activeTab === AdminTab.Devices && <DeviceManager sessions={activeSessions} refreshSessions={loadData} refreshDevices={loadData} />}
-                {activeTab === AdminTab.Hardware && <HardwareManager />}
-                {activeTab === AdminTab.Themes && <ThemeSettings />}
-                {activeTab === AdminTab.PortalEditor && <PortalEditor />}
-                {activeTab === AdminTab.PPPoE && <PPPoEServer />}
-                {activeTab === AdminTab.Bandwidth && <BandwidthManager devices={devices} rates={rates} />}
-                {activeTab === AdminTab.Machines && <MyMachines />}
-                {activeTab === AdminTab.System && <SystemSettings />}
-                {activeTab === AdminTab.Updater && <SystemUpdater />}
+              {/* Scrollable Content Area */}
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 scroll-smooth">
+                <div className="max-w-7xl mx-auto space-y-6">
+                  {activeTab === AdminTab.Analytics && <Analytics sessions={activeSessions} />}
+                  {activeTab === AdminTab.Rates && <RatesManager rates={rates} setRates={updateRates} />}
+                  {activeTab === AdminTab.Network && <NetworkSettings />}
+                  {activeTab === AdminTab.Devices && <DeviceManager sessions={activeSessions} refreshSessions={loadData} refreshDevices={loadData} />}
+                  {activeTab === AdminTab.Hardware && <HardwareManager />}
+                  {activeTab === AdminTab.Themes && <ThemeSettings />}
+                  {activeTab === AdminTab.PortalEditor && <PortalEditor />}
+                  {activeTab === AdminTab.PPPoE && <PPPoEServer />}
+                  {activeTab === AdminTab.Bandwidth && <BandwidthManager devices={devices} rates={rates} />}
+                  {activeTab === AdminTab.Machines && <MyMachines />}
+                  {activeTab === AdminTab.System && <SystemSettings />}
+                  {activeTab === AdminTab.Updater && <SystemUpdater />}
+                </div>
+                {/* Bottom Spacer for Mobile */}
+                <div className="h-20 md:hidden" />
               </div>
-            </div>
-          </main>
-        </div>
+            </main>
+          </div>
         ) : (
           <Login 
             onLoginSuccess={(token) => {
@@ -346,17 +386,18 @@ const App: React.FC = () => {
   );
 };
 
-const SidebarItem: React.FC<{ active: boolean; onClick: () => void; icon: string; label: string }> = ({ active, onClick, icon, label }) => (
+const SidebarItem: React.FC<{ active: boolean; onClick: () => void; icon: string; label: string; collapsed?: boolean }> = ({ active, onClick, icon, label, collapsed }) => (
   <button 
     onClick={onClick} 
-    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-sm font-black transition-all duration-200 ${
+    title={collapsed ? label : undefined}
+    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group ${
       active 
-        ? 'bg-blue-600 text-white shadow-2xl shadow-blue-600/40 scale-[1.02]' 
+        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' 
         : 'text-slate-400 hover:bg-white/5 hover:text-white'
-    }`}
+    } ${collapsed ? 'justify-center' : 'justify-start'}`}
   >
-    <span className="text-xl">{icon}</span>
-    <span className="uppercase tracking-widest text-[11px]">{label}</span>
+    <span className={`text-lg ${active ? 'scale-110' : 'group-hover:scale-110'} transition-transform`}>{icon}</span>
+    {!collapsed && <span className="uppercase tracking-wider text-[10px] font-bold">{label}</span>}
   </button>
 );
 

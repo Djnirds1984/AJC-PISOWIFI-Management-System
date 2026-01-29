@@ -84,13 +84,26 @@ const requireAdmin = async (req, res, next) => {
   
   const token = authHeader.split(' ')[1];
   try {
-    const session = await db.get('SELECT * FROM admin_sessions WHERE token = ? AND expires_at > datetime("now")', [token]);
+    const session = await db.get('SELECT * FROM admin_sessions WHERE token = ?', [token]);
+    
     if (!session) {
       return res.status(401).json({ error: 'Session expired or invalid' });
     }
+
+    // Robust date comparison in JS to avoid SQLite datetime mismatches
+    const now = new Date();
+    const expiresAt = new Date(session.expires_at);
+    
+    if (expiresAt < now) {
+      // Clean up expired session
+      await db.run('DELETE FROM admin_sessions WHERE token = ?', [token]);
+      return res.status(401).json({ error: 'Session expired or invalid' });
+    }
+
     req.adminUser = session.username;
     next();
   } catch (err) {
+    console.error('Auth error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

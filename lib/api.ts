@@ -480,9 +480,13 @@ export const apiClient = {
     const formData = new FormData();
     formData.append('firmware', file);
     
-    // Get headers but remove Content-Type to let browser set boundary for FormData
-    const headers = getHeaders({});
-    delete headers['Content-Type'];
+    // Create a Headers instance to properly handle headers
+    const headers = new Headers();
+    const token = localStorage.getItem('ajc_admin_token');
+    if (token) {
+      headers.append('Authorization', `Bearer ${token}`);
+    }
+    // Note: Do NOT set Content-Type, fetch will set it with the boundary for FormData
     
     const res = await fetch(`${API_BASE}/nodemcu/${deviceId}/update`, {
       method: 'POST',

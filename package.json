@@ -17,7 +17,6 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.91.1",
     "dotenv": "^16.6.1",
-    "esbuild": "^0.20.1",
     "express": "^4.18.2",
     "lucide-react": "^0.563.0",
     "multer": "^2.0.2",
@@ -36,6 +35,7 @@
   "author": "AJC",
   "license": "ISC",
   "devDependencies": {
+    "esbuild": "^0.27.2",
     "typescript": "^5.9.3"
   }
 }

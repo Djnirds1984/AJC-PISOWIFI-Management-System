@@ -1682,24 +1682,37 @@ app.post('/api/network/pppoe/restart', requireAdmin, async (req, res) => {
 
 app.get('/api/network/pppoe/logs', requireAdmin, async (req, res) => {
   try {
-    // Try multiple log files commonly used by pppd
-    const logFiles = ['/var/log/pppd.log', '/var/log/messages', '/var/log/syslog'];
-    let logs = [];
+    // Priority log files
+    const logFiles = [
+      '/var/log/pppd.log', 
+      '/var/log/pppoe-server.log',
+      '/var/log/messages', 
+      '/var/log/syslog'
+    ];
+    
+    let allLogs = [];
     
     for (const file of logFiles) {
       if (fs.existsSync(file)) {
-        const { stdout } = await execPromise(`grep -i "ppp" ${file} | tail -n 20`).catch(() => ({ stdout: '' }));
-        if (stdout) {
-          logs = stdout.split('\n').filter(l => l);
-          break;
-        }
+        try {
+          const { stdout } = await execPromise(`tail -n 50 ${file}`).catch(() => ({ stdout: '' }));
+          if (stdout) {
+            const lines = stdout.split('\n')
+              .filter(l => l.trim())
+              .map(l => `[${path.basename(file)}] ${l}`);
+            allLogs = [...allLogs, ...lines];
+          }
+        } catch (e) {}
       }
     }
     
-    if (logs.length === 0) {
-      res.json(["No active PPPoE logs found. Check if server is running."]);
+    // Return the last 50 lines
+    const result = allLogs.slice(-50);
+    
+    if (result.length === 0) {
+      res.json(["No active PPPoE logs found. Wait for client connection..."]);
     } else {
-      res.json(logs);
+      res.json(result);
     }
   } catch (err) {
     res.json(["Error reading logs: " + err.message]);

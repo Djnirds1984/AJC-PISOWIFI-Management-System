@@ -348,6 +348,24 @@ export const apiClient = {
     return handleResponse(res);
   },
 
+  async pauseSession(token: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${API_BASE}/sessions/pause`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ token })
+    });
+    return handleResponse(res);
+  },
+
+  async resumeSession(token: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${API_BASE}/sessions/resume`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ token })
+    });
+    return handleResponse(res);
+  },
+
   // PPPoE Server Management APIs
   async getPPPoEServerStatus(): Promise<any> {
     const res = await fetch(`${API_BASE}/network/pppoe/status`, { headers: getHeaders() });

@@ -147,6 +147,8 @@ export interface UserSession {
   connectedAt: number;
   downloadLimit?: number;
   uploadLimit?: number;
+  isPaused?: boolean;
+  token?: string;
 }
 
 export interface WifiDevice {

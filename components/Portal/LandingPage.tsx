@@ -119,6 +119,34 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     window.location.href = '/success';
   };
 
+  const handlePause = async () => {
+    if (!mySession || !mySession.token) return;
+    try {
+      const result = await apiClient.pauseSession(mySession.token);
+      if (result.success) {
+        if (refreshSessions) refreshSessions();
+      } else {
+        alert('Pause failed: ' + result.message);
+      }
+    } catch (err) {
+      alert('Error pausing session: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
+  };
+
+  const handleResume = async () => {
+    if (!mySession || !mySession.token) return;
+    try {
+      const result = await apiClient.resumeSession(mySession.token);
+      if (result.success) {
+        if (refreshSessions) refreshSessions();
+      } else {
+        alert('Resume failed: ' + result.message);
+      }
+    } catch (err) {
+      alert('Error resuming session: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
+  };
+
   // Play success audio when session becomes active
   useEffect(() => {
     if (mySession && mySession.remainingSeconds > 0 && config.connectedAudio) {
@@ -262,23 +290,48 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
           {mySession ? (
             <div className="mb-6 animate-in fade-in zoom-in duration-500">
               <p className="text-blue-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Authenticated Session</p>
-              <h2 className="text-6xl font-black text-slate-900 mb-4 tracking-tighter">
+              <h2 className={`text-6xl font-black mb-4 tracking-tighter ${mySession.isPaused ? 'text-orange-500 animate-pulse' : 'text-slate-900'}`}>
                 {formatSessionTime(mySession.remainingSeconds)}
               </h2>
               <div className="flex flex-col gap-1 text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-6">
-                <span className="text-green-500 font-black flex items-center justify-center gap-2">
-                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                  Internet Access Live
-                </span>
+                {mySession.isPaused ? (
+                  <span className="text-orange-500 font-black flex items-center justify-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-orange-500 rounded-full"></span>
+                    Time Paused - Internet Suspended
+                  </span>
+                ) : (
+                  <span className="text-green-500 font-black flex items-center justify-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                    Internet Access Live
+                  </span>
+                )}
                 <span>Session ID: {myMac}</span>
               </div>
               
-              <button 
-                onClick={handleGoToInternet}
-                className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest mb-3 shadow-xl hover:bg-black transition-all active:scale-95 flex items-center justify-center gap-2"
-              >
-                <span>🌍</span> PROCEED TO INTERNET
-              </button>
+              {!mySession.isPaused ? (
+                <>
+                  <button 
+                    onClick={handleGoToInternet}
+                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest mb-3 shadow-xl hover:bg-black transition-all active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <span>🌍</span> PROCEED TO INTERNET
+                  </button>
+                  
+                  <button 
+                    onClick={handlePause}
+                    className="w-full bg-orange-500 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest mb-3 shadow-xl hover:bg-orange-600 transition-all active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <span>⏸️</span> PAUSE MY TIME
+                  </button>
+                </>
+              ) : (
+                <button 
+                  onClick={handleResume}
+                  className="w-full bg-green-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest mb-3 shadow-xl hover:bg-green-700 transition-all active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <span>▶️</span> RESUME MY TIME
+                </button>
+              )}
               
               <button 
                 onClick={handleRefreshNetwork}

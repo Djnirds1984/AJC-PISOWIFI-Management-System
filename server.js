@@ -397,7 +397,7 @@ app.get('/generate_204', async (req, res) => {
   const mac = await getMacFromIp(clientIp);
   
   if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.status(204).send();
     }
@@ -412,7 +412,7 @@ app.get('/hotspot-detect.html', async (req, res) => {
   const mac = await getMacFromIp(clientIp);
   
   if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Success');
     }
@@ -427,7 +427,7 @@ app.get('/ncsi.txt', async (req, res) => {
   const mac = await getMacFromIp(clientIp);
   
   if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Microsoft NCSI');
     }
@@ -442,7 +442,7 @@ app.get('/connecttest.txt', async (req, res) => {
   const mac = await getMacFromIp(clientIp);
   
   if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Success');
     }
@@ -457,7 +457,7 @@ app.get('/success.txt', async (req, res) => {
   const mac = await getMacFromIp(clientIp);
   
   if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Success');
     }
@@ -473,7 +473,7 @@ app.get('/library/test/success.html', async (req, res) => {
   const mac = await getMacFromIp(clientIp);
   
   if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Success');
     }
@@ -498,7 +498,7 @@ app.use(async (req, res, next) => {
 
     const mac = await getMacFromIp(clientIp);
     if (mac) {
-      const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+      const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
       if (session) {
         // Authorized client - return success
         if (url.includes('/generate_204') || url.includes('/connecttest.txt')) {
@@ -599,7 +599,7 @@ app.get('/api/whoami', async (req, res) => {
 
 app.get('/api/sessions', async (req, res) => {
   try {
-    const rows = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt FROM sessions');
+    const rows = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt, is_paused as isPaused, token FROM sessions');
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -671,9 +671,9 @@ app.post('/api/sessions/restore', async (req, res) => {
          await db.run('UPDATE sessions SET ip = ? WHERE mac = ?', [clientIp, mac]);
          await network.whitelistMAC(mac, clientIp);
        }
-       return res.json({ success: true, remainingSeconds: session.remaining_seconds });
+       return res.json({ success: true, remainingSeconds: session.remaining_seconds, isPaused: session.is_paused === 1 });
     }
-    
+
     console.log(`[AUTH] Restoring session ${token} from ${session.mac} to ${mac}`);
 
     // Check if the target MAC already has a session
@@ -701,11 +701,43 @@ app.post('/api/sessions/restore', async (req, res) => {
     await network.blockMAC(session.mac, session.ip); // Block old
     await network.whitelistMAC(mac, clientIp); // Allow new
     
-    res.json({ success: true, migrated: true, remainingSeconds: session.remaining_seconds + extraTime });
+    res.json({ success: true, migrated: true, remainingSeconds: session.remaining_seconds + extraTime, isPaused: session.is_paused === 1 });
   } catch (err) { 
     console.error('[AUTH] Restore error:', err);
     res.status(500).json({ error: err.message }); 
   }
+});
+
+app.post('/api/sessions/pause', async (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'Token required' });
+
+  try {
+    const session = await db.get('SELECT * FROM sessions WHERE token = ?', [token]);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    await db.run('UPDATE sessions SET is_paused = 1 WHERE token = ?', [token]);
+    await network.blockMAC(session.mac, session.ip);
+
+    console.log(`[AUTH] Session paused for ${session.mac}`);
+    res.json({ success: true, message: 'Time paused. Internet access suspended.' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/sessions/resume', async (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'Token required' });
+
+  try {
+    const session = await db.get('SELECT * FROM sessions WHERE token = ?', [token]);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    await db.run('UPDATE sessions SET is_paused = 0 WHERE token = ?', [token]);
+    await network.whitelistMAC(session.mac, session.ip);
+
+    console.log(`[AUTH] Session resumed for ${session.mac}`);
+    res.json({ success: true, message: 'Time resumed. Internet access restored.' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // RATES API
@@ -1759,7 +1791,7 @@ app.get('/api/devices', requireAdmin, async (req, res) => {
     const devices = await db.all('SELECT * FROM wifi_devices ORDER BY connected_at DESC');
     
     // Get all active sessions
-    const sessions = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt FROM sessions WHERE remaining_seconds > 0');
+    const sessions = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt, is_paused as isPaused FROM sessions WHERE remaining_seconds > 0');
     
     // Create a map of sessions by MAC for quick lookup
     const sessionMap = new Map();
@@ -2182,7 +2214,7 @@ setInterval(async () => {
       await network.blockMAC(s.mac, s.ip);
       await db.run('DELETE FROM sessions WHERE mac = ?', [s.mac]);
     }
-    await db.run('UPDATE sessions SET remaining_seconds = remaining_seconds - 1 WHERE remaining_seconds > 0');
+    await db.run('UPDATE sessions SET remaining_seconds = remaining_seconds - 1 WHERE remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)');
   } catch (e) { console.error(e); }
 }, 1000);
 

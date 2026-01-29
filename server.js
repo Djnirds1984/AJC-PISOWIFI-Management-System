@@ -175,16 +175,17 @@ app.get('/api/license/status', async (req, res) => {
       systemHardwareId = await getUniqueHardwareId();
     }
 
-    // Check trial status
-    const trialStatus = await checkTrialStatus(systemHardwareId);
-    
-    // Check cloud license verification
     const verification = await licenseManager.verifyLicense();
+    const trialStatus = await checkTrialStatus(systemHardwareId, verification);
+
+    const isLicensed = verification.isValid && verification.isActivated;
+    const isRevoked = verification.isRevoked || trialStatus.isRevoked;
+    const canOperate = (isLicensed || trialStatus.isTrialActive) && !isRevoked;
 
     res.json({
       hardwareId: systemHardwareId,
-      isLicensed: verification.isValid && verification.isActivated,
-      isRevoked: verification.isRevoked || trialStatus.isRevoked,
+      isLicensed,
+      isRevoked,
       hasHadLicense: trialStatus.hasHadLicense || false,
       licenseKey: verification.licenseKey,
       trial: {
@@ -193,7 +194,7 @@ app.get('/api/license/status', async (req, res) => {
         daysRemaining: trialStatus.daysRemaining,
         expiresAt: trialStatus.expiresAt
       },
-      canOperate: (verification.isValid || trialStatus.isTrialActive) && !(verification.isRevoked || trialStatus.isRevoked)
+      canOperate
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -599,13 +600,21 @@ app.get('/api/whoami', async (req, res) => {
   
   // Check license status for portal restrictions
   let isRevoked = false;
+  let canOperate = true;
   let canInsertCoin = true;
   
   try {
     if (!systemHardwareId) systemHardwareId = await getUniqueHardwareId();
-    const trialStatus = await checkTrialStatus(systemHardwareId);
     const verification = await licenseManager.verifyLicense();
+    const trialStatus = await checkTrialStatus(systemHardwareId, verification);
+    const isLicensed = verification.isValid && verification.isActivated;
     isRevoked = verification.isRevoked || trialStatus.isRevoked;
+
+    canOperate = (isLicensed || trialStatus.isTrialActive) && !isRevoked;
+
+    if (!canOperate && !isRevoked) {
+      canInsertCoin = false;
+    }
     
     if (trialStatus.isTrialActive && !isLicensed) {
       console.log(`[License] Trial Mode - ${trialStatus.daysRemaining} days remaining`);
@@ -644,6 +653,7 @@ app.get('/api/whoami', async (req, res) => {
     ip: clientIp, 
     mac: mac || 'unknown',
     isRevoked,
+    canOperate,
     canInsertCoin
   });
 });
@@ -668,9 +678,17 @@ app.post('/api/sessions/start', async (req, res) => {
   try {
     // Enforce 1-device limit if revoked
     if (!systemHardwareId) systemHardwareId = await getUniqueHardwareId();
-    const trialStatus = await checkTrialStatus(systemHardwareId);
     const verification = await licenseManager.verifyLicense();
-    if (verification.isRevoked || trialStatus.isRevoked) {
+    const trialStatus = await checkTrialStatus(systemHardwareId, verification);
+    const isLicensed = verification.isValid && verification.isActivated;
+    const isRevoked = verification.isRevoked || trialStatus.isRevoked;
+    const canOperate = (isLicensed || trialStatus.isTrialActive) && !isRevoked;
+
+    if (!canOperate && !isRevoked) {
+      return res.status(403).json({ error: 'System License Expired: Activation required.' });
+    }
+
+    if (isRevoked) {
       const nodemcuResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
       const nodemcuMacs = nodemcuResult?.value ? JSON.parse(nodemcuResult.value).map(d => d.macAddress.toUpperCase()) : [];
 
@@ -2282,8 +2300,8 @@ app.get('*', (req, res) => {
 
 // TC cleanup moved inside server.listen
 
-async function bootupRestore(isRevoked = false) {
-  console.log(`[AJC] Starting System Restoration (Mode: ${isRevoked ? 'RESTRICTED' : 'NORMAL'})...`);
+async function bootupRestore(isRestricted = false) {
+  console.log(`[AJC] Starting System Restoration (Mode: ${isRestricted ? 'RESTRICTED' : 'NORMAL'})...`);
   
   // Auto-Provision Interfaces & Bridge if needed
   await network.autoProvisionNetwork();
@@ -2430,7 +2448,7 @@ async function bootupRestore(isRevoked = false) {
     console.warn('[AJC] Failed to whitelist NodeMCU devices:', e.message);
   }
 
-  if (isRevoked) {
+  if (isRestricted) {
     console.log('[AJC] System is REVOKED. Limiting client sessions to 1.');
     let clientWhitelistedCount = 0;
     
@@ -2560,7 +2578,8 @@ server.listen(80, '0.0.0.0', async () => {
   // We can fetch it inside bootupRestore or pass it
   const verificationStatus = await licenseManager.verifyLicense();
   const trialStatusInfo = await checkTrialStatus(systemHardwareId, verificationStatus);
-  const isCurrentlyRevoked = verificationStatus.isRevoked || trialStatusInfo.isRevoked;
-  
-  await bootupRestore(isCurrentlyRevoked);
+  const isLicensedNow = verificationStatus.isValid && verificationStatus.isActivated;
+  const isRevokedNow = verificationStatus.isRevoked || trialStatusInfo.isRevoked;
+  const canOperateNow = (isLicensedNow || trialStatusInfo.isTrialActive) && !isRevokedNow;
+  await bootupRestore(!canOperateNow);
 });

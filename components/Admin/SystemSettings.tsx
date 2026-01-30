@@ -1,20 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../../lib/api';
 
-interface LicenseStatus {
-  hardwareId: string;
-  isLicensed: boolean;
-  isRevoked?: boolean;
-  licenseKey?: string;
-  trial: {
-    isActive: boolean;
-    hasEnded: boolean;
-    daysRemaining: number;
-    expiresAt: string | null;
-  };
-  canOperate: boolean;
-}
-
 const SystemSettings: React.FC = () => {
   const [isResetting, setIsResetting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -26,7 +12,6 @@ const SystemSettings: React.FC = () => {
     cpu: 'Loading...',
     disk: 'Loading...'
   });
-  const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(null);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -43,25 +28,12 @@ const SystemSettings: React.FC = () => {
       }
     };
 
-    const fetchLicenseStatus = async () => {
-      try {
-        const res = await fetch('/api/license/status');
-        const data = await res.json();
-        setLicenseStatus(data);
-      } catch (e) {
-        console.error('Failed to fetch license status', e);
-      }
-    };
-
     fetchStats();
-    fetchLicenseStatus();
     
     const interval = setInterval(fetchStats, 5000);
-    const licenseInterval = setInterval(fetchLicenseStatus, 30000);
     
     return () => {
       clearInterval(interval);
-      clearInterval(licenseInterval);
     };
   }, []);
 
@@ -166,40 +138,8 @@ const SystemSettings: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-10">
-      {/* License Status Card */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 bg-blue-50/30 flex justify-between items-center">
-          <div>
-            <h3 className="text-[10px] font-black text-blue-600 uppercase tracking-widest">License & Trial Status</h3>
-          </div>
-          {licenseStatus && (
-            <div className="flex gap-2">
-              {licenseStatus.isRevoked ? (
-                <span className="bg-red-600 text-white text-[8px] font-black px-2 py-1 rounded font-bold uppercase animate-pulse">Revoked</span>
-              ) : licenseStatus.isLicensed ? (
-                <span className="bg-green-100 text-green-600 text-[8px] font-black px-2 py-1 rounded font-bold uppercase">Licensed</span>
-              ) : licenseStatus.trial.isActive ? (
-                <span className="bg-yellow-100 text-yellow-600 text-[8px] font-black px-2 py-1 rounded font-bold uppercase">
-                  Trial: {licenseStatus.trial.daysRemaining}d
-                </span>
-              ) : (
-                <span className="bg-red-100 text-red-600 text-[8px] font-black px-2 py-1 rounded font-bold uppercase">Expired</span>
-              )}
-            </div>
-          )}
-        </div>
-        <div className="p-4">
-          <LicenseActivation licenseStatus={licenseStatus} onActivated={() => {
-            fetch('/api/license/status')
-              .then(res => res.json())
-              .then(data => setLicenseStatus(data))
-              .catch(e => console.error('Failed to refresh license status', e));
-          }} />
-        </div>
-      </section>
-
       {/* System Diagnostics Card */}
-      <section className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden transition-all ${licenseStatus?.isRevoked ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden transition-all">
         <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">System Diagnostics</h3>
           <span className="bg-green-100 text-green-600 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">Kernel: 5.15.0</span>
@@ -481,166 +421,6 @@ const ChangePasswordForm: React.FC = () => {
         {loading ? '...' : 'Update Password'}
       </button>
     </form>
-  );
-};
-
-const LicenseActivation: React.FC<{ licenseStatus: LicenseStatus | null; onActivated: () => void }> = ({ licenseStatus, onActivated }) => {
-  const [licenseKey, setLicenseKey] = useState('');
-  const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleActivate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage('');
-
-    try {
-      const res = await fetch('/api/license/activate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ licenseKey: licenseKey.trim() })
-      });
-      
-      const data = await res.json();
-      
-      if (data.success) {
-        setMessage('✅ ' + data.message);
-        setLicenseKey('');
-        onActivated();
-        
-        // Show success alert
-        setTimeout(() => {
-          alert('License activated successfully! Please restart the system for changes to take effect.');
-        }, 500);
-      } else {
-        setMessage('❌ ' + data.error);
-      }
-    } catch (err: any) {
-      setMessage('❌ Activation failed: ' + (err.message || 'Network error'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (!licenseStatus) {
-    return (
-      <div className="text-center py-8">
-        <div className="w-8 h-8 border-4 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-[10px] text-slate-500 font-bold uppercase">Loading License Status...</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Hardware ID Display */}
-      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
-        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Hardware ID</label>
-        <div className="flex items-center gap-3">
-          <code className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono font-bold text-slate-800">
-            {licenseStatus.hardwareId}
-          </code>
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(licenseStatus.hardwareId);
-              alert('Hardware ID copied to clipboard!');
-            }}
-            className="bg-slate-600 text-white px-4 py-3 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-700 active:scale-95 transition-all"
-          >
-            Copy
-          </button>
-        </div>
-        <p className="text-[9px] text-slate-500 font-bold uppercase mt-2">
-          Provide this ID to your vendor when requesting a license key
-        </p>
-      </div>
-
-      {/* Status Information */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">License Status</p>
-          <p className={`text-sm font-black uppercase ${licenseStatus.isLicensed ? 'text-green-600' : 'text-slate-500'}`}>
-            {licenseStatus.isLicensed ? '✓ ACTIVE' : 'Not Activated'}
-          </p>
-        </div>
-        
-        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Trial Status</p>
-          <p className={`text-sm font-black uppercase ${licenseStatus.trial.isActive ? 'text-yellow-600' : licenseStatus.trial.hasEnded ? 'text-red-600' : 'text-slate-500'}`}>
-            {licenseStatus.trial.isActive ? `${licenseStatus.trial.daysRemaining} Days Left` : licenseStatus.trial.hasEnded ? 'Expired' : 'N/A'}
-          </p>
-        </div>
-        
-        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Can Operate</p>
-          <p className={`text-sm font-black uppercase ${licenseStatus.canOperate ? 'text-green-600' : 'text-red-600'}`}>
-            {licenseStatus.canOperate ? '✓ YES' : '✗ NO'}
-          </p>
-        </div>
-      </div>
-
-      {/* Activation Form - Only show if not licensed */}
-      {!licenseStatus.isLicensed && (
-        <form onSubmit={handleActivate} className="space-y-4">
-          <div>
-            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
-              Enter License Key
-            </label>
-            <input 
-              type="text" 
-              value={licenseKey}
-              onChange={e => setLicenseKey(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs uppercase"
-              placeholder="AJC-XXXX-YYYY-ZZZZ"
-              required
-            />
-          </div>
-          
-          {message && (
-            <div className={`p-4 rounded-xl border text-xs font-bold ${
-              message.startsWith('✅') 
-                ? 'bg-green-50 border-green-200 text-green-700' 
-                : 'bg-red-50 border-red-200 text-red-700'
-            }`}>
-              {message}
-            </div>
-          )}
-          
-          <button 
-            type="submit" 
-            disabled={loading || !licenseKey.trim()}
-            className="w-full bg-blue-600 text-white px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50"
-          >
-            {loading ? 'Activating...' : 'Activate License'}
-          </button>
-          
-          <p className="text-[9px] text-slate-500 font-bold uppercase text-center leading-relaxed">
-            Don't have a license key? Contact your vendor or check the SUPABASE_SETUP.md file for instructions.
-          </p>
-        </form>
-      )}
-
-      {/* Licensed Message */}
-      {licenseStatus.isLicensed && (
-        <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
-          <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">✓</div>
-          <p className="text-sm font-black text-green-900 uppercase tracking-tight mb-2">
-            License Activated
-          </p>
-          {licenseStatus.licenseKey && (
-            <div className="mb-4">
-              <p className="text-[9px] text-green-700 font-bold uppercase mb-1">Active License Key</p>
-              <code className="bg-white/50 border border-green-200 text-green-800 px-4 py-2 rounded-xl text-xs font-mono font-bold inline-block">
-                {licenseStatus.licenseKey}
-              </code>
-            </div>
-          )}
-          <p className="text-[10px] text-green-700 font-bold uppercase">
-            Your device is fully licensed and operational. Thank you for your support!
-          </p>
-        </div>
-      )}
-    </div>
   );
 };
 

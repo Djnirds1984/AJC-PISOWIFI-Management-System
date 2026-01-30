@@ -170,32 +170,66 @@ export class NodeMCULicenseManager {
     }
 
     try {
-      const { data, error } = await this.supabase
-        .rpc('start_nodemcu_trial', {
-          device_mac_address: macAddress
-        });
+      // 1. Find the device
+      const { data: device, error: deviceError } = await this.supabase
+        .from('nodemcu_devices')
+        .select('id, vendor_id')
+        .eq('mac_address', macAddress)
+        .maybeSingle();
 
-      if (error) {
-        console.error('[NodeMCU License] Trial start error:', error);
-        return { 
-          success: false, 
-          message: error.message 
-        };
+      if (deviceError) {
+        return { success: false, message: 'Device lookup failed: ' + deviceError.message };
       }
 
-      if (!data.success) {
-        return { 
-          success: false, 
-          message: data.error 
-        };
+      if (!device) {
+        return { success: false, message: 'Device not found in cloud. Please register device first.' };
+      }
+
+      // 2. Check for ANY license history (Active, Expired, Revoked) to prevent abuse
+      const { count, error: historyError } = await this.supabase
+        .from('nodemcu_licenses')
+        .select('*', { count: 'exact', head: true })
+        .eq('device_id', device.id);
+
+      if (historyError) {
+        return { success: false, message: 'History check failed: ' + historyError.message };
+      }
+
+      if (count && count > 0) {
+        return { success: false, message: 'Device has already used a license or trial' };
+      }
+
+      // 3. Create Trial License
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      
+      const { data: newLicense, error: createError } = await this.supabase
+        .from('nodemcu_licenses')
+        .insert({
+           vendor_id: device.vendor_id,
+           device_id: device.id,
+           mac_address: macAddress,
+           license_key: `TRIAL-${macAddress.replace(/:/g, '').toUpperCase()}`,
+           license_type: 'trial',
+           is_active: true,
+           trial_started_at: now.toISOString(),
+           trial_duration_days: 7,
+           expires_at: expiresAt.toISOString(),
+           activated_at: now.toISOString()
+        })
+        .select()
+        .single();
+
+      if (createError) {
+        return { success: false, message: 'Failed to create trial: ' + createError.message };
       }
 
       return {
         success: true,
-        message: data.message,
+        message: 'Trial started successfully',
         trialInfo: {
-          expiresAt: new Date(data.expires_at),
-          daysRemaining: data.days_remaining
+          expiresAt: expiresAt,
+          daysRemaining: 7
         }
       };
 
@@ -481,10 +515,17 @@ export class NodeMCULicenseManager {
     }
 
     try {
+      // Direct update instead of RPC to avoid schema cache issues
+      // We keep device_id and mac_address to preserve history (prevent future trials)
       const { data, error } = await this.supabase
-        .rpc('revoke_nodemcu_license', {
-          license_key_param: licenseKey
-        });
+        .from('nodemcu_licenses')
+        .update({
+          is_active: false,
+          updated_at: new Date().toISOString()
+        })
+        .eq('license_key', licenseKey)
+        .select()
+        .single();
 
       if (error) {
         console.error('[NodeMCU License] Revocation error:', error);
@@ -495,8 +536,8 @@ export class NodeMCULicenseManager {
       }
 
       return {
-        success: data.success,
-        message: data.message || data.error
+        success: true,
+        message: 'License revoked successfully'
       };
 
     } catch (error: any) {

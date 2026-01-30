@@ -246,7 +246,6 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
               />
               <button
                 onClick={handleActivateLicense}
-                disabled={!selectedDevice || !licenseKey.trim()}
                 className="px-4 py-2 bg-emerald-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Activate

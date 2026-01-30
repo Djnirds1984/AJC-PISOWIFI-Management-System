@@ -202,6 +202,7 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
 
       {/* Device Management Tab */}
       {activeTab === 'devices' && (
+        <>
       {/* Firmware Download Section */}
       <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -497,7 +498,7 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
           <p className="text-[8px] text-slate-400 uppercase tracking-tighter mt-1">Connect your boards using the system authentication key</p>
         </div>
       )}
-      </div>
+      </>
       )}
 
       {/* License Management Tab */}

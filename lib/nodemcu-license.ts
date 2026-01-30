@@ -52,7 +52,10 @@ export class NodeMCULicenseManager {
       this.supabase = createClient(this.supabaseUrl, this.supabaseKey);
       console.log('[NodeMCU License] Supabase client initialized');
     } else {
-      console.warn('[NodeMCU License] Supabase credentials not provided. Will use local fallback for trial mode.');
+      // Only warn if running on server side. In browser, we expect to use API fallback.
+      if (typeof window === 'undefined') {
+        console.warn('[NodeMCU License] Supabase credentials not provided. Will use local fallback for trial mode.');
+      }
     }
   }
 

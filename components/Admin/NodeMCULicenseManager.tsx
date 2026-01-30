@@ -69,6 +69,9 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
 
   const handleActivateLicense = async () => {
     // Log intent
+    console.log('NodeMCULicenseManager: Activate button clicked');
+    const toastId = toast.loading('Processing activation...');
+
     fetch('/api/debug/log', {
        method: 'POST',
        headers: { 'Content-Type': 'application/json' },
@@ -76,12 +79,15 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
     }).catch(() => {});
 
     if (!selectedDevice || !licenseKey.trim()) {
+      toast.dismiss(toastId);
       toast.error('Please select a device and enter a license key');
       return;
     }
 
     try {
       const result = await licenseManager.activateLicense(licenseKey.trim(), selectedDevice.macAddress);
+      toast.dismiss(toastId);
+      
       if (result.success) {
         toast.success('License activated successfully!');
         setLicenseKey('');
@@ -91,6 +97,7 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
         toast.error(result.message);
       }
     } catch (error) {
+      toast.dismiss(toastId);
       console.error('License activation error:', error);
       toast.error('Failed to activate license');
     }

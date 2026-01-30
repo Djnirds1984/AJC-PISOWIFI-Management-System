@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NodeMCUDevice, Rate } from '../../types';
 import { apiClient } from '../../lib/api';
 import { NODEMCU_D_PINS, gpioToDPin, normalizeDPinLabel } from '../../lib/nodemcuPins';
+import NodeMCULicenseManager from './NodeMCULicenseManager';
 
 interface NodeMCUManagerProps {
   devices: NodeMCUDevice[];
@@ -13,6 +14,7 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
   const [selectedDevice, setSelectedDevice] = useState<NodeMCUDevice | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'devices' | 'licenses'>('devices');
 
   useEffect(() => {
     setLocalDevices(devices);
@@ -172,6 +174,34 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto pb-20 animate-in fade-in duration-500">
+      {/* Tab Navigation */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <div className="flex border-b border-slate-100">
+          <button
+            onClick={() => setActiveTab('devices')}
+            className={`flex-1 px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+              activeTab === 'devices'
+                ? 'bg-slate-900 text-white border-b-2 border-slate-900'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            Device Management
+          </button>
+          <button
+            onClick={() => setActiveTab('licenses')}
+            className={`flex-1 px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+              activeTab === 'licenses'
+                ? 'bg-slate-900 text-white border-b-2 border-slate-900'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            License Management
+          </button>
+        </div>
+      </div>
+
+      {/* Device Management Tab */}
+      {activeTab === 'devices' && (
       {/* Firmware Download Section */}
       <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -466,6 +496,13 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No NodeMCU devices detected</p>
           <p className="text-[8px] text-slate-400 uppercase tracking-tighter mt-1">Connect your boards using the system authentication key</p>
         </div>
+      )}
+      </div>
+      )}
+
+      {/* License Management Tab */}
+      {activeTab === 'licenses' && (
+        <NodeMCULicenseManager devices={localDevices} />
       )}
     </div>
   );

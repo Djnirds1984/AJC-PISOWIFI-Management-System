@@ -669,5 +669,56 @@ export const apiClient = {
   async checkNodeMCUStatus(macAddress: string): Promise<{ online: boolean, lastSeen: string }> {
     const res = await fetch(`${API_BASE}/nodemcu/status/${macAddress}`);
     return handleResponse(res);
+  },
+
+  // NodeMCU License Management APIs
+  async getNodeMCULicenseStatus(macAddress: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/license/status/${macAddress}`, { 
+      headers: getHeaders() 
+    });
+    return handleResponse(res);
+  },
+
+  async activateNodeMCULicense(licenseKey: string, macAddress: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/license/activate`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ licenseKey, macAddress })
+    });
+    return handleResponse(res);
+  },
+
+  async startNodeMCUTrial(macAddress: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/license/trial`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ macAddress })
+    });
+    return handleResponse(res);
+  },
+
+  async revokeNodeMCULicense(licenseKey: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/license/revoke`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ licenseKey })
+    });
+    return handleResponse(res);
+  },
+
+  async generateNodeMCULicenses(count: number = 1, licenseType: 'standard' | 'premium' = 'standard', expirationMonths?: number): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/license/generate`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ count, licenseType, expirationMonths })
+    });
+    return handleResponse(res);
+  },
+
+  async getVendorNodeMCULicenses(): Promise<any> {
+    const res = await fetch(`${API_BASE}/nodemcu/license/vendor`, { 
+      headers: getHeaders() 
+    });
+    return handleResponse(res);
   }
 };

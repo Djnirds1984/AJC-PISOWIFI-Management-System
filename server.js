@@ -288,6 +288,47 @@ const requireAdmin = async (req, res, next) => {
   }
 };
 
+// SUPERADMIN AUTHENTICATION (for license generation and other admin functions)
+const requireSuperadmin = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  const token = authHeader.split(' ')[1];
+  try {
+    const session = await db.get('SELECT * FROM admin_sessions WHERE token = ?', [token]);
+    
+    if (!session) {
+      return res.status(401).json({ error: 'Session expired or invalid' });
+    }
+
+    // Robust date comparison in JS to avoid SQLite datetime mismatches
+    const now = new Date();
+    const expiresAt = new Date(session.expires_at);
+    
+    if (expiresAt < now) {
+      // Clean up expired session
+      await db.run('DELETE FROM admin_sessions WHERE token = ?', [token]);
+      return res.status(401).json({ error: 'Session expired or invalid' });
+    }
+
+    // Check if user is superadmin (for now, we'll use a simple check)
+    // In production, you might want to add a role field to admin_sessions table
+    const isSuperadmin = session.username === 'admin' || session.username === 'superadmin';
+    
+    if (!isSuperadmin) {
+      return res.status(403).json({ error: 'Superadmin access required' });
+    }
+    
+    req.adminUser = session.username;
+    next();
+  } catch (err) {
+    console.error('Superadmin auth error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -427,6 +468,106 @@ app.get('/api/license/hardware-id', async (req, res) => {
     }
     res.json({ hardwareId: systemHardwareId });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// NodeMCU License Management APIs
+const { initializeNodeMCULicenseManager } = require('./lib/nodemcu-license');
+const nodeMCULicenseManager = initializeNodeMCULicenseManager();
+
+// NodeMCU License Status Check
+app.get('/api/nodemcu/license/status/:macAddress', requireAdmin, async (req, res) => {
+  try {
+    const { macAddress } = req.params;
+    const verification = await nodeMCULicenseManager.verifyLicense(macAddress);
+    res.json(verification);
+  } catch (err) {
+    console.error('[NodeMCU License] Status check error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// NodeMCU License Activation
+app.post('/api/nodemcu/license/activate', requireAdmin, async (req, res) => {
+  try {
+    const { licenseKey, macAddress } = req.body;
+    
+    if (!licenseKey || !macAddress) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'License key and MAC address are required' 
+      });
+    }
+    
+    const result = await nodeMCULicenseManager.activateLicense(licenseKey.trim(), macAddress);
+    res.json(result);
+  } catch (err) {
+    console.error('[NodeMCU License] Activation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// NodeMCU Trial Start
+app.post('/api/nodemcu/license/trial', requireAdmin, async (req, res) => {
+  try {
+    const { macAddress } = req.body;
+    
+    if (!macAddress) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'MAC address is required' 
+      });
+    }
+    
+    const result = await nodeMCULicenseManager.startTrial(macAddress);
+    res.json(result);
+  } catch (err) {
+    console.error('[NodeMCU License] Trial start error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// NodeMCU License Revocation
+app.post('/api/nodemcu/license/revoke', requireAdmin, async (req, res) => {
+  try {
+    const { licenseKey } = req.body;
+    
+    if (!licenseKey) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'License key is required' 
+      });
+    }
+    
+    const result = await nodeMCULicenseManager.revokeLicense(licenseKey);
+    res.json(result);
+  } catch (err) {
+    console.error('[NodeMCU License] Revocation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// NodeMCU License Generation (Superadmin only)
+app.post('/api/nodemcu/license/generate', requireSuperadmin, async (req, res) => {
+  try {
+    const { count = 1, licenseType = 'standard', expirationMonths } = req.body;
+    
+    const licenses = await nodeMCULicenseManager.generateLicenses(count, licenseType, expirationMonths);
+    res.json({ success: true, licenses });
+  } catch (err) {
+    console.error('[NodeMCU License] Generation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// NodeMCU Vendor Licenses
+app.get('/api/nodemcu/license/vendor', requireAdmin, async (req, res) => {
+  try {
+    const licenses = await nodeMCULicenseManager.getVendorLicenses();
+    res.json({ success: true, licenses });
+  } catch (err) {
+    console.error('[NodeMCU License] Vendor licenses error:', err);
     res.status(500).json({ error: err.message });
   }
 });

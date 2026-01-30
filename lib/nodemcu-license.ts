@@ -1,0 +1,361 @@
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
+interface NodeMCULicenseRecord {
+  id: string;
+  license_key: string;
+  vendor_id: string;
+  device_id: string | null;
+  mac_address: string | null;
+  is_active: boolean;
+  activated_at: string | null;
+  license_type: 'trial' | 'standard' | 'premium';
+  expires_at: string | null;
+  trial_started_at: string | null;
+  trial_duration_days: number;
+  created_at: string;
+}
+
+interface NodeMCULicenseVerification {
+  isValid: boolean;
+  isActivated: boolean;
+  isExpired: boolean;
+  licenseType?: 'trial' | 'standard' | 'premium';
+  expiresAt?: Date;
+  daysRemaining?: number;
+  error?: string;
+  canStartTrial?: boolean;
+  trialEndedAt?: Date;
+}
+
+interface NodeMCULicenseActivationResult {
+  success: boolean;
+  message: string;
+  license?: NodeMCULicenseRecord;
+  trialInfo?: {
+    expiresAt: Date;
+    daysRemaining: number;
+  };
+}
+
+export class NodeMCULicenseManager {
+  private supabase: SupabaseClient | null = null;
+  private supabaseUrl: string;
+  private supabaseKey: string;
+
+  constructor(supabaseUrl?: string, supabaseKey?: string) {
+    // Allow configuration via environment variables or constructor
+    this.supabaseUrl = supabaseUrl || process.env.SUPABASE_URL || '';
+    this.supabaseKey = supabaseKey || process.env.SUPABASE_ANON_KEY || '';
+
+    if (this.supabaseUrl && this.supabaseKey) {
+      this.supabase = createClient(this.supabaseUrl, this.supabaseKey);
+      console.log('[NodeMCU License] Supabase client initialized');
+    } else {
+      console.warn('[NodeMCU License] Supabase credentials not provided. License verification disabled.');
+    }
+  }
+
+  /**
+   * Check license status for a NodeMCU device
+   * @param macAddress MAC address of the NodeMCU device
+   * @returns License verification status
+   */
+  async verifyLicense(macAddress: string): Promise<NodeMCULicenseVerification> {
+    if (!this.supabase) {
+      return { 
+        isValid: false, 
+        isActivated: false, 
+        isExpired: false,
+        error: 'License system not configured' 
+      };
+    }
+
+    try {
+      // Call the PostgreSQL function to check license status
+      const { data, error } = await this.supabase
+        .rpc('check_nodemcu_license_status', {
+          device_mac_address: macAddress
+        });
+
+      if (error) {
+        console.error('[NodeMCU License] Verification error:', error);
+        return { 
+          isValid: false, 
+          isActivated: false, 
+          isExpired: false,
+          error: error.message 
+        };
+      }
+
+      if (!data.success) {
+        return { 
+          isValid: false, 
+          isActivated: false, 
+          isExpired: false,
+          error: data.error,
+          canStartTrial: data.can_start_trial || false
+        };
+      }
+
+      // Parse the response
+      const result: NodeMCULicenseVerification = {
+        isValid: data.has_license && data.is_active && !data.is_expired,
+        isActivated: data.has_license,
+        isExpired: data.is_expired || false,
+        licenseType: data.license_type,
+        canStartTrial: data.can_start_trial || false
+      };
+
+      if (data.expires_at) {
+        result.expiresAt = new Date(data.expires_at);
+        result.daysRemaining = data.days_remaining;
+      }
+
+      if (data.trial_ended_at) {
+        result.trialEndedAt = new Date(data.trial_ended_at);
+      }
+
+      return result;
+
+    } catch (error: any) {
+      console.error('[NodeMCU License] Unexpected verification error:', error);
+      return { 
+        isValid: false, 
+        isActivated: false, 
+        isExpired: false,
+        error: error.message 
+      };
+    }
+  }
+
+  /**
+   * Start a 7-day trial for a NodeMCU device
+   * @param macAddress MAC address of the NodeMCU device
+   * @returns Trial activation result
+   */
+  async startTrial(macAddress: string): Promise<NodeMCULicenseActivationResult> {
+    if (!this.supabase) {
+      return { 
+        success: false, 
+        message: 'License system not configured' 
+      };
+    }
+
+    try {
+      const { data, error } = await this.supabase
+        .rpc('start_nodemcu_trial', {
+          device_mac_address: macAddress
+        });
+
+      if (error) {
+        console.error('[NodeMCU License] Trial start error:', error);
+        return { 
+          success: false, 
+          message: error.message 
+        };
+      }
+
+      if (!data.success) {
+        return { 
+          success: false, 
+          message: data.error 
+        };
+      }
+
+      return {
+        success: true,
+        message: data.message,
+        trialInfo: {
+          expiresAt: new Date(data.expires_at),
+          daysRemaining: data.days_remaining
+        }
+      };
+
+    } catch (error: any) {
+      console.error('[NodeMCU License] Unexpected trial error:', error);
+      return { 
+        success: false, 
+        message: error.message 
+      };
+    }
+  }
+
+  /**
+   * Activate a NodeMCU license key
+   * @param licenseKey The license key to activate
+   * @param macAddress MAC address of the NodeMCU device
+   * @returns Activation result
+   */
+  async activateLicense(licenseKey: string, macAddress: string): Promise<NodeMCULicenseActivationResult> {
+    if (!this.supabase) {
+      return { 
+        success: false, 
+        message: 'License system not configured' 
+      };
+    }
+
+    try {
+      const { data, error } = await this.supabase
+        .rpc('activate_nodemcu_license', {
+          license_key_param: licenseKey,
+          device_mac_address: macAddress
+        });
+
+      if (error) {
+        console.error('[NodeMCU License] Activation error:', error);
+        return { 
+          success: false, 
+          message: error.message 
+        };
+      }
+
+      if (!data.success) {
+        return { 
+          success: false, 
+          message: data.error 
+        };
+      }
+
+      return {
+        success: true,
+        message: data.message
+      };
+
+    } catch (error: any) {
+      console.error('[NodeMCU License] Unexpected activation error:', error);
+      return { 
+        success: false, 
+        message: error.message 
+      };
+    }
+  }
+
+  /**
+   * Get all NodeMCU licenses for the current vendor
+   * @returns Array of license records
+   */
+  async getVendorLicenses(): Promise<NodeMCULicenseRecord[]> {
+    if (!this.supabase) {
+      return [];
+    }
+
+    try {
+      const { data, error } = await this.supabase
+        .rpc('get_vendor_nodemcu_licenses');
+
+      if (error) {
+        console.error('[NodeMCU License] Get licenses error:', error);
+        return [];
+      }
+
+      return data || [];
+
+    } catch (error: any) {
+      console.error('[NodeMCU License] Unexpected get licenses error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Revoke a NodeMCU license (unbind from device)
+   * @param licenseKey The license key to revoke
+   * @returns Revocation result
+   */
+  async revokeLicense(licenseKey: string): Promise<{ success: boolean; message: string }> {
+    if (!this.supabase) {
+      return { 
+        success: false, 
+        message: 'License system not configured' 
+      };
+    }
+
+    try {
+      const { data, error } = await this.supabase
+        .rpc('revoke_nodemcu_license', {
+          license_key_param: licenseKey
+        });
+
+      if (error) {
+        console.error('[NodeMCU License] Revocation error:', error);
+        return { 
+          success: false, 
+          message: error.message 
+        };
+      }
+
+      return {
+        success: data.success,
+        message: data.message || data.error
+      };
+
+    } catch (error: any) {
+      console.error('[NodeMCU License] Unexpected revocation error:', error);
+      return { 
+        success: false, 
+        message: error.message 
+      };
+    }
+  }
+
+  /**
+   * Generate new NodeMCU license keys (superadmin only)
+   * @param count Number of licenses to generate
+   * @param licenseType Type of license (standard, premium)
+   * @param expirationMonths Optional expiration in months
+   * @returns Generated license keys
+   */
+  async generateLicenses(
+    count: number = 1, 
+    licenseType: 'standard' | 'premium' = 'standard',
+    expirationMonths?: number
+  ): Promise<{ license_key: string; expires_at: string; license_type: string }[]> {
+    if (!this.supabase) {
+      return [];
+    }
+
+    try {
+      const { data, error } = await this.supabase
+        .rpc('generate_nodemcu_license_keys', {
+          batch_size: count,
+          license_type_param: licenseType,
+          expiration_months: expirationMonths || null
+        });
+
+      if (error) {
+        console.error('[NodeMCU License] Generation error:', error);
+        return [];
+      }
+
+      return data || [];
+
+    } catch (error: any) {
+      console.error('[NodeMCU License] Unexpected generation error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Check if the license manager is configured
+   * @returns True if configured, false otherwise
+   */
+  isConfigured(): boolean {
+    return this.supabase !== null;
+  }
+}
+
+// Singleton instance
+let nodeMCULicenseManager: NodeMCULicenseManager | null = null;
+
+export function initializeNodeMCULicenseManager(supabaseUrl?: string, supabaseKey?: string): NodeMCULicenseManager {
+  if (!nodeMCULicenseManager) {
+    nodeMCULicenseManager = new NodeMCULicenseManager(supabaseUrl, supabaseKey);
+  }
+  return nodeMCULicenseManager;
+}
+
+export function getNodeMCULicenseManager(): NodeMCULicenseManager {
+  if (!nodeMCULicenseManager) {
+    nodeMCULicenseManager = new NodeMCULicenseManager();
+  }
+  return nodeMCULicenseManager;
+}

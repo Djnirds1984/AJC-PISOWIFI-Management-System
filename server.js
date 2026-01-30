@@ -2690,8 +2690,34 @@ app.get('/api/system/kernel-check', requireAdmin, async (req, res) => {
 app.post('/api/system/sync', requireAdmin, async (req, res) => {
   try {
     console.log('[System] Syncing filesystem...');
+    
+    // SYNC WLAN0 CONFIG BACK TO DB (As requested by user)
+    // This ensures manual file edits are saved to SQLite
+    const wlanConfigPath = '/etc/hostapd/hostapd_wlan0.conf';
+    if (fs.existsSync(wlanConfigPath)) {
+        try {
+            const content = fs.readFileSync(wlanConfigPath, 'utf8');
+            const ssidMatch = content.match(/^ssid=(.+)$/m);
+            const passMatch = content.match(/^wpa_passphrase=(.+)$/m);
+            
+            if (ssidMatch) {
+                const ssid = ssidMatch[1].trim();
+                const pass = passMatch ? passMatch[1].trim() : '';
+                
+                const bridgeMatch = content.match(/^bridge=(.+)$/m);
+                const bridge = bridgeMatch ? bridgeMatch[1].trim() : 'br0';
+                
+                console.log(`[System] Syncing wlan0 config to DB: SSID=${ssid}`);
+                await db.run('INSERT OR REPLACE INTO wireless_settings (interface, ssid, password, bridge) VALUES (?, ?, ?, ?)', 
+                  ['wlan0', ssid, pass, bridge]);
+            }
+        } catch (e) {
+            console.error('[System] Failed to sync wlan0 config:', e.message);
+        }
+    }
+
     await execPromise('sync');
-    res.json({ success: true, message: 'Filesystem synced' });
+    res.json({ success: true, message: 'Filesystem and Settings synced' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

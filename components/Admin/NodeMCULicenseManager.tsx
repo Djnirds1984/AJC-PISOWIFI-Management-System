@@ -18,16 +18,29 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
   const licenseManager = getNodeMCULicenseManager();
 
   useEffect(() => {
-    if (licenseManager.isConfigured()) {
-      loadLicenses();
-    }
+    loadLicenses();
   }, []);
 
   const loadLicenses = async () => {
     setLoading(true);
     try {
-      const vendorLicenses = await licenseManager.getVendorLicenses();
-      setLicenses(vendorLicenses);
+      // Always load licenses from our own API first (which now includes local trial info)
+      const response = await fetch('/api/nodemcu/license/vendor', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setLicenses(data.licenses || []);
+        }
+      } else if (licenseManager.isConfigured()) {
+        // Fallback to direct Supabase if API fails but Supabase is configured
+        const vendorLicenses = await licenseManager.getVendorLicenses();
+        setLicenses(vendorLicenses);
+      }
     } catch (error) {
       console.error('Failed to load licenses:', error);
       toast.error('Failed to load NodeMCU licenses');
@@ -93,6 +106,17 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
   };
 
   const getLicenseStatus = (license: any) => {
+    if (license.isLocalTrial) {
+      const expiresAt = new Date(license.expires_at);
+      const now = new Date();
+      const daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (expiresAt < now) {
+        return { text: 'Expired (Trial)', color: 'bg-red-100 text-red-700' };
+      }
+      return { text: `${daysRemaining}d Trial left`, color: 'bg-blue-100 text-blue-700' };
+    }
+
     if (!license.is_active) {
       return { text: 'Unassigned', color: 'bg-slate-100 text-slate-600' };
     }
@@ -115,7 +139,7 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
   };
 
   const getDeviceLicenseStatus = (device: NodeMCUDevice) => {
-    const deviceLicense = licenses.find(lic => lic.device_id === device.id && lic.is_active);
+    const deviceLicense = licenses.find(lic => (lic.device_id === device.id || lic.mac_address === device.macAddress) && (lic.is_active || lic.isLocalTrial));
     
     if (!deviceLicense) {
       return { 
@@ -126,7 +150,7 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
     }
 
     const status = getLicenseStatus(deviceLicense);
-    const isExpired = status.text === 'Expired';
+    const isExpired = status.text.includes('Expired');
     
     return {
       hasLicense: true,
@@ -137,18 +161,18 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
     };
   };
 
-  if (!licenseManager.isConfigured()) {
+  if (!licenseManager.isConfigured() && licenses.length === 0 && !loading) {
     return (
-      <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-amber-500 rounded-lg text-white">
+          <div className="p-2 bg-blue-500 rounded-lg text-white">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
           <div>
-            <h3 className="text-[10px] font-black text-amber-900 uppercase tracking-widest">License System Not Configured</h3>
-            <p className="text-[8px] text-amber-600 font-bold uppercase tracking-tighter">Please configure Supabase credentials to enable NodeMCU licensing</p>
+            <h3 className="text-[10px] font-black text-blue-900 uppercase tracking-widest">Local License Mode</h3>
+            <p className="text-[8px] text-blue-600 font-bold uppercase tracking-tighter">NodeMCU devices will automatically start a 7-day local trial if no cloud license is found.</p>
           </div>
         </div>
       </div>

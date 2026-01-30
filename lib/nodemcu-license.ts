@@ -25,6 +25,7 @@ interface NodeMCULicenseVerification {
   error?: string;
   canStartTrial?: boolean;
   trialEndedAt?: Date;
+  isLocalTrial?: boolean;
 }
 
 interface NodeMCULicenseActivationResult {
@@ -44,8 +45,8 @@ export class NodeMCULicenseManager {
 
   constructor(supabaseUrl?: string, supabaseKey?: string) {
     // Allow configuration via environment variables or constructor
-    this.supabaseUrl = supabaseUrl || process.env.SUPABASE_URL || '';
-    this.supabaseKey = supabaseKey || process.env.SUPABASE_ANON_KEY || '';
+    this.supabaseUrl = supabaseUrl || (typeof process !== 'undefined' ? process.env.SUPABASE_URL : '') || '';
+    this.supabaseKey = supabaseKey || (typeof process !== 'undefined' ? process.env.SUPABASE_ANON_KEY : '') || '';
 
     if (this.supabaseUrl && this.supabaseKey) {
       this.supabase = createClient(this.supabaseUrl, this.supabaseKey);
@@ -56,76 +57,64 @@ export class NodeMCULicenseManager {
   }
 
   /**
-   * Check license status for a NodeMCU device
+   * Check license status for a NodeMCU device (with local trial fallback)
    * @param macAddress MAC address of the NodeMCU device
    * @returns License verification status
    */
   async verifyLicense(macAddress: string): Promise<NodeMCULicenseVerification> {
-    if (!this.supabase) {
-      return { 
-        isValid: false, 
-        isActivated: false, 
-        isExpired: false,
-        error: 'License system not configured' 
-      };
+    // 1. Try Supabase first if configured
+    if (this.supabase) {
+      try {
+        const { data, error } = await this.supabase
+          .rpc('check_nodemcu_license_status', {
+            device_mac_address: macAddress
+          });
+
+        if (!error && data && data.success && data.has_license) {
+          const result: NodeMCULicenseVerification = {
+            isValid: data.is_active && !data.is_expired,
+            isActivated: true,
+            isExpired: data.is_expired || false,
+            licenseType: data.license_type,
+            canStartTrial: false
+          };
+
+          if (data.expires_at) {
+            result.expiresAt = new Date(data.expires_at);
+            result.daysRemaining = data.days_remaining;
+          }
+          return result;
+        }
+      } catch (error) {
+        console.error('[NodeMCU License] Supabase verification error:', error);
+      }
     }
 
+    // 2. Fallback to Local Trial logic
+    // NOTE: In the frontend, we don't have direct DB access. 
+    // We'll rely on the backend to provide this info via the API.
+    // For the NodeMCULicenseManager class used in frontend, 
+    // we'll fetch from our own API instead of Supabase RPC directly when Supabase fails.
     try {
-      // Call the PostgreSQL function to check license status
-      const { data, error } = await this.supabase
-        .rpc('check_nodemcu_license_status', {
-          device_mac_address: macAddress
-        });
-
-      if (error) {
-        console.error('[NodeMCU License] Verification error:', error);
-        return { 
-          isValid: false, 
-          isActivated: false, 
-          isExpired: false,
-          error: error.message 
-        };
+      const response = await fetch(`/api/nodemcu/license/status/${macAddress}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
+        }
+      });
+      
+      if (response.ok) {
+        return await response.json();
       }
-
-      if (!data.success) {
-        return { 
-          isValid: false, 
-          isActivated: false, 
-          isExpired: false,
-          error: data.error,
-          canStartTrial: data.can_start_trial || false
-        };
-      }
-
-      // Parse the response
-      const result: NodeMCULicenseVerification = {
-        isValid: data.has_license && data.is_active && !data.is_expired,
-        isActivated: data.has_license,
-        isExpired: data.is_expired || false,
-        licenseType: data.license_type,
-        canStartTrial: data.can_start_trial || false
-      };
-
-      if (data.expires_at) {
-        result.expiresAt = new Date(data.expires_at);
-        result.daysRemaining = data.days_remaining;
-      }
-
-      if (data.trial_ended_at) {
-        result.trialEndedAt = new Date(data.trial_ended_at);
-      }
-
-      return result;
-
-    } catch (error: any) {
-      console.error('[NodeMCU License] Unexpected verification error:', error);
-      return { 
-        isValid: false, 
-        isActivated: false, 
-        isExpired: false,
-        error: error.message 
-      };
+    } catch (err) {
+      console.error('[NodeMCU License] Local status fetch error:', err);
     }
+
+    return { 
+      isValid: false, 
+      isActivated: false, 
+      isExpired: false,
+      error: 'License verification failed' 
+    };
   }
 
   /**

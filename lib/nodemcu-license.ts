@@ -214,7 +214,7 @@ export class NodeMCULicenseManager {
    * @param macAddress MAC address of the NodeMCU device
    * @returns Activation result
    */
-  async activateLicense(licenseKey: string, macAddress: string, vendorId?: string): Promise<NodeMCULicenseActivationResult> {
+  async activateLicense(licenseKey: string, macAddress: string, vendorId?: string, machineId?: string): Promise<NodeMCULicenseActivationResult> {
     // 1. If in browser, delegate to API
     if (typeof window !== 'undefined') {
       try {
@@ -231,7 +231,7 @@ export class NodeMCULicenseManager {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
           },
-          body: JSON.stringify({ licenseKey, macAddress })
+          body: JSON.stringify({ licenseKey, macAddress, vendorId, machineId })
         });
         const result = await response.json();
         
@@ -283,14 +283,41 @@ export class NodeMCULicenseManager {
       }
 
       // 2. Get the device
-      const { data: device, error: deviceError } = await this.supabase
+      let { data: device, error: deviceError } = await this.supabase
         .from('nodemcu_devices')
         .select('*')
         .eq('mac_address', macAddress)
-        .single();
+        .maybeSingle();
 
-      if (deviceError || !device) {
-        return { success: false, message: 'Device not found' };
+      if (!device) {
+        // Device not found. Try to auto-create if we have context.
+        if (machineId && vendorId) {
+            console.log(`[NodeMCU License] Device ${macAddress} not found in cloud. Auto-registering to Machine ${machineId}...`);
+            const { data: newDevice, error: createError } = await this.supabase
+               .from('nodemcu_devices')
+               .insert({
+                   vendor_id: vendorId,
+                   machine_id: machineId,
+                   mac_address: macAddress,
+                   name: `NodeMCU-${macAddress.replace(/:/g, '').substring(0, 6)}`,
+                   status: 'connected',
+                   created_at: new Date().toISOString()
+               })
+               .select()
+               .single();
+            
+            if (createError) {
+                console.error('[NodeMCU License] Failed to auto-create device:', createError);
+                return { success: false, message: 'Device not found and could not be auto-created: ' + createError.message };
+            }
+            device = newDevice;
+        } else {
+            return { success: false, message: 'Device not found' };
+        }
+      }
+      
+      if (deviceError && !device) {
+        return { success: false, message: 'Device lookup failed: ' + deviceError.message };
       }
       
       // Verify ownership (if vendorId provided)

@@ -626,19 +626,24 @@ app.post('/api/nodemcu/license/activate', requireAdmin, async (req, res) => {
     }
 
     // If vendorId is not provided, try to get it from the machine's identity (EdgeSync)
-    if (!vendorId) {
-      const identity = edgeSync.getIdentity();
-      if (identity && identity.vendorId) {
+    let machineId = null;
+    const identity = edgeSync.getIdentity();
+    
+    if (identity) {
+      machineId = identity.machineId;
+      if (!vendorId && identity.vendorId) {
         vendorId = identity.vendorId;
         console.log(`[NodeMCU License] Using machine vendor ID: ${vendorId}`);
-      } else {
-        console.warn('[NodeMCU License] Warning: No vendor ID provided and machine is not bound to a vendor.');
       }
     }
-    
-    console.log(`[NodeMCU License] Activating license ${licenseKey} for ${macAddress} (Vendor: ${vendorId || 'Auth Context'})`);
 
-    const result = await nodeMCULicenseManager.activateLicense(licenseKey.trim(), macAddress, vendorId);
+    if (!vendorId) {
+      console.warn('[NodeMCU License] Warning: No vendor ID provided and machine is not bound to a vendor.');
+    }
+    
+    console.log(`[NodeMCU License] Activating license ${licenseKey} for ${macAddress} (Vendor: ${vendorId || 'Auth Context'}, Machine: ${machineId || 'Unknown'})`);
+
+    const result = await nodeMCULicenseManager.activateLicense(licenseKey.trim(), macAddress, vendorId, machineId);
     res.json(result);
   } catch (err) {
     console.error('[NodeMCU License] Activation error:', err);

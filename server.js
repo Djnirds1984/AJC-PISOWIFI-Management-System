@@ -500,12 +500,40 @@ app.post('/api/license/activate', async (req, res) => {
 
 app.get('/api/license/hardware-id', async (req, res) => {
   try {
-    if (!systemHardwareId) {
-      systemHardwareId = await getUniqueHardwareId();
-    }
-    res.json({ hardwareId: systemHardwareId });
+    const registrationKeyResult = await db.get('SELECT value FROM config WHERE key = ?', ['registrationKey']);
+    // Default to '7B3F1A9' if not set, same as in /api/nodemcu/register
+    const key = registrationKeyResult?.value || '7B3F1A9';
+    res.json({ hardwareId: key });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/license/hardware-id', requireAdmin, async (req, res) => {
+  const { hardwareId } = req.body;
+  
+  if (!hardwareId || !hardwareId.trim()) {
+    return res.status(400).json({ error: 'System Auth Key is required' });
+  }
+
+  if (hardwareId.length > 63) {
+    return res.status(400).json({ error: 'System Auth Key must be 63 characters or less' });
+  }
+
+  try {
+    // Save to config as 'registrationKey' to match NodeMCU registration logic
+    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['registrationKey', hardwareId.trim()]);
+    
+    console.log(`[License] Updated System Auth Key (registrationKey) to: ${hardwareId.trim()}`);
+    
+    res.json({ 
+      success: true, 
+      message: 'System Auth Key updated successfully', 
+      hardwareId: hardwareId.trim() 
+    });
+  } catch (err) {
+    console.error('[License] Failed to save System Auth Key:', err);
+    res.status(500).json({ error: 'Failed to save System Auth Key' });
   }
 });
 
@@ -903,8 +931,17 @@ let systemHardwareId = null;
 // Initialize hardware ID on startup
 (async () => {
   try {
-    systemHardwareId = await getUniqueHardwareId();
-    console.log(`[License] Hardware ID: ${systemHardwareId}`);
+    // 1. Check for custom hardware ID in config
+    const customHwId = await db.get('SELECT value FROM config WHERE key = ?', ['custom_hardware_id']);
+    
+    if (customHwId && customHwId.value) {
+      systemHardwareId = customHwId.value;
+      console.log(`[License] Using Custom Hardware ID: ${systemHardwareId}`);
+    } else {
+      // 2. Fallback to auto-generated ID
+      systemHardwareId = await getUniqueHardwareId();
+      console.log(`[License] Hardware ID: ${systemHardwareId}`);
+    }
 
     // Attempt to sync license from cloud on startup
     await licenseManager.fetchAndCacheLicense(systemHardwareId);

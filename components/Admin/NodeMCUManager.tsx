@@ -17,6 +17,9 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'devices' | 'licenses'>('devices');
   const [systemAuthKey, setSystemAuthKey] = useState<string>('Loading...');
+  const [isEditingAuthKey, setIsEditingAuthKey] = useState(false);
+  const [tempAuthKey, setTempAuthKey] = useState('');
+  const [isSavingAuthKey, setIsSavingAuthKey] = useState(false);
 
   useEffect(() => {
     setLocalDevices(devices);
@@ -26,7 +29,7 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
 
   const fetchSystemAuthKey = async () => {
     try {
-      const response = await fetch('/api/license/status');
+      const response = await fetch('/api/license/hardware-id');
       if (response.ok) {
         const data = await response.json();
         setSystemAuthKey(data.hardwareId || 'Unknown');
@@ -34,6 +37,43 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
     } catch (error) {
       console.error('Failed to fetch system auth key:', error);
       setSystemAuthKey('Error');
+    }
+  };
+
+  const handleSaveAuthKey = async () => {
+    if (!tempAuthKey.trim()) {
+      alert('System Auth Key cannot be empty');
+      return;
+    }
+    if (tempAuthKey.length > 63) {
+      alert('System Auth Key must be 63 characters or less');
+      return;
+    }
+
+    setIsSavingAuthKey(true);
+    try {
+      const response = await fetch('/api/license/hardware-id', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
+        },
+        body: JSON.stringify({ hardwareId: tempAuthKey })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setSystemAuthKey(data.hardwareId);
+        setIsEditingAuthKey(false);
+        alert('System Auth Key updated successfully!');
+      } else {
+        throw new Error(data.error || 'Failed to update System Auth Key');
+      }
+    } catch (error: any) {
+      console.error('Failed to save System Auth Key:', error);
+      alert(error.message || 'Failed to save System Auth Key');
+    } finally {
+      setIsSavingAuthKey(false);
     }
   };
 
@@ -253,21 +293,75 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <code className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-[10px] font-mono font-bold text-slate-800">
-              {systemAuthKey}
-            </code>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(systemAuthKey);
-                alert('Auth Key copied to clipboard!');
-              }}
-              className="p-2 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition-colors"
-              title="Copy to clipboard"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-            </button>
+            {isEditingAuthKey ? (
+              <>
+                <input
+                  type="text"
+                  value={tempAuthKey}
+                  onChange={(e) => setTempAuthKey(e.target.value)}
+                  className="bg-white border border-slate-300 rounded-lg px-3 py-2 text-[10px] font-mono font-bold text-slate-800 w-64 focus:outline-none focus:ring-2 focus:ring-slate-500"
+                  placeholder="Enter System Auth Key"
+                  maxLength={63}
+                />
+                <button
+                  onClick={handleSaveAuthKey}
+                  disabled={isSavingAuthKey}
+                  className="p-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50"
+                  title="Save"
+                >
+                  {isSavingAuthKey ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  onClick={() => setIsEditingAuthKey(false)}
+                  disabled={isSavingAuthKey}
+                  className="p-2 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition-colors disabled:opacity-50"
+                  title="Cancel"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </>
+            ) : (
+              <>
+                <code className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-[10px] font-mono font-bold text-slate-800">
+                  {systemAuthKey}
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(systemAuthKey);
+                    alert('Auth Key copied to clipboard!');
+                  }}
+                  className="p-2 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition-colors"
+                  title="Copy to clipboard"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    setTempAuthKey(systemAuthKey);
+                    setIsEditingAuthKey(true);
+                  }}
+                  className="p-2 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition-colors"
+                  title="Edit System Auth Key"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

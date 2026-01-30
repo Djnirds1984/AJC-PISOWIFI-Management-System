@@ -83,6 +83,45 @@ const SystemSettings: React.FC = () => {
     }
   };
 
+  const handleServiceAction = async (action: string) => {
+    if (action === 'export-db') {
+        window.open('/api/system/export-db', '_blank');
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to ${action.replace('-', ' ')}?`)) return;
+    
+    try {
+      let endpoint = '';
+      let method = 'POST';
+      
+      switch (action) {
+        case 'restart': endpoint = '/api/system/restart'; break;
+        case 'clear-logs': endpoint = '/api/system/clear-logs'; break;
+        case 'sync': endpoint = '/api/system/sync'; break;
+        case 'kernel-check': 
+          endpoint = '/api/system/kernel-check'; 
+          method = 'GET';
+          break;
+      }
+      
+      const res = await fetch(endpoint, { method });
+      const data = await res.json();
+      
+      if (data.success) {
+        if (action === 'kernel-check' && data.kernel) {
+            alert(`Kernel Version: ${data.kernel}`);
+        } else {
+            alert(data.message || 'Action completed successfully');
+        }
+      } else {
+        alert('Error: ' + data.error);
+      }
+    } catch (e: any) {
+      alert('Failed: ' + e.message);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-10">
       {/* License Status Card */}
@@ -143,13 +182,24 @@ const SystemSettings: React.FC = () => {
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Service Management</h3>
           <div className="grid grid-cols-2 gap-2">
-             <ServiceButton label="Restart App" icon="🔄" />
-             <ServiceButton label="Clear Logs" icon="🧹" />
-             <ServiceButton label="Export DB" icon="💾" />
-             <ServiceButton label="Kernel Check" icon="🔬" />
+             <ServiceButton label="Restart App" icon="🔄" onClick={() => handleServiceAction('restart')} />
+             <ServiceButton label="Clear Logs" icon="🧹" onClick={() => handleServiceAction('clear-logs')} />
+             <ServiceButton label="Export DB" icon="💾" onClick={() => handleServiceAction('export-db')} />
+             <ServiceButton label="Kernel Check" icon="🔬" onClick={() => handleServiceAction('kernel-check')} />
+             <div className="col-span-2 mt-2">
+                <button 
+                  onClick={() => handleServiceAction('sync')}
+                  className="w-full bg-indigo-600 text-white p-3 rounded-xl flex items-center justify-center gap-2 hover:bg-indigo-700 hover:shadow-lg transition-all active:scale-95 group shadow-indigo-200"
+                >
+                   <span className="text-lg group-hover:rotate-180 transition-transform duration-500">♻️</span>
+                   <span className="text-[10px] font-black uppercase tracking-widest">Sync & Save Settings</span>
+                </button>
+             </div>
           </div>
         </section>
       </div>
+
+      <LogTerminal />
 
       <section className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden transition-all ${licenseStatus?.isRevoked ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
         <div className="px-4 py-2 border-b border-slate-100 bg-red-50/30">
@@ -233,12 +283,51 @@ const DiagItem: React.FC<{ label: string; value: string; icon: string }> = ({ la
   </div>
 );
 
-const ServiceButton: React.FC<{ label: string; icon: string }> = ({ label, icon }) => (
-  <button className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex flex-col items-center gap-1.5 hover:bg-white hover:shadow-md transition-all active:scale-95 group">
+const ServiceButton: React.FC<{ label: string; icon: string; onClick?: () => void }> = ({ label, icon, onClick }) => (
+  <button 
+    onClick={onClick}
+    className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex flex-col items-center gap-1.5 hover:bg-white hover:shadow-md transition-all active:scale-95 group"
+  >
     <span className="text-lg group-hover:scale-110 transition-transform">{icon}</span>
     <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
   </button>
 );
+
+const LogTerminal: React.FC = () => {
+  const [logs, setLogs] = useState('Loading logs...');
+  
+  const fetchLogs = async () => {
+    try {
+      const res = await fetch('/api/system/logs');
+      const data = await res.json();
+      setLogs(data.logs);
+    } catch (e) {
+      setLogs('Failed to load logs.');
+    }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 mt-4 overflow-hidden">
+      <div className="flex items-center justify-between mb-2 border-b border-slate-800 pb-2">
+        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">System Logs</h3>
+        <div className="flex gap-1">
+          <div className="w-2 h-2 rounded-full bg-red-500"></div>
+          <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+          <div className="w-2 h-2 rounded-full bg-green-500"></div>
+        </div>
+      </div>
+      <div className="font-mono text-[9px] text-green-400 h-48 overflow-auto whitespace-pre-wrap leading-tight opacity-90">
+        {logs}
+      </div>
+    </div>
+  );
+};
 
 const ChangePasswordForm: React.FC = () => {
   const [oldPassword, setOldPassword] = useState('');

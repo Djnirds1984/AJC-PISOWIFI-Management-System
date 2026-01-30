@@ -2598,13 +2598,10 @@ app.post('/api/devices/:id/refresh', requireAdmin, async (req, res) => {
         }
       }
     } catch (e) {}
-    
-    // Update device if information changed
+
     if (newIp !== device.ip || newHostname !== device.hostname) {
-      await db.run(
-        'UPDATE wifi_devices SET ip = ?, hostname = ?, last_seen = ? WHERE id = ?',
-        [newIp, newHostname, Date.now(), req.params.id]
-      );
+      await db.run('UPDATE wifi_devices SET ip = ?, hostname = ?, last_seen = ? WHERE id = ?', 
+        [newIp, newHostname, Date.now(), req.params.id]);
     }
     
     // Get current session data for this device
@@ -2632,6 +2629,58 @@ app.post('/api/devices/:id/refresh', requireAdmin, async (req, res) => {
     res.json(deviceWithSession);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// System Management APIs
+app.post('/api/system/restart', requireAdmin, async (req, res) => {
+  try {
+    console.log('[System] Restart requested');
+    await execPromise('sync');
+    res.json({ success: true, message: 'System restarting...' });
+    setTimeout(() => process.exit(0), 1000);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/system/clear-logs', requireAdmin, async (req, res) => {
+  try {
+    console.log('[System] Clearing logs...');
+    await execPromise('truncate -s 0 /var/log/syslog').catch(() => {});
+    await execPromise('truncate -s 0 /var/log/messages').catch(() => {});
+    res.json({ success: true, message: 'Logs cleared' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/system/export-db', requireAdmin, (req, res) => {
+  const dbPath = path.resolve(__dirname, 'pisowifi.sqlite');
+  if (fs.existsSync(dbPath)) {
+      res.download(dbPath, 'pisowifi_backup.sqlite');
+  } else {
+      res.status(404).json({ error: 'Database file not found' });
+  }
+});
+
+app.get('/api/system/kernel-check', requireAdmin, async (req, res) => {
+  try {
+    const { stdout } = await execPromise('uname -r');
+    res.json({ success: true, kernel: stdout.trim() });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/system/sync', requireAdmin, async (req, res) => {
+  try {
+    console.log('[System] Syncing filesystem...');
+    await execPromise('sync');
+    res.json({ success: true, message: 'Filesystem synced' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/system/logs', requireAdmin, async (req, res) => {
+  try {
+    const { stdout } = await execPromise('tail -n 100 /var/log/syslog || tail -n 100 /var/log/messages').catch(() => ({ stdout: 'No logs available' }));
+    res.json({ logs: stdout || 'No logs found' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+
 
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/dist')) return res.status(404).send('Not found');

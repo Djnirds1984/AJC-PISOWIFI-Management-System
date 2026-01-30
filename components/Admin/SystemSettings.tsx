@@ -85,7 +85,34 @@ const SystemSettings: React.FC = () => {
 
   const handleServiceAction = async (action: string) => {
     if (action === 'export-db') {
-        window.open('/api/system/export-db', '_blank');
+        try {
+            const token = localStorage.getItem('ajc_admin_token');
+            const headers: Record<string, string> = {};
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            
+            const res = await fetch('/api/system/export-db', { headers });
+            
+            if (res.status === 401) {
+                alert('Unauthorized. Please login again.');
+                return;
+            }
+            
+            if (!res.ok) throw new Error('Download failed');
+            
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'pisowifi_backup.sqlite';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (e: any) {
+            alert('Export failed: ' + e.message);
+        }
         return;
     }
 
@@ -105,7 +132,16 @@ const SystemSettings: React.FC = () => {
           break;
       }
       
-      const res = await fetch(endpoint, { method });
+      const token = localStorage.getItem('ajc_admin_token');
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(endpoint, { 
+        method,
+        headers
+      });
       const data = await res.json();
       
       if (data.success) {
@@ -298,7 +334,19 @@ const LogTerminal: React.FC = () => {
   
   const fetchLogs = async () => {
     try {
-      const res = await fetch('/api/system/logs');
+      const token = localStorage.getItem('ajc_admin_token');
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch('/api/system/logs', { headers });
+      
+      if (res.status === 401) {
+        setLogs('Unauthorized: Please login to view logs.');
+        return;
+      }
+      
       const data = await res.json();
       setLogs(data.logs);
     } catch (e) {

@@ -18,6 +18,7 @@ interface LicenseStatus {
 const SystemSettings: React.FC = () => {
   const [isResetting, setIsResetting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showRestartModal, setShowRestartModal] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [systemStats, setSystemStats] = useState({
     uptime: 'Loading...',
@@ -83,7 +84,7 @@ const SystemSettings: React.FC = () => {
     }
   };
 
-  const handleServiceAction = async (action: string) => {
+  const handleServiceAction = async (action: string, payload: any = null) => {
     if (action === 'export-db') {
         try {
             const token = localStorage.getItem('ajc_admin_token');
@@ -116,11 +117,12 @@ const SystemSettings: React.FC = () => {
         return;
     }
 
-    if (!confirm(`Are you sure you want to ${action.replace('-', ' ')}?`)) return;
+    if (action !== 'restart' && !confirm(`Are you sure you want to ${action.replace('-', ' ')}?`)) return;
     
     try {
       let endpoint = '';
       let method = 'POST';
+      let body = payload ? JSON.stringify(payload) : undefined;
       
       switch (action) {
         case 'restart': endpoint = '/api/system/restart'; break;
@@ -137,10 +139,14 @@ const SystemSettings: React.FC = () => {
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
+      if (body) {
+        headers['Content-Type'] = 'application/json';
+      }
 
       const res = await fetch(endpoint, { 
         method,
-        headers
+        headers,
+        body
       });
       const data = await res.json();
       
@@ -218,7 +224,7 @@ const SystemSettings: React.FC = () => {
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Service Management</h3>
           <div className="grid grid-cols-2 gap-2">
-             <ServiceButton label="Restart App" icon="🔄" onClick={() => handleServiceAction('restart')} />
+             <ServiceButton label="Restart App" icon="🔄" onClick={() => setShowRestartModal(true)} />
              <ServiceButton label="Clear Logs" icon="🧹" onClick={() => handleServiceAction('clear-logs')} />
              <ServiceButton label="Export DB" icon="💾" onClick={() => handleServiceAction('export-db')} />
              <ServiceButton label="Kernel Check" icon="🔬" onClick={() => handleServiceAction('kernel-check')} />
@@ -260,6 +266,50 @@ const SystemSettings: React.FC = () => {
           </div>
         </div>
       </section>
+
+      {/* Restart Modal */}
+      {showRestartModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 text-center shadow-2xl border border-slate-200">
+            <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 text-xl">🔄</div>
+            <h3 className="text-sm font-black text-slate-900 uppercase">System Restart</h3>
+            <p className="text-[10px] text-slate-500 font-bold mt-2 uppercase leading-relaxed">
+              Select restart method
+            </p>
+            
+            <div className="grid grid-cols-2 gap-3 mt-6">
+              <button 
+                onClick={() => {
+                    setShowRestartModal(false);
+                    handleServiceAction('restart', { type: 'hard' });
+                }}
+                className="bg-red-600 text-white py-3 rounded-xl font-black text-[10px] uppercase shadow-md shadow-red-600/10 hover:bg-red-700 transition-all active:scale-95"
+              >
+                Hard Restart
+                <span className="block text-[8px] opacity-70 mt-1 font-mono">sudo reboot</span>
+              </button>
+              
+              <button 
+                onClick={() => {
+                    setShowRestartModal(false);
+                    handleServiceAction('restart', { type: 'soft' });
+                }}
+                className="bg-indigo-600 text-white py-3 rounded-xl font-black text-[10px] uppercase shadow-md shadow-indigo-600/10 hover:bg-indigo-700 transition-all active:scale-95"
+              >
+                Soft Restart
+                <span className="block text-[8px] opacity-70 mt-1 font-mono">pm2 restart all</span>
+              </button>
+            </div>
+
+            <button 
+              onClick={() => setShowRestartModal(false)}
+              className="mt-4 text-slate-400 text-[10px] font-bold uppercase hover:text-slate-600 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Confirmation Modal */}
       {showConfirm && (

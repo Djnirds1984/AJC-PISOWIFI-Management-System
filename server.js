@@ -2638,10 +2638,27 @@ app.post('/api/devices/:id/refresh', requireAdmin, async (req, res) => {
 // System Management APIs
 app.post('/api/system/restart', requireAdmin, async (req, res) => {
   try {
-    console.log('[System] Restart requested');
+    const { type } = req.body || {};
+    console.log(`[System] Restart requested (Type: ${type || 'soft'})`);
+    
     await execPromise('sync');
-    res.json({ success: true, message: 'System restarting...' });
-    setTimeout(() => process.exit(0), 1000);
+
+    if (type === 'hard') {
+        res.json({ success: true, message: 'System rebooting (Hard Restart)...' });
+        setTimeout(() => {
+            exec('sudo reboot').unref();
+        }, 1000);
+    } else {
+        res.json({ success: true, message: 'Application restarting (Soft Restart)...' });
+        setTimeout(async () => {
+             try {
+                 await execPromise('pm2 restart all');
+             } catch (e) {
+                 console.log('PM2 restart failed, falling back to process.exit', e.message);
+                 process.exit(0);
+             }
+        }, 1000);
+    }
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

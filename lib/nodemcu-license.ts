@@ -214,7 +214,7 @@ export class NodeMCULicenseManager {
    * @param macAddress MAC address of the NodeMCU device
    * @returns Activation result
    */
-  async activateLicense(licenseKey: string, macAddress: string): Promise<NodeMCULicenseActivationResult> {
+  async activateLicense(licenseKey: string, macAddress: string, vendorId?: string): Promise<NodeMCULicenseActivationResult> {
     // 1. If in browser, delegate to API
     if (typeof window !== 'undefined') {
       try {
@@ -266,7 +266,8 @@ export class NodeMCULicenseManager {
       const { data, error } = await this.supabase
         .rpc('activate_nodemcu_license', {
           license_key_param: licenseKey,
-          device_mac_address: macAddress
+          device_mac_address: macAddress,
+          vendor_id_param: vendorId || null
         });
 
       if (error) {
@@ -286,7 +287,12 @@ export class NodeMCULicenseManager {
 
       return {
         success: true,
-        message: data.message
+        message: data.message,
+        license: {
+          licenseKey: data.license_key,
+          macAddress: data.device_mac,
+          activatedAt: new Date(data.activated_at)
+        }
       };
 
     } catch (error: any) {

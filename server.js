@@ -588,7 +588,7 @@ app.get('/api/nodemcu/license/status/:macAddress', requireAdmin, async (req, res
 // NodeMCU License Activation
 app.post('/api/nodemcu/license/activate', requireAdmin, async (req, res) => {
   try {
-    const { licenseKey, macAddress } = req.body;
+    let { licenseKey, macAddress, vendorId } = req.body;
     
     if (!licenseKey || !macAddress) {
       return res.status(400).json({ 
@@ -596,11 +596,54 @@ app.post('/api/nodemcu/license/activate', requireAdmin, async (req, res) => {
         message: 'License key and MAC address are required' 
       });
     }
+
+    // If vendorId is not provided, try to get it from the machine's identity (EdgeSync)
+    if (!vendorId) {
+      const identity = edgeSync.getIdentity();
+      if (identity && identity.vendorId) {
+        vendorId = identity.vendorId;
+        console.log(`[NodeMCU License] Using machine vendor ID: ${vendorId}`);
+      } else {
+        console.warn('[NodeMCU License] Warning: No vendor ID provided and machine is not bound to a vendor.');
+      }
+    }
     
-    const result = await nodeMCULicenseManager.activateLicense(licenseKey.trim(), macAddress);
+    console.log(`[NodeMCU License] Activating license ${licenseKey} for ${macAddress} (Vendor: ${vendorId || 'Auth Context'})`);
+
+    const result = await nodeMCULicenseManager.activateLicense(licenseKey.trim(), macAddress, vendorId);
     res.json(result);
   } catch (err) {
     console.error('[NodeMCU License] Activation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// NodeMCU License Revocation
+app.post('/api/nodemcu/license/revoke', requireAdmin, async (req, res) => {
+  try {
+    let { licenseKey, vendorId } = req.body;
+    
+    if (!licenseKey) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'License key is required' 
+      });
+    }
+
+    // If vendorId is not provided, try to get it from the machine's identity (EdgeSync)
+    if (!vendorId) {
+      const identity = edgeSync.getIdentity();
+      if (identity && identity.vendorId) {
+        vendorId = identity.vendorId;
+      }
+    }
+
+    console.log(`[NodeMCU License] Revoking license ${licenseKey} (Vendor: ${vendorId || 'Auth Context'})`);
+    
+    const result = await nodeMCULicenseManager.revokeLicense(licenseKey, vendorId);
+    res.json(result);
+  } catch (err) {
+    console.error('[NodeMCU License] Revocation error:', err);
     res.status(500).json({ error: err.message });
   }
 });

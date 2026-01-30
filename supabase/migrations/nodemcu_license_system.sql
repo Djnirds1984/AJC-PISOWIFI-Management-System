@@ -416,12 +416,21 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 7. FUNCTION TO REVOKE NODEMCU LICENSE
 CREATE OR REPLACE FUNCTION revoke_nodemcu_license(
-  license_key_param TEXT
+  license_key_param TEXT,
+  vendor_id_param UUID DEFAULT NULL
 )
 RETURNS JSON AS $$
 DECLARE
   license_record RECORD;
+  vendor_uuid UUID;
 BEGIN
+  -- Determine vendor ID (parameter or auth context)
+  IF vendor_id_param IS NULL THEN
+    vendor_uuid := auth.uid();
+  ELSE
+    vendor_uuid := vendor_id_param;
+  END IF;
+
   -- Get the license
   SELECT * INTO license_record
   FROM nodemcu_licenses
@@ -435,7 +444,7 @@ BEGIN
   END IF;
 
   -- Check if license belongs to current vendor
-  IF license_record.vendor_id != auth.uid() THEN
+  IF license_record.vendor_id != vendor_uuid THEN
     RETURN json_build_object(
       'success', false,
       'error', 'License does not belong to you'

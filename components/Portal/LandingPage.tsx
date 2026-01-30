@@ -20,7 +20,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   const [isMacLoading, setIsMacLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [config, setConfig] = useState<PortalConfig>(DEFAULT_PORTAL_CONFIG);
-  const [availableSlots, setAvailableSlots] = useState<{id: string, name: string, macAddress: string, isOnline: boolean}[]>([]);
+  const [availableSlots, setAvailableSlots] = useState<{id: string, name: string, macAddress: string, isOnline: boolean, license?: { isValid: boolean, isTrial: boolean, isExpired: boolean }}[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<string>('main');
   const [slotError, setSlotError] = useState<string | null>(null);
   const [canInsertCoin, setCanInsertCoin] = useState(true);
@@ -115,6 +115,12 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
         const status = await apiClient.checkNodeMCUStatus(selectedSlot);
         if (!status.online) {
           setSlotError(`The machine "${slot?.name || 'Sub-Vendo'}" is OFFLINE. Please tell the owner to restart it.`);
+          return;
+        }
+        
+        // License Check
+        if (status.license && !status.license.isValid) {
+          setSlotError(`The machine "${slot?.name || 'Sub-Vendo'}" is UNAVAILABLE. License Invalid/Expired.`);
           return;
         }
       } catch (err) {
@@ -414,8 +420,8 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
                 >
                   <option value="main">🏠 Main Machine</option>
                   {availableSlots.map(slot => (
-                    <option key={slot.id} value={slot.macAddress}>
-                      {slot.isOnline ? '🟢' : '🔴'} {slot.name}
+                    <option key={slot.id} value={slot.macAddress} disabled={slot.license && !slot.license.isValid}>
+                      {slot.license && !slot.license.isValid ? '🔒' : (slot.isOnline ? '🟢' : '🔴')} {slot.name} {slot.license && !slot.license.isValid ? '(License Expired)' : ''}
                     </option>
                   ))}
                 </select>

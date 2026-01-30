@@ -8,6 +8,7 @@ const si = require('systeminformation');
 const db = require('./lib/db');
 const { initGPIO, updateGPIO, registerSlotCallback, unregisterSlotCallback } = require('./lib/gpio');
 const NodeMCUListener = require('./lib/nodemcu-listener');
+const { getNodeMCULicenseManager } = require('./lib/nodemcu-license');
 const network = require('./lib/network');
 const { verifyPassword, hashPassword } = require('./lib/auth');
 const crypto = require('crypto');
@@ -480,7 +481,38 @@ const nodeMCULicenseManager = initializeNodeMCULicenseManager();
 app.get('/api/nodemcu/license/status/:macAddress', requireAdmin, async (req, res) => {
   try {
     const { macAddress } = req.params;
+    
+    // 1. Try Supabase via Manager
     const verification = await nodeMCULicenseManager.verifyLicense(macAddress);
+    
+    // 2. If valid or activated, return it
+    if (verification.isValid || verification.isActivated) {
+      return res.json(verification);
+    }
+    
+    // 3. Fallback: Check Local Config for Trial
+    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    const devices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
+    const device = devices.find(d => d.macAddress === macAddress);
+    
+    if (device && device.localLicense && device.localLicense.type === 'trial') {
+      const now = Date.now();
+      const expiresAt = new Date(device.localLicense.expiresAt).getTime();
+      const isValid = now < expiresAt;
+      const daysRemaining = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
+      
+      return res.json({
+        isValid,
+        isActivated: true,
+        isExpired: !isValid,
+        licenseType: 'trial',
+        canStartTrial: false,
+        expiresAt: new Date(expiresAt),
+        daysRemaining: daysRemaining > 0 ? daysRemaining : 0,
+        isLocalTrial: true
+      });
+    }
+    
     res.json(verification);
   } catch (err) {
     console.error('[NodeMCU License] Status check error:', err);
@@ -520,8 +552,51 @@ app.post('/api/nodemcu/license/trial', requireAdmin, async (req, res) => {
       });
     }
     
-    const result = await nodeMCULicenseManager.startTrial(macAddress);
-    res.json(result);
+    // 1. Try Supabase via Manager
+    let result = await nodeMCULicenseManager.startTrial(macAddress);
+    
+    // 2. If success, return it
+    if (result.success) {
+      return res.json(result);
+    }
+    
+    // 3. Fallback: Start Local Trial if Supabase failed or not configured
+    console.log('[NodeMCU License] Supabase trial failed, attempting local trial...', result.message);
+    
+    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    const devices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
+    const deviceIndex = devices.findIndex(d => d.macAddress === macAddress);
+    
+    if (deviceIndex === -1) {
+       return res.status(404).json({ success: false, message: 'Device not found in local config' });
+    }
+    
+    // Check if already has local license
+    if (devices[deviceIndex].localLicense) {
+       return res.json({ success: false, message: 'Trial already started or license exists locally' });
+    }
+    
+    // Apply Local Trial (7 days)
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
+    
+    devices[deviceIndex].localLicense = {
+      type: 'trial',
+      startedAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString()
+    };
+    
+    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(devices)]);
+    
+    return res.json({
+      success: true,
+      message: 'Local Trial started successfully (Offline Mode)',
+      trialInfo: {
+        expiresAt: expiresAt,
+        daysRemaining: 7
+      }
+    });
+    
   } catch (err) {
     console.error('[NodeMCU License] Trial start error:', err);
     res.status(500).json({ error: err.message });
@@ -1857,18 +1932,44 @@ app.get('/api/nodemcu/available', async (req, res) => {
     
     // Filter only accepted devices and calculate online status
     const now = new Date().getTime();
-    const availableDevices = devices
+    const licenseManager = getNodeMCULicenseManager();
+
+    const availableDevices = await Promise.all(devices
       .filter(d => d.status === 'accepted')
-      .map(d => {
+      .map(async d => {
         const lastSeen = new Date(d.lastSeen).getTime();
         const isOnline = (now - lastSeen) < 15000; // Online if seen in last 15 seconds
+        
+        // License Check
+        let license = await licenseManager.verifyLicense(d.macAddress);
+
+        // Fallback: Check Local Config for Trial
+        if (!license.isValid && d.localLicense && d.localLicense.type === 'trial') {
+           const expiresAt = new Date(d.localLicense.expiresAt).getTime();
+           if (now < expiresAt) {
+             license = {
+               isValid: true,
+               isActivated: true,
+               isExpired: false,
+               licenseType: 'trial',
+               canStartTrial: false
+             };
+           }
+        }
+
         return {
           id: d.id,
           name: d.name,
           macAddress: d.macAddress,
-          isOnline
+          isOnline,
+          license: {
+            isValid: license.isValid,
+            isTrial: license.licenseType === 'trial',
+            isExpired: license.isExpired,
+            error: license.error
+          }
         };
-      });
+      }));
       
     res.json(availableDevices);
   } catch (err) {
@@ -1889,7 +1990,37 @@ app.get('/api/nodemcu/status/:mac', async (req, res) => {
     const lastSeen = new Date(device.lastSeen).getTime();
     const isOnline = (now - lastSeen) < 15000;
     
-    res.json({ online: isOnline, lastSeen: device.lastSeen });
+    // License Check
+    const licenseManager = getNodeMCULicenseManager();
+    let license = await licenseManager.verifyLicense(device.macAddress);
+
+    // Fallback: Check Local Config for Trial if Supabase verification failed or returned invalid
+    if (!license.isValid && device.localLicense && device.localLicense.type === 'trial') {
+      const nowTs = Date.now();
+      const expiresAt = new Date(device.localLicense.expiresAt).getTime();
+      const isValid = nowTs < expiresAt;
+      
+      if (isValid) {
+        license = {
+          isValid: true,
+          isActivated: true,
+          isExpired: false,
+          licenseType: 'trial',
+          canStartTrial: false
+        };
+      }
+    }
+
+    res.json({ 
+      online: isOnline, 
+      lastSeen: device.lastSeen,
+      license: {
+        isValid: license.isValid,
+        isTrial: license.licenseType === 'trial',
+        isExpired: license.isExpired,
+        error: license.error
+      }
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

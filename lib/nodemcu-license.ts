@@ -90,23 +90,21 @@ export class NodeMCULicenseManager {
       }
     }
 
-    // 2. Fallback to Local Trial logic
-    // NOTE: In the frontend, we don't have direct DB access. 
-    // We'll rely on the backend to provide this info via the API.
-    // For the NodeMCULicenseManager class used in frontend, 
-    // we'll fetch from our own API instead of Supabase RPC directly when Supabase fails.
-    try {
-      const response = await fetch(`/api/nodemcu/license/status/${macAddress}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
+    // 2. Fallback to API if in browser (to check local status managed by server)
+    if (typeof window !== 'undefined') {
+      try {
+        const response = await fetch(`/api/nodemcu/license/status/${macAddress}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
+          }
+        });
+        
+        if (response.ok) {
+          return await response.json();
         }
-      });
-      
-      if (response.ok) {
-        return await response.json();
+      } catch (err) {
+        console.error('[NodeMCU License] Local status fetch error:', err);
       }
-    } catch (err) {
-      console.error('[NodeMCU License] Local status fetch error:', err);
     }
 
     return { 
@@ -123,6 +121,24 @@ export class NodeMCULicenseManager {
    * @returns Trial activation result
    */
   async startTrial(macAddress: string): Promise<NodeMCULicenseActivationResult> {
+    // 1. If in browser, delegate to API to handle both Supabase and Local fallback
+    if (typeof window !== 'undefined') {
+      try {
+        const response = await fetch('/api/nodemcu/license/trial', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
+          },
+          body: JSON.stringify({ macAddress })
+        });
+        return await response.json();
+      } catch (err: any) {
+        return { success: false, message: err.message || 'Failed to reach server' };
+      }
+    }
+
+    // 2. If server, try Supabase
     if (!this.supabase) {
       return { 
         success: false, 

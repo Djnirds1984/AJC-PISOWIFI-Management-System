@@ -666,7 +666,7 @@ export const apiClient = {
     return handleResponse(res);
   },
 
-  async checkNodeMCUStatus(macAddress: string): Promise<{ online: boolean, lastSeen: string }> {
+  async checkNodeMCUStatus(macAddress: string): Promise<{ online: boolean, lastSeen: string, license?: { isValid: boolean, isTrial: boolean, isExpired: boolean, error?: string } }> {
     const res = await fetch(`${API_BASE}/nodemcu/status/${macAddress}`);
     return handleResponse(res);
   },

@@ -340,61 +340,6 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
         </div>
       </div>
 
-      {/* Available Licenses */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-          <h4 className="text-[9px] font-black text-slate-900 uppercase tracking-widest">Available Licenses</h4>
-          <span className="text-[8px] font-black text-slate-400 bg-white border border-slate-200 px-2 py-1 rounded">
-            {licenses.filter(lic => !lic.is_active).length} Available
-          </span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-100">
-            <thead className="bg-slate-50/30">
-              <tr>
-                <th className="px-4 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">License Key</th>
-                <th className="px-4 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">Type</th>
-                <th className="px-4 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">Created</th>
-                <th className="px-4 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">Expires</th>
-                <th className="px-4 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {licenses.filter(lic => !lic.is_active).map(license => (
-                <tr key={license.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="text-[9px] font-mono text-slate-600">{license.license_key}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-wider ${
-                      license.license_type === 'premium' ? 'bg-purple-100 text-purple-700' :
-                      license.license_type === 'trial' ? 'bg-blue-100 text-blue-700' :
-                      'bg-slate-100 text-slate-700'
-                    }`}>
-                      {license.license_type}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="text-[9px] text-slate-600">
-                      {new Date(license.created_at).toLocaleDateString()}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="text-[9px] text-slate-600">
-                      {license.expires_at ? new Date(license.expires_at).toLocaleDateString() : 'Never'}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded-full text-[8px] font-black uppercase tracking-wider">
-                      Available
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 };

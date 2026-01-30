@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# AJC PISOWIFI - Automated Installation Script v3.3.0
+# AJC PISOWIFI - Automated Installation Script v3.4.0
 # Hardware Support: Raspberry Pi, Orange Pi, x86_64
 # Process Manager: PM2
 
@@ -14,7 +14,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 echo -e "${BLUE}==============================================${NC}"
-echo -e "${BLUE}   AJC PISOWIFI SYSTEM INSTALLER v3.3.0      ${NC}"
+echo -e "${BLUE}   AJC PISOWIFI SYSTEM INSTALLER v3.4.0      ${NC}"
 echo -e "${BLUE}==============================================${NC}"
 
 # Check for root
@@ -44,20 +44,33 @@ echo -e "${GREEN}[2/8] Updating system repositories...${NC}"
 apt-get update
 
 echo -e "${GREEN}[3/8] Installing core dependencies...${NC}"
+# Added: ffmpeg (audio), conntrack (networking), libsqlite3-dev/python3-dev (build), vlan/iw (wifi/net)
 apt-get install -y \
-    git \
-    curl \
-    sqlite3 \
-    iptables \
     bridge-utils \
-    hostapd \
-    dnsmasq \
     build-essential \
-    python3 \
-    pkg-config \
+    conntrack \
+    curl \
+    dnsmasq \
+    ffmpeg \
+    git \
+    hostapd \
+    iproute2 \
+    iptables \
+    iputils-ping \
+    iw \
     libcap2-bin \
+    libsqlite3-dev \
+    libudev-dev \
     net-tools \
-    python-is-python3
+    pkg-config \
+    ppp \
+    pppoe \
+    psmisc \
+    python3 \
+    python3-dev \
+    python-is-python3 \
+    sqlite3 \
+    vlan
 
 # Install Board-Specific Packages
 case $BOARD in
@@ -78,20 +91,24 @@ else
     echo -e "${BLUE}Node.js $(node -v) is already installed.${NC}"
 fi
 
-echo -e "${GREEN}[5/8] Installing PM2...${NC}"
-npm install -g pm2
+# Ensure build tools for native modules (sqlite3, serialport) are ready
+echo -e "${GREEN}Installing global build tools...${NC}"
+npm install -g npm@latest node-gyp pm2
 
-echo -e "${GREEN}[6/8] Deploying AJC PISOWIFI Application...${NC}"
+echo -e "${GREEN}[5/8] Preparing Project Directory...${NC}"
 INSTALL_DIR="/opt/ajc-pisowifi"
 if [ ! -d "$INSTALL_DIR" ]; then
+    echo -e "${YELLOW}Cloning repository...${NC}"
     git clone https://github.com/Djnirds1984/AJC-PISOWIFI-Management-System.git "$INSTALL_DIR"
 fi
 cd "$INSTALL_DIR"
 
+echo -e "${GREEN}[6/8] Building Application...${NC}"
+
 # Clean state
 rm -rf node_modules package-lock.json dist
 
-# Temporary swap for build process
+# Temporary swap for build process (Critical for low-RAM boards)
 TOTAL_MEM=$(free -m | awk '/^Mem:/{print $2}')
 if [ "$TOTAL_MEM" -lt 1000 ]; then
     echo -e "${YELLOW}Low memory detected (${TOTAL_MEM}MB). Creating 1GB temporary swap...${NC}"
@@ -102,7 +119,8 @@ if [ "$TOTAL_MEM" -lt 1000 ]; then
 fi
 
 echo -e "${GREEN}Running 'npm install'...${NC}"
-npm install --unsafe-perm --no-audit --no-fund
+# --build-from-source ensures native modules like sqlite3 link against system libs correctly
+npm install --unsafe-perm --no-audit --no-fund --build-from-source
 
 echo -e "${GREEN}Running 'npm run build' (Transpiling TSX to JS)...${NC}"
 npm run build
@@ -126,6 +144,7 @@ pm2 save
 
 echo -e "${GREEN}[8/8] Setting Kernel Capabilities...${NC}"
 # cap_net_bind_service allows binding to port 80 without being root
+# cap_net_admin/raw needed for raw socket access (some networking tools)
 setcap 'cap_net_bind_service,cap_net_admin,cap_net_raw+ep' $(eval readlink -f $(which node))
 
 echo -e "${BLUE}==============================================${NC}"

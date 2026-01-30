@@ -14,6 +14,11 @@ const crypto = require('crypto');
 const multer = require('multer');
 const edgeSync = require('./lib/edge-sync');
 
+// PREVENT PROCESS TERMINATION ON TERMINAL DISCONNECT
+process.on('SIGHUP', () => {
+  console.log('[SYSTEM] Received SIGHUP. Ignoring to prevent process termination on disconnect.');
+});
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);

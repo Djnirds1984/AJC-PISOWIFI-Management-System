@@ -556,7 +556,8 @@ app.get('/api/nodemcu/license/status/:macAddress', requireAdmin, async (req, res
       return res.json(verification);
     }
     
-    // 3. Fallback: Check Local Config for Trial
+    // 3. Fallback: Check Local Config for Trial REMOVED - We only support cloud licenses
+    /*
     const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
     const devices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
     const device = devices.find(d => d.macAddress === macAddress);
@@ -582,6 +583,7 @@ app.get('/api/nodemcu/license/status/:macAddress', requireAdmin, async (req, res
         isLocalTrial: true
       });
     }
+    */
     
     // 4. If no license found anywhere and can start trial, attempt automatic trial
     if (verification.canStartTrial) {
@@ -714,42 +716,12 @@ app.post('/api/nodemcu/license/trial', requireAdmin, async (req, res) => {
     }
     
     // 2. Fallback: Start Local Trial if Supabase failed or not configured
-    console.log('[NodeMCU License] Attempting local trial fallback...');
+    // LOCAL TRIAL FEATURE REMOVED
+    console.log('[NodeMCU License] Local trial fallback is disabled. Cloud license required.');
     
-    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
-    const devices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
-    const deviceIndex = devices.findIndex(d => d.macAddress === macAddress);
-    
-    if (deviceIndex === -1) {
-       return res.status(404).json({ success: false, message: 'Device not found in local config' });
-    }
-    
-    // Check if already has local license
-    if (devices[deviceIndex].localLicense) {
-       return res.json({ success: false, message: 'Trial already started or license exists locally' });
-    }
-    
-    // Apply Local Trial (7 days)
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
-    
-    devices[deviceIndex].localLicense = {
-      type: 'trial',
-      startedAt: now.toISOString(),
-      expiresAt: expiresAt.toISOString()
-    };
-    
-    await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(devices)]);
-    
-    console.log(`[NodeMCU License] Local trial started for ${macAddress}, expires: ${expiresAt.toISOString()}`);
-    
-    return res.json({
-      success: true,
-      message: 'Local Trial started successfully (Offline Mode)',
-      trialInfo: {
-        expiresAt: expiresAt,
-        daysRemaining: 7
-      }
+    return res.status(403).json({
+      success: false,
+      message: 'Local trials are disabled. Please register your device in the cloud dashboard to activate a license.'
     });
     
   } catch (err) {
@@ -796,6 +768,8 @@ app.get('/api/nodemcu/license/vendor', requireAdmin, async (req, res) => {
   try {
     const cloudLicenses = await nodeMCULicenseManager.getVendorLicenses();
 
+    // Local licenses merging REMOVED - We only show cloud licenses now
+    /*
     const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
     const devices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
 
@@ -823,8 +797,9 @@ app.get('/api/nodemcu/license/vendor', requireAdmin, async (req, res) => {
       const exists = merged.some(cl => (cl.mac_address || cl.macAddress) === local.mac_address && (cl.license_type || cl.licenseType) === 'trial' && cl.is_active);
       if (!exists) merged.push(local);
     }
+    */
 
-    res.json({ success: true, licenses: merged });
+    res.json({ success: true, licenses: cloudLicenses || [] });
   } catch (err) {
     console.error('[NodeMCU License] Vendor licenses error:', err);
     res.status(500).json({ error: err.message });

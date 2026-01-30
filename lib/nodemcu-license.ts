@@ -89,7 +89,8 @@ export class NodeMCULicenseManager {
             }
             return result;
           } else {
-            // Device not found in Supabase - automatically start trial
+            // Device not found in Supabase - automatically start trial REMOVED
+          /*
             console.log(`[NodeMCU License] Device ${macAddress} not found, starting automatic trial...`);
             const trialResult = await this.startTrial(macAddress);
             
@@ -104,6 +105,7 @@ export class NodeMCULicenseManager {
                 canStartTrial: false
               };
             }
+          */
           }
         }
       } catch (error) {

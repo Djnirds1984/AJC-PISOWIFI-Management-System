@@ -337,16 +337,14 @@ export class NodeMCULicenseManager {
         if (activeStandard) {
            return { success: false, message: `Device already has an active ${activeStandard.license_type} license` };
         }
-        
-        // If we have active TRIAL licenses, we should deactivate them to allow upgrade
-        const trialLicenses = existingLicenses.filter((l: any) => l.license_type === 'trial');
-        for (const trial of trialLicenses) {
-            await this.supabase
-                .from('nodemcu_licenses')
-                .update({ is_active: false })
-                .eq('id', trial.id);
-        }
       }
+        
+      // Delete ALL trial licenses for this device (active or inactive) to clean up UI
+      await this.supabase
+          .from('nodemcu_licenses')
+          .delete()
+          .eq('device_id', device.id)
+          .eq('license_type', 'trial');
 
       // 4. Activate the new license
       const { error: updateError } = await this.supabase

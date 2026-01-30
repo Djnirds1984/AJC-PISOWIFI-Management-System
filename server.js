@@ -39,6 +39,27 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// DEBUG LOGGING MIDDLEWARE
+app.use(express.json()); // Ensure JSON body parsing is early
+app.post('/api/debug/log', (req, res) => {
+  const { message, level = 'INFO', component = 'Frontend' } = req.body;
+  const timestamp = new Date().toISOString().split('T')[1].slice(0, -1);
+  
+  // ANSI Colors
+  const colors = {
+    INFO: '\x1b[36m', // Cyan
+    WARN: '\x1b[33m', // Yellow
+    ERROR: '\x1b[31m', // Red
+    SUCCESS: '\x1b[32m', // Green
+    RESET: '\x1b[0m'
+  };
+
+  const color = colors[level.toUpperCase()] || colors.INFO;
+  console.log(`${color}[${timestamp}] [${component}] ${message}${colors.RESET}`);
+  
+  res.status(200).send('Logged');
+});
+
 io.on('connection', (socket) => {
   socket.on('join_chat', (data) => {
     if (data && data.id) {

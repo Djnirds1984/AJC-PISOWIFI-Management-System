@@ -215,6 +215,13 @@ export class NodeMCULicenseManager {
     // 1. If in browser, delegate to API
     if (typeof window !== 'undefined') {
       try {
+        // Log start
+        fetch('/api/debug/log', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ message: `Activating license ${licenseKey} for ${macAddress}`, level: 'INFO', component: 'NodeMCULicenseManager' })
+        }).catch(() => {});
+
         const response = await fetch('/api/nodemcu/license/activate', {
           method: 'POST',
           headers: {
@@ -223,8 +230,24 @@ export class NodeMCULicenseManager {
           },
           body: JSON.stringify({ licenseKey, macAddress })
         });
-        return await response.json();
+        const result = await response.json();
+        
+        // Log result
+        fetch('/api/debug/log', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ message: `Activation result: ${JSON.stringify(result)}`, level: result.success ? 'SUCCESS' : 'ERROR', component: 'NodeMCULicenseManager' })
+        }).catch(() => {});
+        
+        return result;
       } catch (err: any) {
+        // Log error
+        fetch('/api/debug/log', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ message: `Activation fetch error: ${err.message}`, level: 'ERROR', component: 'NodeMCULicenseManager' })
+        }).catch(() => {});
+
         return { success: false, message: err.message || 'Failed to reach server' };
       }
     }

@@ -68,6 +68,13 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
   };
 
   const handleActivateLicense = async () => {
+    // Log intent
+    fetch('/api/debug/log', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ message: `Button Clicked: Activating License`, level: 'INFO', component: 'NodeMCULicenseManager.tsx' })
+    }).catch(() => {});
+
     if (!selectedDevice || !licenseKey.trim()) {
       toast.error('Please select a device and enter a license key');
       return;

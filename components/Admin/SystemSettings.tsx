@@ -45,7 +45,7 @@ const SystemSettings: React.FC = () => {
     
     try {
       await apiClient.factoryReset();
-      alert('System successfully reset. Application will now refresh to initial state.');
+      alert('System successfully reset. The device will now reboot to restore fresh settings. Please wait about a minute before reconnecting.');
       window.location.href = '/';
     } catch (e: any) {
       console.error('Reset fetch error:', e);

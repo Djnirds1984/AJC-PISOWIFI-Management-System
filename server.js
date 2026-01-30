@@ -2523,7 +2523,19 @@ app.post('/api/system/reset', requireAdmin, async (req, res) => {
   try {
     await db.factoryResetDB();
     await network.cleanupAllNetworkSettings();
-    res.json({ success: true });
+    
+    // Send success response first
+    res.json({ success: true, message: 'System reset complete. Rebooting now...' });
+    
+    // Trigger reboot to ensure fresh state
+    console.log('[System] Factory reset completed. Initiating reboot...');
+    setTimeout(() => {
+        exec('sudo reboot', (error) => {
+            if (error) {
+                console.error(`[System] Reboot failed: ${error.message}`);
+            }
+        });
+    }, 3000);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

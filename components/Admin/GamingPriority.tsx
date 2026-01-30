@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Gamepad2, Plus, Trash2, Save, Activity } from 'lucide-react';
-import apiClient from '../../lib/api';
+import { apiClient } from '../../lib/api';
 
 interface GamingRule {
   id: number;

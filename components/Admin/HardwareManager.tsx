@@ -18,7 +18,7 @@ const HardwareManager: React.FC = () => {
   
   const [coinSlots, setCoinSlots] = useState<CoinSlotConfig[]>([]);
   const [nodemcuDevices, setNodemcuDevices] = useState<NodeMCUDevice[]>([]);
-  const [registrationKey, setRegistrationKey] = useState<string>('7B3F1A9');
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -38,7 +38,7 @@ const HardwareManager: React.FC = () => {
       setBoard(cfg.boardType);
       setPin(cfg.coinPin);
       if (cfg.boardModel) setBoardModel(cfg.boardModel);
-      if (cfg.registrationKey) setRegistrationKey(cfg.registrationKey);
+
       if (cfg.coinSlots && cfg.coinSlots.length > 0) {
         setCoinSlots(cfg.coinSlots);
       }
@@ -66,8 +66,7 @@ const HardwareManager: React.FC = () => {
         boardType: board, 
         coinPin: pin,
         boardModel: board === 'orange_pi' ? boardModel : null,
-        coinSlots: coinSlots,
-        registrationKey: registrationKey
+        coinSlots: coinSlots
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -198,9 +197,11 @@ const HardwareManager: React.FC = () => {
         </div>
       </div>
 
+    </div>
+
       {/* Sub-Vendo Controller Section */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 bg-slate-950 flex flex-col sm:flex-row justify-between items-center gap-3">
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-950 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-600 rounded-lg text-white">
               <Wifi size={16} />
@@ -215,34 +216,10 @@ const HardwareManager: React.FC = () => {
             </div>
           </div>
           
-          <div className="bg-white/5 rounded-lg px-3 py-2 border border-white/10 flex items-center gap-4 w-full sm:w-auto">
-            <div>
-              <div className="text-[8px] font-black text-blue-400 uppercase tracking-wider mb-0.5">System Auth</div>
-              <div className="text-sm font-black text-white tracking-widest font-mono">
-                {registrationKey}
-              </div>
-            </div>
-            <div className="flex gap-1 ml-auto">
-              <button 
-                onClick={() => {
-                  const newKey = prompt('Enter new System Authentication Key:', registrationKey);
-                  if (newKey && newKey.trim()) {
-                    setRegistrationKey(newKey.trim());
-                  }
-                }}
-                className="p-1.5 rounded-md bg-white/10 text-white hover:bg-white/20 transition-all"
-                title="Change Key"
-              >
-                <Edit2 size={12} />
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="p-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-all disabled:opacity-50"
-                title="Save Key"
-              >
-                <Save size={12} />
-              </button>
+          <div className="bg-white/5 rounded-lg px-3 py-2 border border-white/10">
+            <div className="text-[8px] font-black text-blue-400 uppercase tracking-wider mb-0.5">License System</div>
+            <div className="text-sm font-black text-white tracking-widest font-mono">
+              SUPABASE
             </div>
           </div>
         </div>
@@ -250,8 +227,6 @@ const HardwareManager: React.FC = () => {
             <NodeMCUManager devices={nodemcuDevices} onUpdateDevices={setNodemcuDevices} />
         </div>
       </div>
-
-    </div>
   );
 };
 

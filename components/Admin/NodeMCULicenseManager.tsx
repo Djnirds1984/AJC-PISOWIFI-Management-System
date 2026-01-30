@@ -13,10 +13,7 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
   const [loading, setLoading] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<NodeMCUDevice | null>(null);
   const [licenseKey, setLicenseKey] = useState('');
-  const [showGenerateModal, setShowGenerateModal] = useState(false);
-  const [generateCount, setGenerateCount] = useState(5);
-  const [licenseType, setLicenseType] = useState<'standard' | 'premium'>('standard');
-  const [expirationMonths, setExpirationMonths] = useState<number>(12);
+  // License generation state removed – handled by Supabase
 
   const licenseManager = getNodeMCULicenseManager();
 
@@ -95,22 +92,6 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
     }
   };
 
-  const handleGenerateLicenses = async () => {
-    try {
-      const generatedLicenses = await licenseManager.generateLicenses(generateCount, licenseType, expirationMonths);
-      if (generatedLicenses.length > 0) {
-        toast.success(`Generated ${generatedLicenses.length} ${licenseType} licenses`);
-        loadLicenses();
-        setShowGenerateModal(false);
-      } else {
-        toast.error('Failed to generate licenses');
-      }
-    } catch (error) {
-      console.error('License generation error:', error);
-      toast.error('Failed to generate licenses');
-    }
-  };
-
   const getLicenseStatus = (license: any) => {
     if (!license.is_active) {
       return { text: 'Unassigned', color: 'bg-slate-100 text-slate-600' };
@@ -184,12 +165,6 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
             <p className="text-[8px] text-slate-400 font-bold uppercase tracking-tighter">Manage licenses for your NodeMCU/Subvendo devices</p>
           </div>
           <div className="flex gap-2">
-            <button
-              onClick={() => setShowGenerateModal(true)}
-              className="px-3 py-2 bg-blue-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-blue-700 transition-all"
-            >
-              Generate Licenses
-            </button>
             <button
               onClick={loadLicenses}
               disabled={loading}
@@ -378,71 +353,6 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
           </table>
         </div>
       </div>
-
-      {/* Generate Licenses Modal */}
-      {showGenerateModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Generate Licenses</h3>
-              <button onClick={() => setShowGenerateModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">✕</button>
-            </div>
-            
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantity</label>
-                <input
-                  type="number"
-                  value={generateCount}
-                  onChange={(e) => setGenerateCount(Math.max(1, parseInt(e.target.value) || 1))}
-                  min="1"
-                  max="100"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-black outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">License Type</label>
-                <select
-                  value={licenseType}
-                  onChange={(e) => setLicenseType(e.target.value as 'standard' | 'premium')}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-black outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="standard">Standard</option>
-                  <option value="premium">Premium</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Expiration (Months)</label>
-                <input
-                  type="number"
-                  value={expirationMonths}
-                  onChange={(e) => setExpirationMonths(Math.max(1, parseInt(e.target.value) || 1))}
-                  min="1"
-                  max="120"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-black outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div className="flex gap-2 pt-2">
-                <button
-                  onClick={handleGenerateLicenses}
-                  className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95"
-                >
-                  Generate {generateCount} Licenses
-                </button>
-                <button
-                  onClick={() => setShowGenerateModal(false)}
-                  className="px-4 py-2.5 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

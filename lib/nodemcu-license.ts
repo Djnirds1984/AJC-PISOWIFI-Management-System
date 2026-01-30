@@ -212,6 +212,23 @@ export class NodeMCULicenseManager {
    * @returns Activation result
    */
   async activateLicense(licenseKey: string, macAddress: string): Promise<NodeMCULicenseActivationResult> {
+    // 1. If in browser, delegate to API
+    if (typeof window !== 'undefined') {
+      try {
+        const response = await fetch('/api/nodemcu/license/activate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
+          },
+          body: JSON.stringify({ licenseKey, macAddress })
+        });
+        return await response.json();
+      } catch (err: any) {
+        return { success: false, message: err.message || 'Failed to reach server' };
+      }
+    }
+
     if (!this.supabase) {
       return { 
         success: false, 
@@ -293,6 +310,23 @@ export class NodeMCULicenseManager {
    * @returns Revocation result
    */
   async revokeLicense(licenseKey: string): Promise<{ success: boolean; message: string }> {
+    // 1. If in browser, delegate to API
+    if (typeof window !== 'undefined') {
+      try {
+        const response = await fetch('/api/nodemcu/license/revoke', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
+          },
+          body: JSON.stringify({ licenseKey })
+        });
+        return await response.json();
+      } catch (err: any) {
+        return { success: false, message: err.message || 'Failed to reach server' };
+      }
+    }
+
     if (!this.supabase) {
       return { 
         success: false, 

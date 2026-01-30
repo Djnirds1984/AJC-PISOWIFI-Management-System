@@ -6,10 +6,11 @@ import { toast } from 'sonner';
 interface NodeMCULicenseManagerProps {
   devices: NodeMCUDevice[];
   vendorId?: string;
+  initialLicenses?: any[];
 }
 
-const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, vendorId }) => {
-  const [licenses, setLicenses] = useState<any[]>([]);
+const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, vendorId, initialLicenses }) => {
+  const [licenses, setLicenses] = useState<any[]>(initialLicenses || []);
   const [loading, setLoading] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<NodeMCUDevice | null>(null);
   const [licenseKey, setLicenseKey] = useState('');
@@ -18,8 +19,10 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
   const licenseManager = getNodeMCULicenseManager();
 
   useEffect(() => {
-    loadLicenses();
-  }, []);
+    if (!initialLicenses) {
+      loadLicenses();
+    }
+  }, [initialLicenses]);
 
   const loadLicenses = async () => {
     setLoading(true);
@@ -161,26 +164,27 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
     };
   };
 
-  if (!licenseManager.isConfigured() && licenses.length === 0 && !loading) {
-    return (
-      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-500 rounded-lg text-white">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="text-[10px] font-black text-blue-900 uppercase tracking-widest">Local License Mode</h3>
-            <p className="text-[8px] text-blue-600 font-bold uppercase tracking-tighter">NodeMCU devices will automatically start a 7-day local trial if no cloud license is found.</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
+      {/* Local Trial Info Banner */}
+      {!licenseManager.isConfigured() && (
+        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-500 rounded-lg text-white">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-[10px] font-black text-blue-900 uppercase tracking-widest">Local Trial System Active</h3>
+              <p className="text-[8px] text-blue-600 font-bold uppercase tracking-tighter">
+                Devices will automatically start a 7-day local trial. You can still input a cloud license key below.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* License Management Header */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="flex justify-between items-center">

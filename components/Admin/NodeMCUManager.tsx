@@ -11,6 +11,7 @@ interface NodeMCUManagerProps {
 
 const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevices }) => {
   const [localDevices, setLocalDevices] = useState<NodeMCUDevice[]>(devices);
+  const [licenses, setLicenses] = useState<any[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<NodeMCUDevice | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
@@ -18,7 +19,55 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
 
   useEffect(() => {
     setLocalDevices(devices);
+    loadLicenses();
   }, [devices]);
+
+  const loadLicenses = async () => {
+    try {
+      const response = await fetch('/api/nodemcu/license/vendor', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setLicenses(data.licenses || []);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load licenses in manager:', error);
+    }
+  };
+
+  const getDeviceLicenseStatus = (device: NodeMCUDevice) => {
+    const license = licenses.find(lic => 
+      (lic.device_id === device.id || lic.mac_address === device.macAddress) && 
+      (lic.is_active || lic.isLocalTrial)
+    );
+    
+    if (!license) return { text: 'No License', color: 'bg-red-100 text-red-700' };
+
+    if (license.isLocalTrial) {
+      const expiresAt = new Date(license.expires_at);
+      const now = new Date();
+      const daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (expiresAt < now) return { text: 'Expired Trial', color: 'bg-red-100 text-red-700' };
+      return { text: `${daysRemaining}d Trial`, color: 'bg-blue-100 text-blue-700' };
+    }
+
+    if (license.expires_at) {
+      const expiresAt = new Date(license.expires_at);
+      const now = new Date();
+      const daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (expiresAt < now) return { text: 'Expired', color: 'bg-red-100 text-red-700' };
+      return { text: `${daysRemaining}d Left`, color: 'bg-emerald-100 text-emerald-700' };
+    }
+
+    return { text: 'Licensed', color: 'bg-emerald-100 text-emerald-700' };
+  };
 
   const handleDownloadFirmware = async () => {
     setIsDownloading(true);
@@ -283,6 +332,7 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
                 <tr>
                   <th className="px-4 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">Identity</th>
                   <th className="px-4 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">Network Info</th>
+                  <th className="px-4 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">License</th>
                   <th className="px-4 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest">Performance</th>
                   <th className="px-4 py-2 text-right text-[8px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
                 </tr>
@@ -299,6 +349,16 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
                     <td className="px-4 py-2">
                       <div className="text-[9px] font-mono text-slate-600">{device.ipAddress}</div>
                       <div className="text-[8px] font-mono text-slate-400 tracking-tighter">{device.macAddress}</div>
+                    </td>
+                    <td className="px-4 py-2">
+                      {(() => {
+                        const status = getDeviceLicenseStatus(device);
+                        return (
+                          <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider ${status.color}`}>
+                            {status.text}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-3">
@@ -503,7 +563,7 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
 
       {/* License Management Tab */}
       {activeTab === 'licenses' && (
-        <NodeMCULicenseManager devices={localDevices} />
+        <NodeMCULicenseManager devices={localDevices} initialLicenses={licenses} />
       )}
     </div>
   );

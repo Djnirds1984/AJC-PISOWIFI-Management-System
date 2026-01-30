@@ -217,7 +217,7 @@ const HardwareManager: React.FC = () => {
           <div className="bg-white/5 rounded-lg px-3 py-2 border border-white/10">
             <div className="text-[8px] font-black text-blue-400 uppercase tracking-wider mb-0.5">License System</div>
             <div className="text-sm font-black text-white tracking-widest font-mono">
-              SUPABASE
+              HYBRID
             </div>
           </div>
         </div>

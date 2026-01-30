@@ -197,8 +197,6 @@ const HardwareManager: React.FC = () => {
         </div>
       </div>
 
-    </div>
-
       {/* Sub-Vendo Controller Section */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100 bg-slate-950 flex items-center justify-between">
@@ -227,6 +225,7 @@ const HardwareManager: React.FC = () => {
             <NodeMCUManager devices={nodemcuDevices} onUpdateDevices={setNodemcuDevices} />
         </div>
       </div>
+    </div>
   );
 };
 

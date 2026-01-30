@@ -16,11 +16,26 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
   const [isDownloading, setIsDownloading] = useState(false);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'devices' | 'licenses'>('devices');
+  const [systemAuthKey, setSystemAuthKey] = useState<string>('Loading...');
 
   useEffect(() => {
     setLocalDevices(devices);
     loadLicenses();
+    fetchSystemAuthKey();
   }, [devices]);
+
+  const fetchSystemAuthKey = async () => {
+    try {
+      const response = await fetch('/api/license/status');
+      if (response.ok) {
+        const data = await response.json();
+        setSystemAuthKey(data.hardwareId || 'Unknown');
+      }
+    } catch (error) {
+      console.error('Failed to fetch system auth key:', error);
+      setSystemAuthKey('Error');
+    }
+  };
 
   const loadLicenses = async () => {
     try {
@@ -252,6 +267,40 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
       {/* Device Management Tab */}
       {activeTab === 'devices' && (
         <>
+      {/* System Auth Key Section */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-slate-900 rounded-lg text-white">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">System Auth Key</h3>
+              <p className="text-[8px] text-slate-500 font-bold uppercase tracking-tighter">Use this key to authenticate your NodeMCU devices</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <code className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-[10px] font-mono font-bold text-slate-800">
+              {systemAuthKey}
+            </code>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(systemAuthKey);
+                alert('Auth Key copied to clipboard!');
+              }}
+              className="p-2 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition-colors"
+              title="Copy to clipboard"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Firmware Download Section */}
       <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

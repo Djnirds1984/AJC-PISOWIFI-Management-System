@@ -265,9 +265,14 @@ export class NodeMCULicenseManager {
     }
 
     try {
-      // Explicitly pass a NULL vendor_id_param to disambiguate overloaded signatures
-      const { data, error } = await this.supabase
-        .rpc('get_vendor_nodemcu_licenses', { vendor_id_param: null });
+      let data: any;
+      let error: any;
+
+      ({ data, error } = await this.supabase.rpc('get_vendor_nodemcu_licenses'));
+
+      if (error && String(error.code || '') === 'PGRST202') {
+        ({ data, error } = await this.supabase.rpc('get_vendor_nodemcu_licenses', { vendor_id_param: null }));
+      }
 
       if (error) {
         console.error('[NodeMCU License] Get licenses error:', error);

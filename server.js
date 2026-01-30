@@ -492,16 +492,18 @@ app.get('/api/license/hardware-id', async (req, res) => {
 const { initializeNodeMCULicenseManager } = require('./lib/nodemcu-license');
 const nodeMCULicenseManager = initializeNodeMCULicenseManager();
 
-// NodeMCU License Status Check
+// NodeMCU License Status Check (with automatic trial assignment)
 app.get('/api/nodemcu/license/status/:macAddress', requireAdmin, async (req, res) => {
   try {
     const { macAddress } = req.params;
+    console.log(`[NodeMCU License] Checking status for device: ${macAddress}`);
     
-    // 1. Try Supabase via Manager
+    // 1. Always try Supabase first for license verification and automatic trial
     const verification = await nodeMCULicenseManager.verifyLicense(macAddress);
     
-    // 2. If valid or activated, return it
+    // 2. If valid or activated via Supabase, return it
     if (verification.isValid || verification.isActivated) {
+      console.log(`[NodeMCU License] Device ${macAddress} found in Supabase:`, verification);
       return res.json(verification);
     }
     
@@ -516,6 +518,10 @@ app.get('/api/nodemcu/license/status/:macAddress', requireAdmin, async (req, res
       const isValid = now < expiresAt;
       const daysRemaining = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
       
+      console.log(`[NodeMCU License] Device ${macAddress} has local trial:`, {
+        isValid, daysRemaining, expiresAt: new Date(expiresAt)
+      });
+      
       return res.json({
         isValid,
         isActivated: true,
@@ -528,6 +534,29 @@ app.get('/api/nodemcu/license/status/:macAddress', requireAdmin, async (req, res
       });
     }
     
+    // 4. If no license found anywhere and can start trial, attempt automatic trial
+    if (verification.canStartTrial) {
+      console.log(`[NodeMCU License] Device ${macAddress} not found, attempting automatic trial...`);
+      
+      // Try to start trial automatically
+      const trialResult = await nodeMCULicenseManager.startTrial(macAddress);
+      
+      if (trialResult.success && trialResult.trialInfo) {
+        console.log(`[NodeMCU License] Automatic trial started for ${macAddress}`);
+        return res.json({
+          isValid: true,
+          isActivated: true,
+          isExpired: false,
+          licenseType: 'trial',
+          expiresAt: trialResult.trialInfo.expiresAt,
+          daysRemaining: trialResult.trialInfo.daysRemaining,
+          canStartTrial: false,
+          isAutoTrial: true
+        });
+      }
+    }
+    
+    console.log(`[NodeMCU License] Device ${macAddress} - no license found, trial not available`);
     res.json(verification);
   } catch (err) {
     console.error('[NodeMCU License] Status check error:', err);
@@ -555,7 +584,7 @@ app.post('/api/nodemcu/license/activate', requireAdmin, async (req, res) => {
   }
 });
 
-// NodeMCU Trial Start
+// NodeMCU Trial Start (Automatic Trial Assignment)
 app.post('/api/nodemcu/license/trial', requireAdmin, async (req, res) => {
   try {
     const { macAddress } = req.body;
@@ -567,16 +596,28 @@ app.post('/api/nodemcu/license/trial', requireAdmin, async (req, res) => {
       });
     }
     
-    // 1. Try Supabase via Manager
-    let result = await nodeMCULicenseManager.startTrial(macAddress);
+    console.log(`[NodeMCU License] Starting trial for device: ${macAddress}`);
     
-    // 2. If success, return it
-    if (result.success) {
-      return res.json(result);
+    // 1. Always try Supabase first for automatic trial assignment
+    if (nodeMCULicenseManager.isConfigured()) {
+      try {
+        const result = await nodeMCULicenseManager.startTrial(macAddress);
+        
+        if (result.success) {
+          console.log(`[NodeMCU License] Automatic trial started via Supabase for ${macAddress}`);
+          return res.json(result);
+        } else {
+          console.log(`[NodeMCU License] Supabase trial failed for ${macAddress}:`, result.message);
+        }
+      } catch (supabaseError) {
+        console.error(`[NodeMCU License] Supabase trial error for ${macAddress}:`, supabaseError);
+      }
+    } else {
+      console.log('[NodeMCU License] Supabase not configured, using local fallback');
     }
     
-    // 3. Fallback: Start Local Trial if Supabase failed or not configured
-    console.log('[NodeMCU License] Supabase trial failed, attempting local trial...', result.message);
+    // 2. Fallback: Start Local Trial if Supabase failed or not configured
+    console.log('[NodeMCU License] Attempting local trial fallback...');
     
     const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
     const devices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
@@ -602,6 +643,8 @@ app.post('/api/nodemcu/license/trial', requireAdmin, async (req, res) => {
     };
     
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(devices)]);
+    
+    console.log(`[NodeMCU License] Local trial started for ${macAddress}, expires: ${expiresAt.toISOString()}`);
     
     return res.json({
       success: true,
@@ -659,6 +702,82 @@ app.get('/api/nodemcu/license/vendor', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('[NodeMCU License] Vendor licenses error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// NodeMCU Device License Verification (No Auth Required - for NodeMCU devices)
+app.post('/api/nodemcu/device/verify', async (req, res) => {
+  try {
+    const { macAddress, deviceId } = req.body;
+    
+    if (!macAddress) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'MAC address is required' 
+      });
+    }
+    
+    console.log(`[NodeMCU Device] License verification request from: ${macAddress}`);
+    
+    // Always try Supabase first for license verification and automatic trial
+    const verification = await nodeMCULicenseManager.verifyLicense(macAddress);
+    
+    // If valid or activated, return success
+    if (verification.isValid || verification.isActivated) {
+      console.log(`[NodeMCU Device] License verified for ${macAddress}:`, {
+        isValid: verification.isValid,
+        licenseType: verification.licenseType,
+        daysRemaining: verification.daysRemaining
+      });
+      
+      return res.json({
+        success: true,
+        licensed: true,
+        licenseType: verification.licenseType,
+        expiresAt: verification.expiresAt,
+        daysRemaining: verification.daysRemaining,
+        isTrial: verification.licenseType === 'trial',
+        message: verification.licenseType === 'trial' ? 'Trial mode active' : 'License active'
+      });
+    }
+    
+    // If no license found, attempt automatic trial
+    if (verification.canStartTrial) {
+      console.log(`[NodeMCU Device] No license found for ${macAddress}, attempting automatic trial...`);
+      
+      const trialResult = await nodeMCULicenseManager.startTrial(macAddress);
+      
+      if (trialResult.success && trialResult.trialInfo) {
+        console.log(`[NodeMCU Device] Automatic trial started for ${macAddress}`);
+        return res.json({
+          success: true,
+          licensed: true,
+          licenseType: 'trial',
+          expiresAt: trialResult.trialInfo.expiresAt,
+          daysRemaining: trialResult.trialInfo.daysRemaining,
+          isTrial: true,
+          isAutoTrial: true,
+          message: 'Automatic 7-day trial started'
+        });
+      }
+    }
+    
+    // No license and trial not available
+    console.log(`[NodeMCU Device] No license available for ${macAddress}`);
+    return res.json({
+      success: false,
+      licensed: false,
+      message: 'No valid license found and trial not available',
+      canStartTrial: verification.canStartTrial
+    });
+    
+  } catch (err) {
+    console.error('[NodeMCU Device] License verification error:', err);
+    res.status(500).json({ 
+      success: false, 
+      licensed: false,
+      error: err.message 
+    });
   }
 });
 

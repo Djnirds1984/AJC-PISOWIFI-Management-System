@@ -52,17 +52,17 @@ export class NodeMCULicenseManager {
       this.supabase = createClient(this.supabaseUrl, this.supabaseKey);
       console.log('[NodeMCU License] Supabase client initialized');
     } else {
-      console.warn('[NodeMCU License] Supabase credentials not provided. License verification disabled.');
+      console.warn('[NodeMCU License] Supabase credentials not provided. Will use local fallback for trial mode.');
     }
   }
 
   /**
-   * Check license status for a NodeMCU device (with local trial fallback)
+   * Check license status for a NodeMCU device (with automatic trial assignment)
    * @param macAddress MAC address of the NodeMCU device
    * @returns License verification status
    */
   async verifyLicense(macAddress: string): Promise<NodeMCULicenseVerification> {
-    // 1. Try Supabase first if configured
+    // 1. Always try Supabase first for license verification
     if (this.supabase) {
       try {
         const { data, error } = await this.supabase
@@ -70,23 +70,42 @@ export class NodeMCULicenseManager {
             device_mac_address: macAddress
           });
 
-        if (!error && data && data.success && data.has_license) {
-          const result: NodeMCULicenseVerification = {
-            isValid: data.is_active && !data.is_expired,
-            isActivated: true,
-            isExpired: data.is_expired || false,
-            licenseType: data.license_type,
-            canStartTrial: false
-          };
+        if (!error && data && data.success) {
+          if (data.has_license) {
+            const result: NodeMCULicenseVerification = {
+              isValid: data.is_active && !data.is_expired,
+              isActivated: true,
+              isExpired: data.is_expired || false,
+              licenseType: data.license_type,
+              canStartTrial: false
+            };
 
-          if (data.expires_at) {
-            result.expiresAt = new Date(data.expires_at);
-            result.daysRemaining = data.days_remaining;
+            if (data.expires_at) {
+              result.expiresAt = new Date(data.expires_at);
+              result.daysRemaining = data.days_remaining;
+            }
+            return result;
+          } else {
+            // Device not found in Supabase - automatically start trial
+            console.log(`[NodeMCU License] Device ${macAddress} not found, starting automatic trial...`);
+            const trialResult = await this.startTrial(macAddress);
+            
+            if (trialResult.success && trialResult.trialInfo) {
+              return {
+                isValid: true,
+                isActivated: true,
+                isExpired: false,
+                licenseType: 'trial',
+                expiresAt: trialResult.trialInfo.expiresAt,
+                daysRemaining: trialResult.trialInfo.daysRemaining,
+                canStartTrial: false
+              };
+            }
           }
-          return result;
         }
       } catch (error) {
         console.error('[NodeMCU License] Supabase verification error:', error);
+        // Continue to local fallback even if Supabase fails
       }
     }
 
@@ -111,7 +130,8 @@ export class NodeMCULicenseManager {
       isValid: false, 
       isActivated: false, 
       isExpired: false,
-      error: 'License verification failed' 
+      error: 'License verification failed',
+      canStartTrial: true
     };
   }
 

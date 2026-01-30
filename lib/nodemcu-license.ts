@@ -314,21 +314,49 @@ export class NodeMCULicenseManager {
     }
 
     try {
-      let data: any;
-      let error: any;
-
-      ({ data, error } = await this.supabase.rpc('get_vendor_nodemcu_licenses'));
-
-      if (error && String(error.code || '') === 'PGRST202') {
-        ({ data, error } = await this.supabase.rpc('get_vendor_nodemcu_licenses', { vendor_id_param: null }));
-      }
+      // Use direct table query instead of RPC to avoid schema cache issues
+      const { data, error } = await this.supabase
+        .from('nodemcu_licenses')
+        .select(`
+          id,
+          license_key,
+          mac_address,
+          is_active,
+          license_type,
+          activated_at,
+          expires_at,
+          device_id,
+          vendor_id,
+          trial_started_at,
+          trial_duration_days,
+          created_at,
+          nodemcu_devices (
+            name,
+            status
+          )
+        `)
+        .order('created_at', { ascending: false });
 
       if (error) {
         console.error('[NodeMCU License] Get licenses error:', error);
         return [];
       }
 
-      return data || [];
+      return (data || []).map((license: any) => {
+        const expiresAt = license.expires_at ? new Date(license.expires_at) : null;
+        const now = new Date();
+        const daysRemaining = expiresAt 
+          ? Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+          : null;
+
+        // Map the result to include device info
+        return {
+          ...license,
+          device_name: license.nodemcu_devices?.name || 'Unnamed Device',
+          device_status: license.nodemcu_devices?.status || null,
+          days_remaining: daysRemaining
+        };
+      });
 
     } catch (error: any) {
       console.error('[NodeMCU License] Unexpected get licenses error:', error);

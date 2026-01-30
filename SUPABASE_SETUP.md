@@ -277,4 +277,4 @@ For issues or questions:
 
 **License System Version**: 1.0.0  
 **Last Updated**: January 2026  
-**Compatible with**: AJC PisoWiFi Management System v3.3.0+
+**Compatible with**: AJC PisoWiFi Management System v3.4.0-beta.1+

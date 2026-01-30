@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# AJC PISOWIFI - Automated Installation Script v3.4.0
+# AJC PISOWIFI - Automated Installation Script v3.4.0-beta.1
 # Hardware Support: Raspberry Pi, Orange Pi, x86_64
 # Process Manager: PM2
 
@@ -14,7 +14,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 echo -e "${BLUE}==============================================${NC}"
-echo -e "${BLUE}   AJC PISOWIFI SYSTEM INSTALLER v3.4.0      ${NC}"
+echo -e "${BLUE}   AJC PISOWIFI SYSTEM INSTALLER v3.4.0-beta.1 ${NC}"
 echo -e "${BLUE}==============================================${NC}"
 
 # Check for root

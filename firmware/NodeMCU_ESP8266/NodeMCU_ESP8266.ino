@@ -48,6 +48,7 @@ String configuredSSID = "";
 String systemKey = "";
 bool isConfigured = false;
 bool isAccepted = false;
+bool isLicensed = false;
 unsigned long lastRegistrationAttempt = 0;
 volatile int pendingPulses = 0;
 volatile unsigned long lastPulseTime = 0;
@@ -134,21 +135,21 @@ void loop() {
   } else {
     unsigned long relayNow = millis();
     unsigned long lastRelay = lastRelayTriggerTime;
-    if (lastRelay != 0 && (relayNow - lastRelay) < RELAY_HOLD_MS) {
+    if (isAccepted && isLicensed && lastRelay != 0 && (relayNow - lastRelay) < RELAY_HOLD_MS) {
       digitalWrite(relayPinGpio, HIGH);
     } else {
       digitalWrite(relayPinGpio, LOW);
     }
 
     // Accumulate pulses and send total after 500ms of inactivity
-    if (pendingPulses > 0 && millis() - lastPulseTime > 500) {
+    if (isAccepted && isLicensed && pendingPulses > 0 && millis() - lastPulseTime > 500) {
       int totalToSend = pendingPulses;
       pendingPulses = 0; // Reset before sending to avoid race conditions
       sendPulse(totalToSend);
     }
 
     // Handle periodic registration/auth check if not accepted
-    if (WiFi.status() == WL_CONNECTED && (!isAccepted || millis() - lastRegistrationAttempt > REGISTRATION_INTERVAL)) {
+    if (WiFi.status() == WL_CONNECTED && (!isAccepted || !isLicensed || millis() - lastRegistrationAttempt > REGISTRATION_INTERVAL)) {
       registerWithServer();
       lastRegistrationAttempt = millis();
     }
@@ -300,6 +301,7 @@ void handleSetPins() {
 }
 
 void ICACHE_RAM_ATTR handleCoinPulse() {
+  if (!isAccepted || !isLicensed) return;
   unsigned long now = millis();
   if (now - lastPulseTime > 30) { // Reduced debounce to 30ms for multi-coin accuracy
     pendingPulses++;
@@ -327,6 +329,16 @@ void registerWithServer() {
         isAccepted = false;
         Serial.println("Registration: PENDING ADMIN APPROVAL");
       }
+
+      if (response.indexOf("\"frozen\":true") != -1 || response.indexOf("\"licensed\":false") != -1) {
+        isLicensed = false;
+        pendingPulses = 0;
+        lastRelayTriggerTime = 0;
+        Serial.println("License: FROZEN / NO LICENSE");
+      } else {
+        isLicensed = isAccepted;
+        if (isLicensed) Serial.println("License: OK");
+      }
     }
     http.end();
   }
@@ -334,6 +346,7 @@ void registerWithServer() {
 
 void sendPulse(int denomination) {
   if (WiFi.status() != WL_CONNECTED) return;
+  if (!isAccepted || !isLicensed) return;
   
   WiFiClient client;
   HTTPClient http;
@@ -343,7 +356,14 @@ void sendPulse(int denomination) {
     http.addHeader("Content-Type", "application/json");
     String payload = "{\"macAddress\":\"" + WiFi.macAddress() + "\",\"slotId\":1,\"denomination\":" + String(denomination) + "}";
     int code = http.POST(payload);
-    if (code == 200) Serial.println("Pulse Reported: " + String(denomination));
+    if (code == 200) {
+      Serial.println("Pulse Reported: " + String(denomination));
+    } else if (code == 403) {
+      isLicensed = false;
+      pendingPulses = 0;
+      lastRelayTriggerTime = 0;
+      Serial.println("Pulse rejected (license). Device frozen.");
+    }
     http.end();
   }
 }

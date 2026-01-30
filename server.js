@@ -697,8 +697,37 @@ app.post('/api/nodemcu/license/generate', requireSuperadmin, async (req, res) =>
 // NodeMCU Vendor Licenses
 app.get('/api/nodemcu/license/vendor', requireAdmin, async (req, res) => {
   try {
-    const licenses = await nodeMCULicenseManager.getVendorLicenses();
-    res.json({ success: true, licenses });
+    const cloudLicenses = await nodeMCULicenseManager.getVendorLicenses();
+
+    const devicesResult = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
+    const devices = devicesResult?.value ? JSON.parse(devicesResult.value) : [];
+
+    const localLicenses = devices
+      .filter(d => d && d.macAddress && d.localLicense && d.localLicense.type === 'trial')
+      .map(d => {
+        const expiresAt = d.localLicense.expiresAt;
+        return {
+          id: `local_trial_${String(d.macAddress).toUpperCase().replace(/[^A-Z0-9]/g, '')}`,
+          license_key: `LOCAL-TRIAL-${String(d.macAddress).toUpperCase()}`,
+          device_id: d.id,
+          device_name: d.name,
+          mac_address: d.macAddress,
+          is_active: true,
+          license_type: 'trial',
+          activated_at: d.localLicense.startedAt || null,
+          expires_at: expiresAt || null,
+          days_remaining: expiresAt ? Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : null,
+          isLocalTrial: true
+        };
+      });
+
+    const merged = [...(cloudLicenses || [])];
+    for (const local of localLicenses) {
+      const exists = merged.some(cl => (cl.mac_address || cl.macAddress) === local.mac_address && (cl.license_type || cl.licenseType) === 'trial' && cl.is_active);
+      if (!exists) merged.push(local);
+    }
+
+    res.json({ success: true, licenses: merged });
   } catch (err) {
     console.error('[NodeMCU License] Vendor licenses error:', err);
     res.status(500).json({ error: err.message });
@@ -1807,8 +1836,19 @@ app.post('/api/nodemcu/register', async (req, res) => {
        await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(updatedDevices)]);
        
        console.log(`[NODEMCU] Device Heartbeat | Name: ${updatedDevices[existingDeviceIndex].name} | IP: ${ipAddress} | Status: ${updatedDevices[existingDeviceIndex].status}`);
+
+       const licenseStatus = await nodeMCULicenseManager.verifyLicense(macAddress);
        
-       return res.json({ success: true, device: updatedDevices[existingDeviceIndex], message: 'Device updated' });
+       return res.json({
+         success: true,
+         device: updatedDevices[existingDeviceIndex],
+         licensed: Boolean(licenseStatus && licenseStatus.isValid),
+         licenseType: licenseStatus?.licenseType || null,
+         expiresAt: licenseStatus?.expiresAt || null,
+         daysRemaining: licenseStatus?.daysRemaining ?? null,
+         frozen: Boolean(licenseStatus && licenseStatus.isValid === false),
+         message: 'Device updated'
+       });
     }
     
     // Create new pending device
@@ -1839,7 +1879,15 @@ app.post('/api/nodemcu/register', async (req, res) => {
     const updatedDevices = [...existingDevices, newDevice];
     await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(updatedDevices)]);
     
-    res.json({ success: true, device: newDevice });
+    res.json({
+      success: true,
+      device: newDevice,
+      licensed: false,
+      licenseType: null,
+      expiresAt: null,
+      daysRemaining: null,
+      frozen: true
+    });
   } catch (err) {
     console.error('Error registering NodeMCU device:', err);
     res.status(500).json({ error: err.message });
@@ -1946,6 +1994,16 @@ app.post('/api/nodemcu/pulse', async (req, res) => {
     
     if (!device || device.status !== 'accepted') {
       return res.status(403).json({ error: 'Device not authorized' });
+    }
+
+    const licenseStatus = await nodeMCULicenseManager.verifyLicense(macAddress);
+    if (!licenseStatus || licenseStatus.isValid !== true) {
+      return res.status(403).json({
+        error: 'No valid license',
+        frozen: true,
+        licenseType: licenseStatus?.licenseType || null,
+        message: 'Device frozen: trial expired or license invalid'
+      });
     }
 
     // Update device stats

@@ -53,7 +53,7 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
       const now = new Date();
       const daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       
-      if (expiresAt < now) return { text: 'Expired Trial', color: 'bg-red-100 text-red-700' };
+      if (expiresAt < now) return { text: 'Frozen', color: 'bg-red-100 text-red-700' };
       return { text: `${daysRemaining}d Trial`, color: 'bg-blue-100 text-blue-700' };
     }
 

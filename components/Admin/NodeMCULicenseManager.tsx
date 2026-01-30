@@ -115,7 +115,7 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
       const daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       
       if (expiresAt < now) {
-        return { text: 'Expired (Trial)', color: 'bg-red-100 text-red-700' };
+        return { text: 'Frozen', color: 'bg-red-100 text-red-700' };
       }
       return { text: `${daysRemaining}d Trial left`, color: 'bg-blue-100 text-blue-700' };
     }
@@ -130,6 +130,7 @@ const NodeMCULicenseManager: React.FC<NodeMCULicenseManagerProps> = ({ devices, 
       const daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       
       if (expiresAt < now) {
+        if (license.license_type === 'trial') return { text: 'Frozen', color: 'bg-red-100 text-red-700' };
         return { text: 'Expired', color: 'bg-red-100 text-red-700' };
       } else if (daysRemaining <= 7) {
         return { text: `${daysRemaining}d left`, color: 'bg-amber-100 text-amber-700' };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { WifiDevice, Rate, BandwidthSettings } from '../../types';
 import { apiClient } from '../../lib/api';
+import GamingPriority from './GamingPriority';
 
 interface Props {
   devices: WifiDevice[];
@@ -102,7 +103,10 @@ const BandwidthManager: React.FC<Props> = ({ devices, rates }) => {
         </p>
       </div>
 
-      {/* Default Settings Card */}
+      {/* Gaming Priority */}
+      <GamingPriority />
+
+      {/* Default Settings */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
         <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-4">Default Bandwidth Settings</h3>
         

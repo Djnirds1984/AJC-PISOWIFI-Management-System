@@ -32,23 +32,29 @@ io.on('connection', (socket) => {
 
   socket.on('send_message', async (data) => {
     const { sender, recipient, message } = data;
+    const timestamp = new Date().toISOString();
+    const msgData = { ...data, timestamp };
+
     try {
       await db.run(
-        'INSERT INTO chat_messages (sender, recipient, message, timestamp) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
-        [sender, recipient, message]
+        'INSERT INTO chat_messages (sender, recipient, message, timestamp) VALUES (?, ?, ?, ?)',
+        [sender, recipient, message, timestamp]
       );
       
       // Emit to specific recipient
-      io.to(recipient).emit('receive_message', data);
+      io.to(recipient).emit('receive_message', msgData);
+      
+      // Emit back to sender (so they see their own message)
+      socket.emit('receive_message', msgData);
       
       // If user sends to admin, notify all admins
       if (recipient === 'admin') {
-        io.to('admin').emit('receive_message', data);
+        io.to('admin').emit('receive_message', msgData);
       }
       
       // If broadcast, emit to everyone
       if (recipient === 'broadcast') {
-        io.emit('receive_message', data);
+        io.emit('receive_message', msgData);
       }
     } catch (err) {
       console.error('Error saving chat message:', err);

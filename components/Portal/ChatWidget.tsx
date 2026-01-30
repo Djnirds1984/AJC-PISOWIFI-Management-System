@@ -143,7 +143,15 @@ const ChatWidget: React.FC<Props> = ({ mac }) => {
                     </div>}
                     <div className="break-words leading-relaxed">{msg.message}</div>
                     <div className={`text-[10px] mt-1 text-right ${isMe ? 'text-indigo-200' : 'text-gray-400'}`}>
-                      {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      {(() => {
+                        try {
+                          // Handle potential SQLite timestamp format incompatibility on some browsers
+                          const dateStr = msg.timestamp.includes('T') ? msg.timestamp : msg.timestamp.replace(' ', 'T');
+                          return new Date(dateStr).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                        } catch (e) {
+                          return '';
+                        }
+                      })()}
                     </div>
                   </div>
                 </div>

@@ -238,37 +238,8 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto pb-20 animate-in fade-in duration-500">
-      {/* Tab Navigation */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        <div className="flex border-b border-slate-100">
-          <button
-            onClick={() => setActiveTab('devices')}
-            className={`flex-1 px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-              activeTab === 'devices'
-                ? 'bg-slate-900 text-white border-b-2 border-slate-900'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-          >
-            Device Management
-          </button>
-          <button
-            onClick={() => setActiveTab('licenses')}
-            className={`flex-1 px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-              activeTab === 'licenses'
-                ? 'bg-slate-900 text-white border-b-2 border-slate-900'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-          >
-            License Management
-          </button>
-        </div>
-      </div>
-
-      {/* Device Management Tab */}
-      {activeTab === 'devices' && (
-        <>
       {/* System Auth Key Section */}
-      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4">
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-slate-900 rounded-lg text-white">
@@ -301,6 +272,35 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
         </div>
       </div>
 
+      {/* Tab Navigation */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <div className="flex border-b border-slate-100">
+          <button
+            onClick={() => setActiveTab('devices')}
+            className={`flex-1 px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+              activeTab === 'devices'
+                ? 'bg-slate-900 text-white border-b-2 border-slate-900'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            Device Management
+          </button>
+          <button
+            onClick={() => setActiveTab('licenses')}
+            className={`flex-1 px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+              activeTab === 'licenses'
+                ? 'bg-slate-900 text-white border-b-2 border-slate-900'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            License Management
+          </button>
+        </div>
+      </div>
+
+      {/* Device Management Tab */}
+      {activeTab === 'devices' && (
+        <>
       {/* Firmware Download Section */}
       <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

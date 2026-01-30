@@ -1306,6 +1306,17 @@ app.post('/api/coinslot/reserve', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Invalid coinslot.' });
   }
 
+  // Enforce License Check for NodeMCU devices
+  if (slot !== 'main') {
+    const license = await nodeMCULicenseManager.verifyLicense(slot);
+    if (!license.isValid) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'YOUR COINSLOT MACHINE IS DISABLED' 
+      });
+    }
+  }
+
   let clientIp = req.ip.replace('::ffff:', '');
   if (clientIp === '::1') clientIp = '127.0.0.1';
   let mac = await getMacFromIp(clientIp);
@@ -2080,10 +2091,10 @@ app.post('/api/nodemcu/pulse', async (req, res) => {
     const licenseStatus = await nodeMCULicenseManager.verifyLicense(macAddress);
     if (!licenseStatus || licenseStatus.isValid !== true) {
       return res.status(403).json({
-        error: 'No valid license',
+        error: 'YOUR COINSLOT MACHINE IS DISABLED',
         frozen: true,
         licenseType: licenseStatus?.licenseType || null,
-        message: 'Device frozen: trial expired or license invalid'
+        message: 'YOUR COINSLOT MACHINE IS DISABLED'
       });
     }
 

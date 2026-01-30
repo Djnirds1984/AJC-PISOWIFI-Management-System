@@ -120,7 +120,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
         
         // License Check
         if (status.license && !status.license.isValid) {
-          setSlotError(`The machine "${slot?.name || 'Sub-Vendo'}" is UNAVAILABLE. License Invalid/Expired.`);
+          setSlotError('YOUR COINSLOT MACHINE IS DISABLED');
           return;
         }
       } catch (err) {
@@ -421,7 +421,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
                   <option value="main">🏠 Main Machine</option>
                   {availableSlots.map(slot => (
                     <option key={slot.id} value={slot.macAddress} disabled={slot.license && !slot.license.isValid}>
-                      {slot.license && !slot.license.isValid ? '🔒' : (slot.isOnline ? '🟢' : '🔴')} {slot.name} {slot.license && !slot.license.isValid ? '(License Expired)' : ''}
+                      {slot.license && !slot.license.isValid ? '🔒' : (slot.isOnline ? '🟢' : '🔴')} {slot.name} {slot.license && !slot.license.isValid ? '(DISABLED)' : ''}
                     </option>
                   ))}
                 </select>

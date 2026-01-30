@@ -20,6 +20,21 @@ process.on('SIGHUP', () => {
   console.log('[SYSTEM] Received SIGHUP. Ignoring to prevent process termination on disconnect.');
 });
 
+// GLOBAL ERROR HANDLERS TO PREVENT CRASHES
+process.on('uncaughtException', (err) => {
+  console.error('[SYSTEM] Uncaught Exception:', err);
+  // Ignore ECONNRESET and other network errors that shouldn't crash the server
+  if (err.code === 'ECONNRESET' || err.code === 'EPIPE' || err.code === 'ETIMEDOUT') {
+    console.warn(`[SYSTEM] Network error (${err.code}) ignored to maintain uptime.`);
+    return;
+  }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[SYSTEM] Unhandled Rejection at:', promise, 'reason:', reason);
+  // No exit here, just log
+});
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);

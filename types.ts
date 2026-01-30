@@ -202,7 +202,8 @@ export enum AdminTab {
   PortalEditor = 'portal_editor',
   PPPoE = 'pppoe',
   Machines = 'machines',
-  Bandwidth = 'bandwidth'
+  Bandwidth = 'bandwidth',
+  MultiWan = 'multi_wan'
 }
 
 export interface UpdateLog {

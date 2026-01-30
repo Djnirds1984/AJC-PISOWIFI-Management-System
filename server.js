@@ -978,6 +978,18 @@ async function getMacFromIp(ip) {
     }
   } catch (e) {}
 
+  // 5. Fallback: Check Active Sessions in DB
+  // Solves issue where idle devices (ARP expired) get disconnected despite having time.
+  // We trust the IP-MAC mapping from the active session.
+  try {
+    const session = await db.get('SELECT mac FROM sessions WHERE ip = ? AND remaining_seconds > 0', [ip]);
+    if (session && session.mac) {
+      return session.mac.toUpperCase();
+    }
+  } catch (e) {
+    console.error(`[MAC-Resolve] DB Fallback error for ${ip}:`, e.message);
+  }
+
   return null;
 }
 

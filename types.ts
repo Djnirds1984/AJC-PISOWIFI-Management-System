@@ -203,7 +203,8 @@ export enum AdminTab {
   PPPoE = 'pppoe',
   Machines = 'machines',
   Bandwidth = 'bandwidth',
-  MultiWan = 'multi_wan'
+  MultiWan = 'multi_wan',
+  Chat = 'chat'
 }
 
 export interface UpdateLog {

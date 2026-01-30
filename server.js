@@ -23,6 +23,73 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+io.on('connection', (socket) => {
+  socket.on('join_chat', (data) => {
+    if (data && data.id) {
+      socket.join(data.id);
+    }
+  });
+
+  socket.on('send_message', async (data) => {
+    const { sender, recipient, message } = data;
+    try {
+      await db.run(
+        'INSERT INTO chat_messages (sender, recipient, message, timestamp) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
+        [sender, recipient, message]
+      );
+      
+      // Emit to specific recipient
+      io.to(recipient).emit('receive_message', data);
+      
+      // If user sends to admin, notify all admins
+      if (recipient === 'admin') {
+        io.to('admin').emit('receive_message', data);
+      }
+      
+      // If broadcast, emit to everyone
+      if (recipient === 'broadcast') {
+        io.emit('receive_message', data);
+      }
+    } catch (err) {
+      console.error('Error saving chat message:', err);
+    }
+  });
+
+  socket.on('fetch_messages', async (data) => {
+    const { user_id } = data; // MAC address of the user
+    try {
+      // Fetch messages between this user and admin, PLUS broadcasts
+      const messages = await db.all(
+        `SELECT * FROM chat_messages 
+         WHERE (sender = ? AND recipient = 'admin') 
+            OR (sender = 'admin' AND recipient = ?) 
+            OR recipient = 'broadcast' 
+         ORDER BY timestamp ASC`,
+        [user_id, user_id]
+      );
+      socket.emit('chat_history', messages);
+    } catch (err) {
+      console.error('Error fetching messages:', err);
+    }
+  });
+  
+  // Admin fetches list of users who have chatted
+  socket.on('fetch_chat_users', async () => {
+    try {
+      const users = await db.all(
+        `SELECT DISTINCT sender as mac, MAX(timestamp) as last_message 
+         FROM chat_messages 
+         WHERE sender != 'admin' 
+         GROUP BY sender 
+         ORDER BY last_message DESC`
+      );
+      socket.emit('chat_users', users);
+    } catch (err) {
+      console.error('Error fetching chat users:', err);
+    }
+  });
+});
+
 const COINSLOT_LOCK_TTL_MS = 60 * 1000;
 const coinSlotLocks = new Map();
 

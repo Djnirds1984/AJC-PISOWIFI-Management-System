@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Rate, UserSession } from '../../types';
 import CoinModal from './CoinModal';
+import ChatWidget from './ChatWidget';
 import { apiClient } from '../../lib/api';
 import { getPortalConfig, fetchPortalConfig, PortalConfig, DEFAULT_PORTAL_CONFIG } from '../../lib/theme';
 
@@ -527,6 +528,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
           rates={activeRates}
         />
       )}
+      <ChatWidget mac={myMac} />
     </div>
   );
 };

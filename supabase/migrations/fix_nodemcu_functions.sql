@@ -68,6 +68,9 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 2. Define get_vendor_nodemcu_licenses correctly (was missing or broken)
+-- Remove any overloaded version to avoid PostgREST ambiguity (PGRST203)
+DROP FUNCTION IF EXISTS public.get_vendor_nodemcu_licenses(uuid);
+
 CREATE OR REPLACE FUNCTION get_vendor_nodemcu_licenses()
 RETURNS SETOF nodemcu_licenses AS $$
 BEGIN

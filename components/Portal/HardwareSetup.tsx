@@ -81,7 +81,11 @@ const HardwareSetup: React.FC<Props> = ({ onClose, onSaved }) => {
               />
               <BoardCard 
                 active={board === 'orange_pi'} 
-                onClick={() => setBoard('orange_pi')}
+                onClick={() => {
+                  setBoard('orange_pi');
+                  // Auto-switch to Pin 3 (Physical) if Pin 2 (RPi Default) is selected, as Pin 2 is 5V on OPi
+                  if (pin === 2) setPin(3);
+                }}
                 title="Orange Pi"
                 sub="All Models"
                 icon="🍊"

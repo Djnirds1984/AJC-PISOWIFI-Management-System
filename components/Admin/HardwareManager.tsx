@@ -106,7 +106,10 @@ const HardwareManager: React.FC = () => {
                   <div className="text-[9px] text-slate-500">BCM GPIO</div>
                 </button>
                 <button 
-                  onClick={() => setBoard('orange_pi')}
+                  onClick={() => {
+                    setBoard('orange_pi');
+                    if (pin === 2) setPin(3);
+                  }}
                   className={`p-3 rounded-lg border-2 text-left transition-all ${board === 'orange_pi' ? 'border-orange-500 bg-orange-50' : 'border-slate-100 hover:border-slate-300'}`}
                 >
                   <div className="text-[10px] font-black uppercase tracking-wide mb-0.5">Orange Pi</div>

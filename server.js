@@ -14,6 +14,7 @@ const { verifyPassword, hashPassword } = require('./lib/auth');
 const crypto = require('crypto');
 const multer = require('multer');
 const edgeSync = require('./lib/edge-sync');
+const AdmZip = require('adm-zip');
 
 // PREVENT PROCESS TERMINATION ON TERMINAL DISCONNECT
 process.on('SIGHUP', () => {
@@ -198,6 +199,32 @@ const firmwareStorage = multer.diskStorage({
 const uploadFirmware = multer({ 
   storage: firmwareStorage,
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit for firmware
+});
+
+// Configure Multer for System Backups/Updates
+const backupStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const dir = 'uploads/backups/';
+    if (!fs.existsSync(dir)){
+        fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: function (req, file, cb) {
+    cb(null, 'restore_' + Date.now() + '.nxs');
+  }
+});
+
+const uploadBackup = multer({ 
+  storage: backupStorage,
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.originalname.endsWith('.nxs')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .nxs files are allowed!'), false);
+    }
+  }
 });
 
 const NODEMCU_D_PIN_TO_GPIO = {
@@ -2538,6 +2565,103 @@ app.post('/api/system/reset', requireAdmin, async (req, res) => {
     }, 3000);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/system/backup', requireAdmin, async (req, res) => {
+  try {
+    const zip = new AdmZip();
+    const exclude = ['node_modules', '.git', '.next', 'dist', 'uploads', 'package-lock.json'];
+    
+    // Add files from root
+    const rootFiles = fs.readdirSync(__dirname);
+    for (const file of rootFiles) {
+      if (exclude.includes(file)) continue;
+      
+      const filePath = path.join(__dirname, file);
+      const stats = fs.statSync(filePath);
+      
+      if (stats.isDirectory()) {
+         zip.addLocalFolder(filePath, file);
+      } else {
+        zip.addLocalFile(filePath);
+      }
+    }
+    
+    // Special handling for uploads (only audio)
+    if (fs.existsSync(path.join(__dirname, 'uploads/audio'))) {
+        zip.addLocalFolder(path.join(__dirname, 'uploads/audio'), 'uploads/audio');
+    }
+
+    const buffer = zip.toBuffer();
+    const filename = `backup-${new Date().toISOString().replace(/[:.]/g, '-')}.nxs`;
+    
+    res.set('Content-Type', 'application/octet-stream');
+    res.set('Content-Disposition', `attachment; filename=${filename}`);
+    res.set('Content-Length', buffer.length);
+    res.send(buffer);
+  } catch (err) {
+    console.error('Backup failed:', err);
+    res.status(500).json({ error: 'Backup failed: ' + err.message });
+  }
+});
+
+app.post('/api/system/restore', requireAdmin, uploadBackup.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  
+  try {
+    // Attempt to close DB to avoid lock issues on Windows
+    try {
+        await db.close();
+    } catch (e) {
+        console.warn('Could not close DB:', e);
+    }
+
+    const zip = new AdmZip(req.file.path);
+    // Extract everything, overwriting existing files
+    zip.extractAllTo(__dirname, true);
+    
+    // Cleanup
+    fs.unlinkSync(req.file.path);
+    
+    res.json({ success: true, message: 'System restored successfully. Restarting...' });
+    
+    // Restart logic
+    setTimeout(() => {
+        process.exit(0); // PM2 should restart it
+    }, 2000);
+  } catch (err) {
+    console.error('Restore failed:', err);
+    res.status(500).json({ error: 'Restore failed: ' + err.message });
+  }
+});
+
+app.post('/api/system/update', requireAdmin, uploadBackup.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  
+  try {
+    const zip = new AdmZip(req.file.path);
+    const zipEntries = zip.getEntries();
+    
+    // Extract each entry unless it's the database
+    zipEntries.forEach((entry) => {
+        if (entry.entryName !== 'pisowifi.sqlite' && !entry.entryName.includes('pisowifi.sqlite')) {
+            zip.extractEntryTo(entry, __dirname, true, true);
+        }
+    });
+    
+    // Cleanup
+    fs.unlinkSync(req.file.path);
+    
+    res.json({ success: true, message: 'System updated successfully. Restarting...' });
+    
+    // Restart logic
+    setTimeout(() => {
+        process.exit(0); // PM2 should restart it
+    }, 2000);
+  } catch (err) {
+    console.error('Update failed:', err);
+    res.status(500).json({ error: 'Update failed: ' + err.message });
   }
 });
 

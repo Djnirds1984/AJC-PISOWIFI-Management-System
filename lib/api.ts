@@ -104,6 +104,43 @@ export const apiClient = {
     await handleResponse(res);
   },
 
+  // ZeroTier
+  async getZeroTierStatus(): Promise<{ installed: boolean; running: boolean; nodeId?: string; version?: string; status?: string }> {
+    const res = await fetch(`${API_BASE}/zerotier/status`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async installZeroTier(): Promise<{ success: boolean; message?: string; error?: string }> {
+    const res = await fetch(`${API_BASE}/zerotier/install`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
+  async getZeroTierNetworks(): Promise<{ networks: any[] }> {
+    const res = await fetch(`${API_BASE}/zerotier/networks`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async joinZeroTierNetwork(networkId: string): Promise<{ success: boolean; error?: string }> {
+    const res = await fetch(`${API_BASE}/zerotier/join`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ networkId })
+    });
+    return handleResponse(res);
+  },
+
+  async leaveZeroTierNetwork(networkId: string): Promise<{ success: boolean; error?: string }> {
+    const res = await fetch(`${API_BASE}/zerotier/leave`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ networkId })
+    });
+    return handleResponse(res);
+  },
+
   // Gaming Priority
   async getGamingConfig(): Promise<{ enabled: boolean; percentage: number }> {
     const res = await fetch(`${API_BASE}/gaming/config`, { headers: getHeaders() });

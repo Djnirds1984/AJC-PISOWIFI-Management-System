@@ -14,6 +14,7 @@ const { verifyPassword, hashPassword } = require('./lib/auth');
 const crypto = require('crypto');
 const multer = require('multer');
 const edgeSync = require('./lib/edge-sync');
+const zerotier = require('./lib/zerotier');
 const AdmZip = require('adm-zip');
 
 // PREVENT PROCESS TERMINATION ON TERMINAL DISCONNECT
@@ -1019,6 +1020,72 @@ async function getMacFromIp(ip) {
 
   return null;
 }
+
+// ZeroTier Management API
+app.get('/api/zerotier/status', requireAdmin, async (req, res) => {
+  try {
+    const installed = await zerotier.isInstalled();
+    if (!installed) {
+      return res.json({ installed: false, running: false });
+    }
+    const status = await zerotier.getStatus();
+    res.json({ installed: true, ...status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/zerotier/install', requireAdmin, async (req, res) => {
+  try {
+    const result = await zerotier.install();
+    if (result.success) {
+      res.json({ success: true, message: 'ZeroTier installed successfully' });
+    } else {
+      res.status(500).json({ success: false, error: result.error || result.stderr });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/zerotier/networks', requireAdmin, async (req, res) => {
+  try {
+    const networks = await zerotier.listNetworks();
+    res.json({ networks });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/zerotier/join', requireAdmin, async (req, res) => {
+  const { networkId } = req.body;
+  if (!networkId) return res.status(400).json({ error: 'Network ID required' });
+  try {
+    const result = await zerotier.joinNetwork(networkId);
+    if (result.success) {
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ error: result.error || result.stderr });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/zerotier/leave', requireAdmin, async (req, res) => {
+  const { networkId } = req.body;
+  if (!networkId) return res.status(400).json({ error: 'Network ID required' });
+  try {
+    const result = await zerotier.leaveNetwork(networkId);
+    if (result.success) {
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ error: result.error || result.stderr });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Explicitly serve tailwind.js to fix 404 issues
 app.get('/dist/tailwind.js', (req, res) => {

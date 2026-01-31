@@ -3015,33 +3015,30 @@ app.get('/api/devices', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Firmware download endpoint
-app.get('/api/firmware/nodemcu', requireAdmin, (req, res) => {
+// Firmware download endpoint (Binary)
+app.get('/api/firmware/nodemcu/bin', requireAdmin, (req, res) => {
   try {
     const fs = require('fs');
     const path = require('path');
     
-    // Check if firmware file exists
-    // Refactored to serve binary file
+    // Explicitly target the binary file in the build directory
     const firmwarePath = path.join(__dirname, 'firmware', 'NodeMCU_ESP8266', 'build', 'esp8266.esp8266.huzzah', 'NodeMCU_ESP8266.ino.bin');
     
     if (!fs.existsSync(firmwarePath)) {
-      return res.status(404).json({ error: 'Firmware binary not found' });
+      console.error(`[Firmware] Binary not found at: ${firmwarePath}`);
+      return res.status(404).json({ error: 'Firmware binary not found on server' });
     }
     
-    // Set headers for file download
+    // Set headers for binary file download
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', 'attachment; filename="NodeMCU_ESP8266.bin"');
     
-    // Stream the file
     const fileStream = fs.createReadStream(firmwarePath);
     fileStream.pipe(res);
     
     fileStream.on('error', (err) => {
       console.error('Error streaming firmware file:', err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Failed to download firmware' });
-      }
+      if (!res.headersSent) res.status(500).json({ error: 'Failed to download firmware' });
     });
     
   } catch (err) {

@@ -127,7 +127,8 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
   const handleDownloadFirmware = async () => {
     setIsDownloading(true);
     try {
-      const response = await fetch('/api/firmware/nodemcu', {
+      // Changed to explicit binary endpoint to avoid caching issues
+      const response = await fetch('/api/firmware/nodemcu/bin', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
         }
@@ -141,6 +142,7 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
+      // Force .bin extension
       a.download = 'NodeMCU_ESP8266.bin';
       document.body.appendChild(a);
       a.click();

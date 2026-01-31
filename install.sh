@@ -114,15 +114,15 @@ echo -e "${GREEN}[6/8] Building Application...${NC}"
 # Clean state
 rm -rf node_modules package-lock.json dist
 
-# Temporary swap for build process (Critical for low-RAM boards)
-TOTAL_MEM=$(free -m | awk '/^Mem:/{print $2}')
-if [ "$TOTAL_MEM" -lt 1000 ]; then
-    echo -e "${YELLOW}Low memory detected (${TOTAL_MEM}MB). Creating 1GB temporary swap...${NC}"
-    fallocate -l 1G /tmp/swapfile || dd if=/dev/zero of=/tmp/swapfile bs=1M count=1024
-    chmod 600 /tmp/swapfile
-    mkswap /tmp/swapfile
-    swapon /tmp/swapfile
-fi
+# Swap creation disabled by user request
+# TOTAL_MEM=$(free -m | awk '/^Mem:/{print $2}')
+# if [ "$TOTAL_MEM" -lt 1000 ]; then
+#     echo -e "${YELLOW}Low memory detected (${TOTAL_MEM}MB). Creating 1GB temporary swap...${NC}"
+#     fallocate -l 1G /tmp/swapfile || dd if=/dev/zero of=/tmp/swapfile bs=1M count=1024
+#     chmod 600 /tmp/swapfile
+#     mkswap /tmp/swapfile
+#     swapon /tmp/swapfile
+# fi
 
 echo -e "${GREEN}Running 'npm install'...${NC}"
 # --build-from-source ensures native modules like sqlite3 link against system libs correctly
@@ -131,11 +131,11 @@ npm install --unsafe-perm --no-audit --no-fund --build-from-source
 echo -e "${GREEN}Running 'npm run build' (Transpiling TSX to JS)...${NC}"
 npm run build
 
-# Remove temporary swap
-if [ -f /tmp/swapfile ]; then
-    swapoff /tmp/swapfile
-    rm /tmp/swapfile
-fi
+# Swap removal disabled by user request
+# if [ -f /tmp/swapfile ]; then
+#     swapoff /tmp/swapfile
+#     rm /tmp/swapfile
+# fi
 
 echo -e "${GREEN}[7/8] Finalizing System Persistence...${NC}"
 pm2 delete ajc-pisowifi 2>/dev/null || true

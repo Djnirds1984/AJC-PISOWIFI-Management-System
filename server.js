@@ -3022,15 +3022,16 @@ app.get('/api/firmware/nodemcu', requireAdmin, (req, res) => {
     const path = require('path');
     
     // Check if firmware file exists
-    const firmwarePath = path.join(__dirname, 'firmware', 'NodeMCU_ESP8266', 'NodeMCU_ESP8266.ino');
+    // Refactored to serve binary file
+    const firmwarePath = path.join(__dirname, 'firmware', 'NodeMCU_ESP8266', 'build', 'esp8266.esp8266.huzzah', 'NodeMCU_ESP8266.ino.bin');
     
     if (!fs.existsSync(firmwarePath)) {
-      return res.status(404).json({ error: 'Firmware file not found' });
+      return res.status(404).json({ error: 'Firmware binary not found' });
     }
     
     // Set headers for file download
-    res.setHeader('Content-Type', 'text/plain');
-    res.setHeader('Content-Disposition', 'attachment; filename="NodeMCU_ESP8266.ino"');
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'attachment; filename="NodeMCU_ESP8266.bin"');
     
     // Stream the file
     const fileStream = fs.createReadStream(firmwarePath);

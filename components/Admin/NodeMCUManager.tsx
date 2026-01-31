@@ -141,13 +141,13 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'NodeMCU_ESP8266.ino';
+      a.download = 'NodeMCU_ESP8266.bin';
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       
-      alert('Firmware downloaded successfully!');
+      alert('Firmware binary downloaded successfully!');
     } catch (error) {
       console.error('Download failed:', error);
       alert('Failed to download firmware. Please try again.');
@@ -418,7 +418,7 @@ const NodeMCUManager: React.FC<NodeMCUManagerProps> = ({ devices, onUpdateDevice
                 : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
             }`}
           >
-            {isDownloading ? 'Downloading...' : 'Download Source'}
+            {isDownloading ? 'Downloading...' : 'Download Binary'}
           </button>
         </div>
       </div>

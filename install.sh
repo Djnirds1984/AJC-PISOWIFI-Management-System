@@ -69,6 +69,7 @@ apt-get install -y \
     python3 \
     python3-dev \
     python-is-python3 \
+    python3-pip \
     sqlite3 \
     vlan
 
@@ -82,6 +83,9 @@ case $BOARD in
         usermod -a -G dialout root || true
         ;;
 esac
+
+echo -e "${GREEN}Installing esptool...${NC}"
+pip3 install --break-system-packages --upgrade esptool || pip3 install --upgrade esptool
 
 echo -e "${GREEN}[4/8] Installing Node.js v20 (LTS)...${NC}"
 if ! command -v node &> /dev/null || [[ $(node -v | cut -d'.' -f1) != "v20" ]]; then

@@ -2632,6 +2632,80 @@ app.delete('/api/network/bridge/:name', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// NODEMCU FLASHER API
+app.get('/api/system/usb-devices', requireAdmin, async (req, res) => {
+  try {
+    const devices = [];
+    
+    // Try using serialport if available
+    try {
+      const { SerialPort } = require('serialport');
+      const ports = await SerialPort.list();
+      ports.forEach(port => {
+        // Filter for likely candidates (USB/ACM)
+        if (port.path.includes('USB') || port.path.includes('ACM') || port.path.includes('COM')) {
+             devices.push({
+               path: port.path,
+               manufacturer: port.manufacturer,
+               serialNumber: port.serialNumber,
+               pnpId: port.pnpId
+             });
+        }
+      });
+    } catch (e) {
+      // Fallback to fs listing of /dev/
+      try {
+        const files = await fs.promises.readdir('/dev');
+        const serialPorts = files.filter(f => f.startsWith('ttyUSB') || f.startsWith('ttyACM'));
+        serialPorts.forEach(port => {
+          devices.push({
+            path: `/dev/${port}`,
+            manufacturer: 'Unknown',
+            serialNumber: 'Unknown'
+          });
+        });
+      } catch (err) {
+        // Ignore fs errors (e.g. on Windows without /dev)
+      }
+    }
+    
+    res.json(devices);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/system/flash-nodemcu', requireAdmin, async (req, res) => {
+  const { port } = req.body;
+  if (!port) return res.status(400).json({ error: 'Port is required' });
+
+  const firmwarePath = '/opt/ajc-pisowifi/firmware/NodeMCU_ESP8266/build/esp8266.esp8266.huzzah/NodeMCU_ESP8266.ino.bin';
+  
+  // Verify firmware exists
+  if (!fs.existsSync(firmwarePath)) {
+    // For dev/test on Windows, we might accept a local path or skip check if hardcoded
+    // But for production as requested:
+    return res.status(404).json({ error: 'Firmware binary not found at ' + firmwarePath });
+  }
+
+  // Construct command
+  // esptool.py --port /dev/ttyUSB0 --baud 115200 write_flash 0x00000 <firmware>
+  // We assume esptool is in PATH or we can call it. 
+  
+  const cmd = `esptool --port ${port} --baud 115200 write_flash -fm dio -fs 4MB 0x00000 "${firmwarePath}"`;
+  
+  console.log(`[Flasher] Executing: ${cmd}`);
+  
+  exec(cmd, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`[Flasher] Error: ${error.message}`);
+      return res.status(500).json({ success: false, error: error.message, details: stderr });
+    }
+    console.log(`[Flasher] Success: ${stdout}`);
+    res.json({ success: true, message: 'Flash complete', output: stdout });
+  });
+});
+
 // BANDWIDTH MANAGEMENT API ENDPOINTS
 app.get('/api/bandwidth/settings', requireAdmin, async (req, res) => {
   try {

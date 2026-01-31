@@ -152,8 +152,10 @@ const SystemSettings: React.FC = () => {
         </div>
       </section>
 
+      <NodeMCUFlasher />
+
       {/* Security & Service Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 transition-all">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Security Settings Card */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Admin Security</h3>
@@ -421,6 +423,116 @@ const ChangePasswordForm: React.FC = () => {
         {loading ? '...' : 'Update Password'}
       </button>
     </form>
+  );
+};
+
+const NodeMCUFlasher: React.FC = () => {
+  const [devices, setDevices] = useState<any[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [flashing, setFlashing] = useState(false);
+  const [selectedPort, setSelectedPort] = useState('');
+  const [output, setOutput] = useState('');
+
+  const scanDevices = async () => {
+    setScanning(true);
+    try {
+      const devs = await apiClient.getUSBDevices();
+      setDevices(devs);
+      if (devs.length > 0) setSelectedPort(devs[0].path);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to scan USB devices');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleFlash = async () => {
+    if (!selectedPort) return;
+    if (!confirm(`Flash firmware to ${selectedPort}? This will erase existing data on the NodeMCU.`)) return;
+    
+    setFlashing(true);
+    setOutput('Starting flash process... This may take a minute.\n');
+    
+    try {
+      const res = await apiClient.flashNodeMCU(selectedPort);
+      setOutput(prev => prev + (res.output || res.message));
+      alert('Flashing complete!');
+    } catch (e: any) {
+      setOutput(prev => prev + '\nError: ' + e.message);
+      alert('Flashing failed: ' + e.message);
+    } finally {
+      setFlashing(false);
+    }
+  };
+
+  return (
+    <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden transition-all mb-4">
+      <div className="px-4 py-3 border-b border-slate-100 bg-indigo-50/50 flex justify-between items-center">
+        <h3 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">NodeMCU Flasher</h3>
+        <span className="bg-indigo-100 text-indigo-600 text-[8px] font-bold px-2 py-0.5 rounded uppercase">USB / Serial</span>
+      </div>
+      <div className="p-4">
+        <div className="flex gap-4 items-start">
+           <div className="flex-1">
+             <div className="flex justify-between items-center mb-2">
+               <label className="text-[10px] font-bold uppercase text-slate-500">Connected Devices</label>
+               <button 
+                 onClick={scanDevices} 
+                 disabled={scanning || flashing}
+                 className="text-[9px] font-black text-blue-600 hover:underline disabled:opacity-50"
+               >
+                 {scanning ? 'Scanning...' : 'Refresh List'}
+               </button>
+             </div>
+             
+             {devices.length === 0 ? (
+               <div className="text-xs text-slate-400 italic p-2 border border-dashed border-slate-200 rounded">
+                 No USB devices found. Connect NodeMCU via USB.
+               </div>
+             ) : (
+               <div className="space-y-1">
+                 {devices.map(dev => (
+                   <label key={dev.path} className="flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-slate-50">
+                     <input 
+                       type="radio" 
+                       name="usb-port" 
+                       value={dev.path} 
+                       checked={selectedPort === dev.path}
+                       onChange={() => setSelectedPort(dev.path)}
+                       disabled={flashing}
+                     />
+                     <div>
+                       <div className="text-xs font-bold text-slate-700">{dev.path}</div>
+                       <div className="text-[9px] text-slate-400">{dev.manufacturer || 'Generic USB Serial'}</div>
+                     </div>
+                   </label>
+                 ))}
+               </div>
+             )}
+           </div>
+           
+           <div className="w-1/3 flex flex-col gap-2">
+             <button
+               onClick={handleFlash}
+               disabled={!selectedPort || flashing || devices.length === 0}
+               className="w-full bg-indigo-600 text-white py-3 rounded-lg font-black text-[10px] uppercase tracking-widest shadow-md shadow-indigo-600/10 hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:shadow-none"
+             >
+               {flashing ? 'Flashing...' : 'Flash Firmware'}
+             </button>
+             <p className="text-[8px] text-slate-400 text-center leading-tight">
+               Uses binary from <br/> <code className="bg-slate-100 px-1 rounded">/opt/.../build/</code>
+             </p>
+           </div>
+        </div>
+        
+        {output && (
+          <div className="mt-4 p-3 bg-slate-900 rounded-lg font-mono text-[9px] text-green-400 whitespace-pre-wrap max-h-32 overflow-auto">
+            {output}
+          </div>
+        )}
+      </div>
+    </section>
   );
 };
 

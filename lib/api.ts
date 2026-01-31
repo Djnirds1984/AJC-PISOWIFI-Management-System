@@ -411,6 +411,21 @@ export const apiClient = {
     await handleResponse(res);
   },
 
+  // NodeMCU Flasher
+  async getUSBDevices(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/system/usb-devices`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async flashNodeMCU(port: string): Promise<{ success: boolean; message: string; output?: string }> {
+    const res = await fetch(`${API_BASE}/system/flash-nodemcu`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ port })
+    });
+    return handleResponse(res);
+  },
+
   async getSessions(): Promise<any[]> {
     const res = await fetch(`${API_BASE}/sessions`);
     return handleResponse(res);

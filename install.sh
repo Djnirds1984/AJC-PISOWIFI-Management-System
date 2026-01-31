@@ -59,7 +59,9 @@ apt-get install -y \
     iputils-ping \
     iw \
     libcap2-bin \
+    libffi-dev \
     libsqlite3-dev \
+    libssl-dev \
     libudev-dev \
     net-tools \
     pkg-config \

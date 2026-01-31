@@ -17,6 +17,21 @@ Whether you're managing a single vending machine or a fleet of hotspots, AJC PIS
 - **🛡️ Robust Security**: Integrated firewall, captive portal redirection, and hardware-locked licensing system.
 - **🔧 Hardware Agnostic**: Native optimization for Raspberry Pi and Orange Pi ecosystems.
 
+## 🔌 NodeMCU Firmware Management
+
+Streamline your hardware deployment with the integrated **NodeMCU Flasher**. This enterprise feature allows administrators to flash firmware directly from the dashboard, eliminating the need for external tools or complex command-line operations.
+
+**Key Capabilities:**
+- **Auto-Detection**: Instantly identifies connected NodeMCU/ESP8266 devices via USB.
+- **One-Click Flashing**: Deploys the optimized `NodeMCU_ESP8266.bin` firmware directly from the server.
+- **Safety Interlocks**: Intelligent filtering prevents accidental flashing of active WiFi adapters or critical system peripherals.
+
+**Usage:**
+1. Navigate to **System Settings** in the Admin Dashboard.
+2. Connect your NodeMCU board to any USB port on the server.
+3. The system will auto-detect the device (displayed as `ttyUSB*` or `ttyACM*`).
+4. Click **Flash Firmware** to initiate the deployment process.
+
 ## 🛠 Hardware Requirements
 
 - **SBC**: Raspberry Pi (All models) or Orange Pi (All models).

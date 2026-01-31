@@ -41,6 +41,11 @@ else
 fi
 
 echo -e "${GREEN}[2/8] Updating system repositories...${NC}"
+# Fix for "No space left on device" and corrupted lists
+echo -e "${YELLOW}Cleaning apt cache and lists to free space...${NC}"
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
 apt-get update
 
 echo -e "${GREEN}[3/8] Installing core dependencies...${NC}"

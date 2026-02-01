@@ -787,5 +787,30 @@ export const apiClient = {
       headers: getHeaders() 
     });
     return handleResponse(res);
+  },
+
+  // Centralized Key Management APIs
+  async getCentralizedKey(): Promise<{ centralized_key: string | null }> {
+    const res = await fetch(`${API_BASE}/system/centralized-key`, { 
+      headers: getHeaders() 
+    });
+    return handleResponse(res);
+  },
+
+  async setCentralizedKey(centralizedKey: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${API_BASE}/system/centralized-key`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ centralizedKey })
+    });
+    return handleResponse(res);
+  },
+
+  async clearCentralizedKey(): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${API_BASE}/system/centralized-key`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
   }
 };

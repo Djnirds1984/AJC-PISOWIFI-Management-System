@@ -162,6 +162,12 @@ const SystemSettings: React.FC = () => {
           <ChangePasswordForm />
         </section>
 
+        {/* Centralized Key Management Card */}
+        <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Centralized Key</h3>
+          <CentralizedKeyManager />
+        </section>
+
         {/* Manual Controls Card */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Service Management</h3>
@@ -533,6 +539,173 @@ const NodeMCUFlasher: React.FC = () => {
         )}
       </div>
     </section>
+  );
+};
+
+const CentralizedKeyManager: React.FC = () => {
+  const [centralizedKey, setCentralizedKey] = useState<string>('');
+  const [currentKey, setCurrentKey] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  useEffect(() => {
+    const fetchKey = async () => {
+      try {
+        const data = await apiClient.getCentralizedKey();
+        setCurrentKey(data.centralized_key);
+      } catch (e) {
+        console.error('Failed to fetch centralized key', e);
+        setMessage('Failed to load key');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchKey();
+  }, []);
+
+  const handleSetKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!centralizedKey.trim()) return;
+    
+    setLoading(true);
+    setMessage('');
+    
+    try {
+      const result = await apiClient.setCentralizedKey(centralizedKey.trim());
+      if (result.success) {
+        setCurrentKey(centralizedKey.trim());
+        setCentralizedKey('');
+        setMessage('✅ Key updated successfully');
+      } else {
+        setMessage(result.message || 'Failed to update key');
+      }
+    } catch (err: any) {
+      setMessage(err.message || 'Failed to update key');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClearKey = async () => {
+    setLoading(true);
+    setMessage('');
+    setShowClearConfirm(false);
+    
+    try {
+      const result = await apiClient.clearCentralizedKey();
+      if (result.success) {
+        setCurrentKey(null);
+        setMessage('✅ Key cleared successfully');
+      } else {
+        setMessage(result.message || 'Failed to clear key');
+      }
+    } catch (err: any) {
+      setMessage(err.message || 'Failed to clear key');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading && currentKey === null) {
+    return (
+      <div className="text-center py-4">
+        <div className="text-[10px] text-slate-500">Loading...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-2">
+        {currentKey ? 'Current Key' : 'No Key Set'}
+      </div>
+      
+      {currentKey ? (
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+          <div className="font-mono text-[10px] text-slate-700 break-all">
+            {currentKey}
+          </div>
+        </div>
+      ) : (
+        <div className="bg-slate-50 border border-dashed border-slate-200 rounded-lg p-3 text-center">
+          <div className="text-[10px] text-slate-400 font-bold">No centralized key configured</div>
+        </div>
+      )}
+
+      <form onSubmit={handleSetKey} className="space-y-2">
+        <div>
+          <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">
+            New Key
+          </label>
+          <input 
+            type="text" 
+            value={centralizedKey}
+            onChange={e => setCentralizedKey(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
+            placeholder="Enter centralized key"
+            disabled={loading}
+          />
+        </div>
+        
+        <div className="flex gap-2">
+          <button 
+            type="submit" 
+            disabled={loading || !centralizedKey.trim()}
+            className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-black text-[10px] uppercase tracking-widest shadow-md shadow-blue-600/10 disabled:opacity-50 hover:bg-blue-700 transition-colors"
+          >
+            {loading ? 'Updating...' : 'Set Key'}
+          </button>
+          
+          {currentKey && (
+            <button 
+              type="button"
+              onClick={() => setShowClearConfirm(true)}
+              disabled={loading}
+              className="bg-red-600 text-white px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-widest shadow-md shadow-red-600/10 disabled:opacity-50 hover:bg-red-700 transition-colors"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </form>
+
+      {message && (
+        <div className="text-[10px] font-bold text-center p-2 rounded bg-slate-100">
+          {message}
+        </div>
+      )}
+
+      {/* Clear Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 text-center shadow-2xl border border-slate-200">
+            <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 text-xl">⚠️</div>
+            <h3 className="text-sm font-black text-slate-900 uppercase">Clear Centralized Key</h3>
+            <p className="text-[10px] text-slate-500 font-bold mt-2 uppercase leading-relaxed">
+              Are you sure you want to clear the centralized key?
+            </p>
+            
+            <div className="grid grid-cols-2 gap-2 mt-6">
+              <button 
+                onClick={() => setShowClearConfirm(false)}
+                className="bg-slate-100 text-slate-600 py-2.5 rounded-lg font-black text-[10px] uppercase"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleClearKey}
+                disabled={loading}
+                className="bg-red-600 text-white py-2.5 rounded-lg font-black text-[10px] uppercase shadow-md shadow-red-600/10 disabled:opacity-30"
+              >
+                {loading ? 'Clearing...' : 'Confirm Clear'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 

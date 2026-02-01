@@ -4066,21 +4066,47 @@ app.post('/api/utilities/speedtest', requireAdmin, async (req, res) => {
       throw new Error('Received null or undefined data from speedtest');
     }
     
-    if (!data.speeds) {
-      console.log('[SPEEDTEST] Available properties:', Object.keys(data));
-      throw new Error('Missing "speeds" property in response');
+    // Different speedtest libraries may have different data structures
+    // Let's handle the most common ones
+    let download = 0;
+    let upload = 0;
+    let ping = 0;
+    let server = 'Unknown';
+    
+    // Check for the different possible data structures
+    if (data.download && typeof data.download.bps !== 'undefined') {
+      download = data.download.bps / 1000000; // Convert from bps to Mbps
+    } else if (data.download && typeof data.download === 'number') {
+      download = data.download; // Already in Mbps
+    } else if (data.speeds && data.speeds.download) {
+      download = data.speeds.download;
     }
     
-    if (typeof data.speeds.download === 'undefined') {
-      console.log('[SPEEDTEST] Available speeds properties:', Object.keys(data.speeds || {}));
-      throw new Error('Missing "download" property in speeds object');
+    if (data.upload && typeof data.upload.bps !== 'undefined') {
+      upload = data.upload.bps / 1000000; // Convert from bps to Mbps
+    } else if (data.upload && typeof data.upload === 'number') {
+      upload = data.upload; // Already in Mbps
+    } else if (data.speeds && data.speeds.upload) {
+      upload = data.speeds.upload;
+    }
+    
+    if (data.ping && typeof data.ping.latency !== 'undefined') {
+      ping = data.ping.latency; // Usually in ms
+    } else if (data.ping && typeof data.ping === 'number') {
+      ping = data.ping; // Already in ms
+    }
+    
+    if (data.server && data.server.name) {
+      server = data.server.name;
+    } else if (data.server && typeof data.server === 'string') {
+      server = data.server;
     }
     
     const result = {
-      download: parseFloat(data.speeds.download.toFixed(2)),
-      upload: parseFloat(data.speeds.upload.toFixed(2)),
-      ping: parseFloat(data.ping.latency.toFixed(1)),
-      server: data.server ? data.server.name : 'Unknown',
+      download: parseFloat(download.toFixed(2)),
+      upload: parseFloat(upload.toFixed(2)),
+      ping: parseFloat(ping.toFixed(1)),
+      server: server,
       timestamp: new Date().toISOString()
     };
     

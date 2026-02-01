@@ -1332,7 +1332,8 @@ app.use(async (req, res, next) => {
 
   // If we are NOT on the portal domain (and not localhost), redirect.
   // This catches IP address access (10.0.0.1) and forces it to the domain.
-  if (host !== PORTAL_DOMAIN && !host.includes('localhost') && !host.includes('127.0.0.1')) {
+  // However, exclude admin routes to allow local IP access to admin panel
+  if (host !== PORTAL_DOMAIN && !host.includes('localhost') && !host.includes('127.0.0.1') && !url.startsWith('/admin')) {
       return res.redirect(`http://${PORTAL_DOMAIN}/`);
   }
   

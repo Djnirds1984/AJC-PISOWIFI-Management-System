@@ -4054,7 +4054,8 @@ app.post('/api/utilities/speedtest', requireAdmin, async (req, res) => {
     // Create a promise to handle the asynchronous speedtest
     const speedtestPromise = new Promise((resolve, reject) => {
       const test = speedtest({
-        maxTime: 30000 // 30 seconds timeout
+        maxTime: 30000, // 30 seconds timeout
+        acceptLicense: true // Accept Speedtest.net license agreement
       });
 
       test.on('data', (data) => {

@@ -1,6 +1,6 @@
 import { apiClient } from './api';
 
-export type ThemeId = 'default' | 'dark' | 'eco' | 'terminal';
+export type ThemeId = 'default' | 'dark' | 'eco' | 'terminal' | 'light_minimal';
 
 export interface ThemeConfig {
   id: ThemeId;
@@ -38,6 +38,13 @@ export const THEMES: ThemeConfig[] = [
     description: 'Ultra-lightweight, no gradients, minimal rendering cost.',
     performanceScore: 100,
     previewColors: ['#000000', '#22c55e', '#000000']
+  },
+  {
+    id: 'light_minimal',
+    name: 'Light Minimal',
+    description: 'Clean, bright interface with soft blue accents and geometric typography.',
+    performanceScore: 98,
+    previewColors: ['#f8fafc', '#3b82f6', '#1e293b']
   }
 ];
 
@@ -62,10 +69,10 @@ export interface PortalConfig {
 export const DEFAULT_PORTAL_CONFIG: PortalConfig = {
   title: 'AJC PISOWIFI',
   subtitle: 'Enterprise Internet Gateway',
-  primaryColor: '#2563eb', // blue-600
-  secondaryColor: '#1e40af', // blue-800
-  backgroundColor: '#f8fafc', // slate-50
-  textColor: '#0f172a', // slate-900
+  primaryColor: '#3b82f6', // soft blue-500
+  secondaryColor: '#1d4ed8', // soft blue-700
+  backgroundColor: '#ffffff', // pure white
+  textColor: '#1e293b', // slate-800
   customCss: '',
   customHtmlTop: '',
   customHtmlBottom: '',

@@ -53,26 +53,26 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-4">
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-        <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-4">Create Rate Definition</h3>
+      <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+        <h3 className="text-[10px] font-bold text-main uppercase tracking-wide mb-4">Create Rate Definition</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Currency (₱)</label>
+            <label className="block text-[9px] font-medium text-muted uppercase tracking-wide mb-1">Currency (₱)</label>
             <input 
               type="number" 
               value={newPeso}
               onChange={(e) => setNewPeso(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 outline-none transition-all font-bold text-sm"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-1 focus:ring-blue-500 outline-none transition-all font-medium text-sm"
               placeholder="1"
             />
           </div>
           <div>
-            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Duration (Mins)</label>
+            <label className="block text-[9px] font-medium text-muted uppercase tracking-wide mb-1">Duration (Mins)</label>
             <input 
               type="number" 
               value={newMinutes}
               onChange={(e) => setNewMinutes(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-1 focus:ring-blue-500 outline-none transition-all font-bold text-sm"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-1 focus:ring-blue-500 outline-none transition-all font-medium text-sm"
               placeholder="10"
             />
           </div>
@@ -80,14 +80,14 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
             <button 
               onClick={addRate}
               disabled={loading}
-              className="w-full bg-blue-600 text-white py-2 rounded-lg font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md shadow-blue-500/10 disabled:opacity-50 h-[38px]"
+              className="w-full bg-blue-500 text-white py-2 rounded-lg font-medium text-[10px] uppercase tracking-wide hover:bg-blue-600 transition-all disabled:opacity-50 h-[38px]"
             >
               {loading ? '...' : 'Add Rate'}
             </button>
           </div>
         </div>
         <div className="mt-4 bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-          <p className="text-amber-800 text-[10px] font-bold">
+          <p className="text-amber-800 text-[10px] font-medium">
             ⚠️ Limits are in the <span className="font-black">Bandwidth</span> section
           </p>
         </div>
@@ -97,20 +97,20 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-          <thead className="bg-slate-50 text-[9px] text-slate-400 uppercase font-black tracking-widest border-b border-slate-100">
+          <thead className="bg-gray-50 text-[9px] text-muted uppercase font-medium tracking-wide border-b border-gray-200">
             <tr>
               <th className="px-4 py-3">Denomination</th>
               <th className="px-4 py-3">Duration</th>
               <th className="px-4 py-3 text-right">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-gray-200">
             {rates.length > 0 ? rates.sort((a,b) => a.pesos - b.pesos).map((rate) => (
-              <tr key={rate.id} className="hover:bg-slate-50 transition-colors group">
+              <tr key={rate.id} className="hover:bg-gray-50 transition-colors group">
                 <td className="px-4 py-2">
-                  <span className="font-black text-slate-900 text-sm">₱{rate.pesos}</span>
+                  <span className="font-bold text-main text-sm">₱{rate.pesos}</span>
                 </td>
-                <td className="px-4 py-2 text-slate-600 font-bold text-xs">
+                <td className="px-4 py-2 text-muted font-medium text-xs">
                   {rate.minutes >= 60 
                     ? `${Math.floor(rate.minutes / 60)}h ${rate.minutes % 60 > 0 ? (rate.minutes % 60) + 'm' : ''}`
                     : `${rate.minutes}m`}
@@ -118,7 +118,7 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
                 <td className="px-4 py-2 text-right">
                   <button 
                     onClick={() => deleteRate(rate.id)}
-                    className="text-red-500 hover:text-red-700 text-[9px] font-black uppercase tracking-widest transition-colors group-hover:opacity-100"
+                    className="text-red-500 hover:text-red-700 text-[9px] font-medium uppercase tracking-wide transition-colors group-hover:opacity-100"
                   >
                     Delete
                   </button>
@@ -126,7 +126,7 @@ const RatesManager: React.FC<Props> = ({ rates, setRates }) => {
               </tr>
             )) : (
               <tr>
-                <td colSpan={3} className="px-4 py-10 text-center text-slate-400 text-[10px] font-black uppercase">No rates defined.</td>
+                <td colSpan={3} className="px-4 py-10 text-center text-muted text-[10px] font-medium uppercase tracking-wide">No rates defined.</td>
               </tr>
             )}
           </tbody>

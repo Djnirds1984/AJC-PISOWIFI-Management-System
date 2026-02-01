@@ -3453,6 +3453,54 @@ app.get('/api/system/logs', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Centralized Key Management API
+app.get('/api/system/centralized-key', requireAdmin, async (req, res) => {
+  try {
+    // Get the first vendor record to get the centralized key
+    const vendor = await db.get('SELECT centralized_key FROM vendors LIMIT 1');
+    res.json({ centralized_key: vendor?.centralized_key || null });
+  } catch (err) {
+    console.error('Error fetching centralized key:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/system/centralized-key', requireAdmin, async (req, res) => {
+  try {
+    const { centralizedKey } = req.body;
+    
+    if (!centralizedKey) {
+      return res.status(400).json({ error: 'Centralized key is required' });
+    }
+    
+    // Update or insert the centralized key in the first vendor record
+    const existingVendor = await db.get('SELECT id FROM vendors LIMIT 1');
+    
+    if (existingVendor) {
+      await db.run('UPDATE vendors SET centralized_key = ? WHERE id = ?', [centralizedKey, existingVendor.id]);
+    } else {
+      // Create a default vendor record if none exists
+      await db.run('INSERT INTO vendors (machine_name, centralized_key) VALUES (?, ?)', ['Default', centralizedKey]);
+    }
+    
+    res.json({ success: true, message: 'Centralized key updated successfully' });
+  } catch (err) {
+    console.error('Error setting centralized key:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/system/centralized-key', requireAdmin, async (req, res) => {
+  try {
+    // Clear the centralized key from all vendor records
+    await db.run('UPDATE vendors SET centralized_key = NULL');
+    res.json({ success: true, message: 'Centralized key cleared successfully' });
+  } catch (err) {
+    console.error('Error clearing centralized key:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Multi-WAN Configuration API
 app.get('/api/multiwan/config', requireAdmin, async (req, res) => {
   try {

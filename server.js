@@ -4110,23 +4110,23 @@ app.post('/api/utilities/speedtest', requireAdmin, async (req, res) => {
     
     // Check for the different possible data structures
     if (data.download && typeof data.download.bps !== 'undefined') {
-      download = data.download.bps / 8000000; // Convert from bps to MBps
+      download = data.download.bps / 1000000; // Convert from bps to Mbps
     } else if (data.download && typeof data.download.bandwidth !== 'undefined') {
-      download = data.download.bandwidth / 8000000; // Convert from bps to MBps
+      download = data.download.bandwidth / 1000000; // Convert from bps to Mbps
     } else if (data.download && typeof data.download === 'number') {
-      download = data.download / 8; // Already in Mbps, convert to MBps
+      download = data.download; // Already in Mbps
     } else if (data.speeds && data.speeds.download) {
-      download = data.speeds.download / 8; // Convert from Mbps to MBps
+      download = data.speeds.download;
     }
     
     if (data.upload && typeof data.upload.bps !== 'undefined') {
-      upload = data.upload.bps / 8000000; // Convert from bps to MBps
+      upload = data.upload.bps / 1000000; // Convert from bps to Mbps
     } else if (data.upload && typeof data.upload.bandwidth !== 'undefined') {
-      upload = data.upload.bandwidth / 8000000; // Convert from bps to MBps
+      upload = data.upload.bandwidth / 1000000; // Convert from bps to Mbps
     } else if (data.upload && typeof data.upload === 'number') {
-      upload = data.upload / 8; // Already in Mbps, convert to MBps
+      upload = data.upload; // Already in Mbps
     } else if (data.speeds && data.speeds.upload) {
-      upload = data.speeds.upload / 8; // Convert from Mbps to MBps
+      upload = data.speeds.upload;
     }
     
     if (data.ping && typeof data.ping.latency !== 'undefined') {

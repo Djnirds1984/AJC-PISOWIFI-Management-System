@@ -7,11 +7,25 @@ interface WanInterface {
   weight: number;
 }
 
+interface WanConnection {
+  type: 'dhcp' | 'static' | 'pppoe';
+  interface: string;
+  gateway?: string;
+  ip?: string;
+  netmask?: string;
+  dns1?: string;
+  dns2?: string;
+  pppoe_username?: string;
+  pppoe_password?: string;
+  weight: number;
+}
+
 interface MultiWanConfig {
   enabled: boolean;
   mode: 'pcc' | 'ecmp';
   pcc_method: 'both_addresses' | 'both_addresses_ports';
-  interfaces: WanInterface[];
+  primary_wan: WanConnection;
+  secondary_interfaces: WanInterface[];
 }
 
 const MultiWanSettings: React.FC = () => {
@@ -19,7 +33,12 @@ const MultiWanSettings: React.FC = () => {
     enabled: false,
     mode: 'pcc',
     pcc_method: 'both_addresses',
-    interfaces: []
+    primary_wan: {
+      type: 'dhcp',
+      interface: '',
+      weight: 1
+    },
+    secondary_interfaces: []
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -107,7 +126,7 @@ const MultiWanSettings: React.FC = () => {
     
     setConfig(prev => ({
       ...prev,
-      interfaces: [...prev.interfaces, interfaceToAdd]
+      secondary_interfaces: [...prev.secondary_interfaces, interfaceToAdd]
     }));
     
     // Reset form
@@ -121,7 +140,7 @@ const MultiWanSettings: React.FC = () => {
   const removeInterface = (idx: number) => {
     setConfig(prev => ({
       ...prev,
-      interfaces: prev.interfaces.filter((_, i) => i !== idx)
+      secondary_interfaces: prev.secondary_interfaces.filter((_, i) => i !== idx)
     }));
   };
 
@@ -225,6 +244,198 @@ const MultiWanSettings: React.FC = () => {
                 </div>
             </div>
 
+            {/* Primary WAN Configuration */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+                    <h3 className="font-black text-slate-800 uppercase tracking-widest text-sm">Primary WAN</h3>
+                </div>
+                <div className="p-6 space-y-6">
+                    {/* Connection Type */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Connection Type</label>
+                            <div className="space-y-2">
+                                {(['dhcp', 'static', 'pppoe'] as const).map(type => (
+                                    <label 
+                                        key={type}
+                                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                                            config.primary_wan.type === type 
+                                                ? 'border-blue-500 bg-blue-50' 
+                                                : 'border-slate-200 hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <input 
+                                            type="radio" 
+                                            name="primary_connection_type" 
+                                            checked={config.primary_wan.type === type} 
+                                            onChange={() => setConfig({
+                                                ...config, 
+                                                primary_wan: {...config.primary_wan, type}
+                                            })}
+                                            className="text-blue-600 focus:ring-blue-500 w-4 h-4"
+                                        />
+                                        <span className="font-bold text-sm text-slate-700 capitalize">{type}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        {/* Interface Selection */}
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Interface</label>
+                            <select 
+                                className="w-full p-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                value={config.primary_wan.interface}
+                                onChange={e => setConfig({
+                                    ...config, 
+                                    primary_wan: {...config.primary_wan, interface: e.target.value}
+                                })}
+                            >
+                                <option value="">Select Interface...</option>
+                                {availableInterfaces.map(iface => (
+                                    <option key={iface.name} value={iface.name}>
+                                        {iface.name} ({iface.type.toUpperCase()}) - {iface.status.toUpperCase()} {iface.ip ? `| IP: ${iface.ip}` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        
+                        {/* Weight */}
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Weight</label>
+                            <input 
+                                type="number" 
+                                min="1"
+                                max="100"
+                                className="w-full p-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                value={config.primary_wan.weight}
+                                onChange={e => setConfig({
+                                    ...config, 
+                                    primary_wan: {...config.primary_wan, weight: parseInt(e.target.value) || 1}
+                                })}
+                            />
+                        </div>
+                    </div>
+                    
+                    {/* Connection-Specific Fields */}
+                    {config.primary_wan.type === 'static' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">IP Address</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="e.g. 192.168.1.100" 
+                                    className="w-full p-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                                    value={config.primary_wan.ip || ''}
+                                    onChange={e => setConfig({
+                                        ...config, 
+                                        primary_wan: {...config.primary_wan, ip: e.target.value}
+                                    })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Netmask</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="e.g. 255.255.255.0" 
+                                    className="w-full p-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                                    value={config.primary_wan.netmask || ''}
+                                    onChange={e => setConfig({
+                                        ...config, 
+                                        primary_wan: {...config.primary_wan, netmask: e.target.value}
+                                    })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Gateway</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="e.g. 192.168.1.1" 
+                                    className="w-full p-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                                    value={config.primary_wan.gateway || ''}
+                                    onChange={e => setConfig({
+                                        ...config, 
+                                        primary_wan: {...config.primary_wan, gateway: e.target.value}
+                                    })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">DNS Server 1</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="e.g. 8.8.8.8" 
+                                    className="w-full p-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                                    value={config.primary_wan.dns1 || ''}
+                                    onChange={e => setConfig({
+                                        ...config, 
+                                        primary_wan: {...config.primary_wan, dns1: e.target.value}
+                                    })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">DNS Server 2</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="e.g. 8.8.4.4" 
+                                    className="w-full p-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                                    value={config.primary_wan.dns2 || ''}
+                                    onChange={e => setConfig({
+                                        ...config, 
+                                        primary_wan: {...config.primary_wan, dns2: e.target.value}
+                                    })}
+                                />
+                            </div>
+                        </div>
+                    )}
+                    
+                    {config.primary_wan.type === 'pppoe' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Username</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="PPPoE username" 
+                                    className="w-full p-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    value={config.primary_wan.pppoe_username || ''}
+                                    onChange={e => setConfig({
+                                        ...config, 
+                                        primary_wan: {...config.primary_wan, pppoe_username: e.target.value}
+                                    })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Password</label>
+                                <input 
+                                    type="password" 
+                                    placeholder="PPPoE password" 
+                                    className="w-full p-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    value={config.primary_wan.pppoe_password || ''}
+                                    onChange={e => setConfig({
+                                        ...config, 
+                                        primary_wan: {...config.primary_wan, pppoe_password: e.target.value}
+                                    })}
+                                />
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Current Primary WAN Status */}
+                    {config.primary_wan.interface && (
+                        <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                            <h4 className="font-bold text-slate-700 mb-2">Current Primary WAN</h4>
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                                <div className="text-slate-600"><span className="font-semibold">Interface:</span> {config.primary_wan.interface}</div>
+                                <div className="text-slate-600"><span className="font-semibold">Type:</span> {config.primary_wan.type.toUpperCase()}</div>
+                                <div className="text-slate-600"><span className="font-semibold">Weight:</span> {config.primary_wan.weight}</div>
+                                {config.primary_wan.gateway && (
+                                    <div className="text-slate-600"><span className="font-semibold">Gateway:</span> {config.primary_wan.gateway}</div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
             {/* WAN Interface List */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="p-6 border-b border-slate-100 bg-slate-50/50">
@@ -304,7 +515,7 @@ const MultiWanSettings: React.FC = () => {
 
                     {/* List */}
                     <div className="space-y-3">
-                        {config.interfaces.map((iface, idx) => {
+                        {config.secondary_interfaces.map((iface, idx) => {
                           const interfaceDetails = getInterfaceDetails(iface.interface);
                           return (
                             <div key={idx} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-blue-200 transition-colors">
@@ -331,9 +542,9 @@ const MultiWanSettings: React.FC = () => {
                             </div>
                           );
                         })}
-                        {config.interfaces.length === 0 && (
+                        {config.secondary_interfaces.length === 0 && (
                             <div className="text-center py-8 text-slate-400 text-xs font-bold uppercase border-2 border-dashed border-slate-200 rounded-xl">
-                                No WAN interfaces configured
+                                No secondary WAN interfaces configured
                             </div>
                         )}
                     </div>

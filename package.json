@@ -28,7 +28,6 @@
     "socket.io": "^4.7.2",
     "socket.io-client": "^4.7.2",
     "sonner": "^2.0.7",
-    "speedtest-net": "^2.2.0",
     "sqlite3": "^5.1.6",
     "systeminformation": "^5.30.5"
   },

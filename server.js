@@ -4118,27 +4118,78 @@ app.post('/api/utilities/speedtest', requireAdmin, async (req, res) => {
       download = data.download.bps / 1000000; // Convert from bps to Mbps
       console.log('[SPEEDTEST] Using download.bps format, raw value:', data.download.bps, 'calculated Mbps:', download);
     } else if (data.download && typeof data.download.bandwidth !== 'undefined') {
-      download = data.download.bandwidth / 1000000; // Convert from bps to Mbps
-      console.log('[SPEEDTEST] Using download.bandwidth format, raw value:', data.download.bandwidth, 'calculated Mbps:', download);
+      // Check if bandwidth is in bytes per second or bits per second
+      // If we have both bandwidth and bytes/elapsed, we can determine the unit
+      if (data.download.bytes && data.download.elapsed) {
+        const calculatedBytesPerSecond = data.download.bytes / (data.download.elapsed / 1000);
+        // If bandwidth is close to calculatedBytesPerSecond, it's likely in bytes/second
+        if (Math.abs(data.download.bandwidth - calculatedBytesPerSecond) < calculatedBytesPerSecond * 0.01) { // 1% tolerance
+          download = (data.download.bandwidth * 8) / 1000000; // Convert from bytes/second to Mbps
+          console.log('[SPEEDTEST] Using download.bandwidth as bytes/second, raw value:', data.download.bandwidth, 'converted to Mbps:', download);
+        } else {
+          download = data.download.bandwidth / 1000000; // Convert from bps to Mbps
+          console.log('[SPEEDTEST] Using download.bandwidth as bps, raw value:', data.download.bandwidth, 'calculated Mbps:', download);
+        }
+      } else {
+        // Fallback: assume bandwidth is in bps if value is large, or convert if it seems like bytes
+        if (data.download.bandwidth > 100000000) { // If > 100 Mbps in raw value, assume it's bits
+          download = data.download.bandwidth / 1000000;
+          console.log('[SPEEDTEST] Using download.bandwidth as bps (high value), raw value:', data.download.bandwidth, 'calculated Mbps:', download);
+        } else {
+          // Assume it's bytes per second and convert to Mbps
+          download = (data.download.bandwidth * 8) / 1000000;
+          console.log('[SPEEDTEST] Using download.bandwidth as bytes/second (fallback), raw value:', data.download.bandwidth, 'converted to Mbps:', download);
+        }
+      }
     } else if (data.download && typeof data.download.Mbps !== 'undefined') {
       download = data.download.Mbps; // Already in Mbps
       console.log('[SPEEDTEST] Using download.Mbps format, value:', download);
+    } else if (data.download && typeof data.download.bytes_per_second !== 'undefined') {
+      // Handle case where speedtest returns bytes_per_second instead of bits_per_second
+      download = (data.download.bytes_per_second * 8) / 1000000; // Convert from bytes per second to Mbps
+      console.log('[SPEEDTEST] Using download.bytes_per_second format, raw value:', data.download.bytes_per_second, 'converted to Mbps:', download);
     } else if (data.download && typeof data.download === 'number') {
-      // Determine if this is already Mbps or bps based on magnitude
+      // Determine if this is Mbps, MBps, or bps based on magnitude
       if (data.download > 10000) {
         download = data.download / 1000000; // Likely in bps
         console.log('[SPEEDTEST] Interpreting raw download number as bps, raw value:', data.download, 'calculated Mbps:', download);
       } else {
-        download = data.download; // Likely already in Mbps
-        console.log('[SPEEDTEST] Interpreting raw download number as Mbps, value:', download);
+        // Check if this looks like MBps (needs to be converted to Mbps by multiplying by 8)
+        // Typical internet speeds in Mbps are usually higher than typical speeds in MBps
+        // So if we get a reasonable value like 10-50, it might be MBps that needs conversion to Mbps
+        const potentialMbpsValue = data.download;
+        const potentialMBpsValue = data.download * 8;
+        
+        // If the value seems low for Mbps (< 100) but makes sense as MBps converted to Mbps, assume it's MBps
+        if (potentialMbpsValue < 100 && potentialMBpsValue > potentialMbpsValue) {
+          download = potentialMBpsValue; // Convert MBps to Mbps by multiplying by 8
+          console.log('[SPEEDTEST] Interpreting raw download number as MBps, raw value:', data.download, 'converted to Mbps:', download);
+        } else {
+          download = potentialMbpsValue; // Assume it's already Mbps
+          console.log('[SPEEDTEST] Interpreting raw download number as Mbps, value:', download);
+        }
       }
     } else if (data.speeds && typeof data.speeds.download !== 'undefined') {
       if (typeof data.speeds.download === 'object' && typeof data.speeds.download.bandwidth !== 'undefined') {
         download = data.speeds.download.bandwidth / 1000000; // Convert from bps to Mbps
         console.log('[SPEEDTEST] Using speeds.download.bandwidth format, raw value:', data.speeds.download.bandwidth, 'calculated Mbps:', download);
       } else {
-        download = data.speeds.download;
-        console.log('[SPEEDTEST] Using speeds.download format, value:', download);
+        // Handle potential MBps to Mbps conversion for speeds.download
+        if (typeof data.speeds.download === 'number') {
+          const potentialMbpsValue = data.speeds.download;
+          const potentialMBpsValue = data.speeds.download * 8;
+          
+          if (potentialMbpsValue < 100 && potentialMBpsValue > potentialMbpsValue) {
+            download = potentialMBpsValue; // Convert MBps to Mbps by multiplying by 8
+            console.log('[SPEEDTEST] Using speeds.download format as MBps, raw value:', data.speeds.download, 'converted to Mbps:', download);
+          } else {
+            download = potentialMbpsValue; // Assume it's already Mbps
+            console.log('[SPEEDTEST] Using speeds.download format as Mbps, value:', download);
+          }
+        } else {
+          download = data.speeds.download;
+          console.log('[SPEEDTEST] Using speeds.download format, value:', download);
+        }
       }
     } else {
       console.log('[SPEEDTEST] No recognized download format found in data:', data.download);
@@ -4148,27 +4199,78 @@ app.post('/api/utilities/speedtest', requireAdmin, async (req, res) => {
       upload = data.upload.bps / 1000000; // Convert from bps to Mbps
       console.log('[SPEEDTEST] Using upload.bps format, raw value:', data.upload.bps, 'calculated Mbps:', upload);
     } else if (data.upload && typeof data.upload.bandwidth !== 'undefined') {
-      upload = data.upload.bandwidth / 1000000; // Convert from bps to Mbps
-      console.log('[SPEEDTEST] Using upload.bandwidth format, raw value:', data.upload.bandwidth, 'calculated Mbps:', upload);
+      // Check if bandwidth is in bytes per second or bits per second
+      // If we have both bandwidth and bytes/elapsed, we can determine the unit
+      if (data.upload.bytes && data.upload.elapsed) {
+        const calculatedBytesPerSecond = data.upload.bytes / (data.upload.elapsed / 1000);
+        // If bandwidth is close to calculatedBytesPerSecond, it's likely in bytes/second
+        if (Math.abs(data.upload.bandwidth - calculatedBytesPerSecond) < calculatedBytesPerSecond * 0.01) { // 1% tolerance
+          upload = (data.upload.bandwidth * 8) / 1000000; // Convert from bytes/second to Mbps
+          console.log('[SPEEDTEST] Using upload.bandwidth as bytes/second, raw value:', data.upload.bandwidth, 'converted to Mbps:', upload);
+        } else {
+          upload = data.upload.bandwidth / 1000000; // Convert from bps to Mbps
+          console.log('[SPEEDTEST] Using upload.bandwidth as bps, raw value:', data.upload.bandwidth, 'calculated Mbps:', upload);
+        }
+      } else {
+        // Fallback: assume bandwidth is in bps if value is large, or convert if it seems like bytes
+        if (data.upload.bandwidth > 100000000) { // If > 100 Mbps in raw value, assume it's bits
+          upload = data.upload.bandwidth / 1000000;
+          console.log('[SPEEDTEST] Using upload.bandwidth as bps (high value), raw value:', data.upload.bandwidth, 'calculated Mbps:', upload);
+        } else {
+          // Assume it's bytes per second and convert to Mbps
+          upload = (data.upload.bandwidth * 8) / 1000000;
+          console.log('[SPEEDTEST] Using upload.bandwidth as bytes/second (fallback), raw value:', data.upload.bandwidth, 'converted to Mbps:', upload);
+        }
+      }
     } else if (data.upload && typeof data.upload.Mbps !== 'undefined') {
       upload = data.upload.Mbps; // Already in Mbps
       console.log('[SPEEDTEST] Using upload.Mbps format, value:', upload);
+    } else if (data.upload && typeof data.upload.bytes_per_second !== 'undefined') {
+      // Handle case where speedtest returns bytes_per_second instead of bits_per_second
+      upload = (data.upload.bytes_per_second * 8) / 1000000; // Convert from bytes per second to Mbps
+      console.log('[SPEEDTEST] Using upload.bytes_per_second format, raw value:', data.upload.bytes_per_second, 'converted to Mbps:', upload);
     } else if (data.upload && typeof data.upload === 'number') {
-      // Determine if this is already Mbps or bps based on magnitude
+      // Determine if this is Mbps, MBps, or bps based on magnitude
       if (data.upload > 10000) {
         upload = data.upload / 1000000; // likely in bps
         console.log('[SPEEDTEST] Interpreting raw upload number as bps, raw value:', data.upload, 'calculated Mbps:', upload);
       } else {
-        upload = data.upload; // likely already in Mbps
-        console.log('[SPEEDTEST] Interpreting raw upload number as Mbps, value:', upload);
+        // Check if this looks like MBps (needs to be converted to Mbps by multiplying by 8)
+        // Typical internet speeds in Mbps are usually higher than typical speeds in MBps
+        // So if we get a reasonable value like 10-50, it might be MBps that needs conversion to Mbps
+        const potentialMbpsValue = data.upload;
+        const potentialMBpsValue = data.upload * 8;
+        
+        // If the value seems low for Mbps (< 100) but makes sense as MBps converted to Mbps, assume it's MBps
+        if (potentialMbpsValue < 100 && potentialMBpsValue > potentialMbpsValue) {
+          upload = potentialMBpsValue; // Convert MBps to Mbps by multiplying by 8
+          console.log('[SPEEDTEST] Interpreting raw upload number as MBps, raw value:', data.upload, 'converted to Mbps:', upload);
+        } else {
+          upload = potentialMbpsValue; // assume it's already Mbps
+          console.log('[SPEEDTEST] Interpreting raw upload number as Mbps, value:', upload);
+        }
       }
     } else if (data.speeds && typeof data.speeds.upload !== 'undefined') {
       if (typeof data.speeds.upload === 'object' && typeof data.speeds.upload.bandwidth !== 'undefined') {
         upload = data.speeds.upload.bandwidth / 1000000; // Convert from bps to Mbps
         console.log('[SPEEDTEST] Using speeds.upload.bandwidth format, raw value:', data.speeds.upload.bandwidth, 'calculated Mbps:', upload);
       } else {
-        upload = data.speeds.upload;
-        console.log('[SPEEDTEST] Using speeds.upload format, value:', upload);
+        // Handle potential MBps to Mbps conversion for speeds.upload
+        if (typeof data.speeds.upload === 'number') {
+          const potentialMbpsValue = data.speeds.upload;
+          const potentialMBpsValue = data.speeds.upload * 8;
+          
+          if (potentialMbpsValue < 100 && potentialMBpsValue > potentialMbpsValue) {
+            upload = potentialMBpsValue; // Convert MBps to Mbps by multiplying by 8
+            console.log('[SPEEDTEST] Using speeds.upload format as MBps, raw value:', data.speeds.upload, 'converted to Mbps:', upload);
+          } else {
+            upload = potentialMbpsValue; // assume it's already Mbps
+            console.log('[SPEEDTEST] Using speeds.upload format as Mbps, value:', upload);
+          }
+        } else {
+          upload = data.speeds.upload;
+          console.log('[SPEEDTEST] Using speeds.upload format, value:', upload);
+        }
       }
     } else {
       console.log('[SPEEDTEST] No recognized upload format found in data:', data.upload);

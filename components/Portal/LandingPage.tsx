@@ -27,6 +27,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   const [isRevoked, setIsRevoked] = useState(false);
   const [coinSlotLockId, setCoinSlotLockId] = useState<string | null>(null);
   const [reservedSlot, setReservedSlot] = useState<string | null>(null);
+  const [showRatesModal, setShowRatesModal] = useState(false);
 
   // Hardcoded default rates in case the API fetch returns nothing
   const defaultRates: Rate[] = [
@@ -391,10 +392,16 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
               </button>
             </div>
           ) : (
-            <div className="mb-6">
-              <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">📡</div>
-              <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Insert Coins to Connect</h2>
-              <p className="text-slate-500 text-sm mb-6 font-medium px-4">Drop physical coins into the slot to enable high-speed internet access.</p>
+            <div className="mb-6 text-center">
+              <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">📡</div>
+              <h2 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Insert Coins to Connect</h2>
+              <p className="text-slate-500 text-xs mb-4 px-4">Drop coins to enable high-speed internet access.</p>
+              <button 
+                onClick={() => setShowRatesModal(true)}
+                className="inline-flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-colors"
+              >
+                💰 RATES
+              </button>
             </div>
           )}
 
@@ -457,41 +464,31 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
           )}
         </div>
 
-        <div className="mb-10">
-          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-5 px-8">Pricing & Rates</h3>
-          <div className="rates-grid">
-            {activeRates.sort((a,b) => a.pesos - b.pesos).map(rate => (
-              <div key={rate.id} className="rate-item">
-                <span className="rate-pesos">₱{rate.pesos}</span>
-                <span className="rate-time">
-                  {rate.minutes >= 60 
-                    ? `${Math.floor(rate.minutes / 60)}h ${rate.minutes % 60 > 0 ? (rate.minutes % 60) + 'm' : ''}`
-                    : `${rate.minutes} Minutes`}
-                </span>
-              </div>
-            ))}
-          </div>
+        <div className="mb-8 px-6">
+          <button 
+            onClick={() => setShowRatesModal(true)}
+            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
+          >
+            💰 VIEW ALL RATES
+          </button>
         </div>
 
-        <div className="mx-6 bg-slate-900 text-white p-8 rounded-[40px] shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/20 blur-3xl rounded-full"></div>
-          <div className="relative z-10">
-            <h4 className="font-black text-lg mb-4 uppercase tracking-tight italic text-blue-400">Quick Start Guide</h4>
-            <ul className="text-[10px] text-slate-400 space-y-4 font-bold uppercase tracking-widest list-none">
-              <li className="flex gap-4 items-center">
-                <span className="bg-white/10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] shrink-0 text-white">1</span>
-                Tap 'Insert Coin' to open the validator.
-              </li>
-              <li className="flex gap-4 items-center">
-                <span className="bg-white/10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] shrink-0 text-white">2</span>
-                Drop 1, 5, or 10 Peso coins.
-              </li>
-              <li className="flex gap-4 items-center">
-                <span className="bg-white/10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] shrink-0 text-white">3</span>
-                Click 'Start Surfing' to connect.
-              </li>
-            </ul>
-          </div>
+        <div className="mx-6 bg-slate-50 text-slate-700 p-5 rounded-2xl border border-slate-200">
+          <h4 className="font-black text-sm mb-3 uppercase tracking-tight text-slate-900">How to Connect</h4>
+          <ul className="text-[9px] space-y-2 font-bold uppercase tracking-widest list-none">
+            <li className="flex gap-2 items-center">
+              <span className="bg-blue-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[8px] shrink-0">1</span>
+              Tap 'INSERT COIN'
+            </li>
+            <li className="flex gap-2 items-center">
+              <span className="bg-blue-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[8px] shrink-0">2</span>
+              Drop 1, 5, or 10 Peso coins
+            </li>
+            <li className="flex gap-2 items-center">
+              <span className="bg-blue-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[8px] shrink-0">3</span>
+              Click 'Start Surfing'
+            </li>
+          </ul>
         </div>
       </main>
 
@@ -534,6 +531,38 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
           rates={activeRates}
         />
       )}
+      
+      {/* Rates Modal */}
+      {showRatesModal && (
+        <div className="modal-overlay">
+          <div className="modal-content animate-in zoom-in duration-300 shadow-2xl border border-slate-200 max-w-sm w-full mx-4">
+            <div className="p-5 text-center bg-slate-50 border-b border-slate-100">
+              <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">💰 Pricing Rates</h3>
+            </div>
+            <div className="p-5 space-y-3">
+              {activeRates.sort((a,b) => a.pesos - b.pesos).map(rate => (
+                <div key={rate.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                  <span className="font-black text-slate-900">₱{rate.pesos}</span>
+                  <span className="text-sm font-bold text-slate-600">
+                    {rate.minutes >= 60 
+                      ? `${Math.floor(rate.minutes / 60)}h ${rate.minutes % 60 > 0 ? (rate.minutes % 60) + 'm' : ''}`
+                      : `${rate.minutes}m`}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="p-5 pt-0">
+              <button
+                onClick={() => setShowRatesModal(false)}
+                className="w-full py-3 bg-slate-200 text-slate-700 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-300 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <ChatWidget mac={myMac} />
     </div>
   );

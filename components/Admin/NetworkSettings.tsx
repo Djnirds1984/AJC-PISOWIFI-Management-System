@@ -7,6 +7,8 @@ const NetworkSettings: React.FC = () => {
   const [hotspots, setHotspots] = useState<HotspotInstance[]>([]);
   const [wirelessArr, setWirelessArr] = useState<WirelessConfig[]>([]);
   const [loading, setLoading] = useState(false);
+  const [qosDiscipline, setQoSDiscipline] = useState<'cake' | 'fq_codel'>('cake');
+  const [savingQoS, setSavingQoS] = useState(false);
   
   // State for Wireless AP Setup
   const [newWifi, setNewWifi] = useState<Partial<WirelessConfig & { bridge?: string }>>({
@@ -36,7 +38,10 @@ const NetworkSettings: React.FC = () => {
 
 
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { 
+    loadData();
+    apiClient.getQoSConfig().then(config => setQoSDiscipline(config.discipline));
+  }, []);
 
   const loadData = async () => {
     try {
@@ -143,6 +148,16 @@ const NetworkSettings: React.FC = () => {
     }));
   };
 
+  const saveQoS = async (discipline: 'cake' | 'fq_codel') => {
+    setSavingQoS(true);
+    try {
+      await apiClient.saveQoSConfig(discipline);
+      setQoSDiscipline(discipline);
+    } finally {
+      setSavingQoS(false);
+    }
+  };
+
   // PPPoE Server Functions
 
 
@@ -156,6 +171,42 @@ const NetworkSettings: React.FC = () => {
   return (
     <div className="space-y-4 pb-20 animate-in fade-in slide-in-from-bottom-2 duration-500">
       
+      {/* Global Traffic Control */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-4">Global Traffic Control</h3>
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          <div className="flex-1 w-full">
+            <p className="text-[10px] text-slate-500 mb-3 font-medium">
+              Select Queue Discipline. <span className="font-bold text-slate-700">Cake</span> is recommended.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => saveQoS('cake')}
+                disabled={savingQoS}
+                className={`flex-1 py-2 px-3 rounded-lg border font-bold text-[10px] uppercase tracking-wider transition-all ${
+                  qosDiscipline === 'cake' 
+                    ? 'border-blue-600 bg-blue-50 text-blue-700' 
+                    : 'border-slate-200 text-slate-400 hover:border-slate-300'
+                }`}
+              >
+                Cake QoS
+              </button>
+              <button
+                onClick={() => saveQoS('fq_codel')}
+                disabled={savingQoS}
+                className={`flex-1 py-2 px-3 rounded-lg border font-bold text-[10px] uppercase tracking-wider transition-all ${
+                  qosDiscipline === 'fq_codel' 
+                    ? 'border-blue-600 bg-blue-50 text-blue-700' 
+                    : 'border-slate-200 text-slate-400 hover:border-slate-300'
+                }`}
+              >
+                Fq_Codel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* 1. Hardware Link Status Engine */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">

@@ -74,7 +74,22 @@ const MultiWanSettings: React.FC = () => {
           iface.type !== 'loopback' && 
           (iface.type === 'ethernet' || iface.type === 'wifi' || iface.type === 'vlan')
         );
-        setAvailableInterfaces(filteredInterfaces);
+        
+        // Ensure the currently selected primary interface is in the list (even if it's not detected)
+        const currentPrimaryInterface = config.primary_wan?.interface;
+        if (currentPrimaryInterface && !filteredInterfaces.some(iface => iface.name === currentPrimaryInterface)) {
+          // Add a placeholder for the currently selected interface if it's not in the detected list
+          const placeholderInterface = {
+            name: currentPrimaryInterface,
+            type: 'ethernet', // Default type
+            status: 'down', // Default status
+            ip: null,
+            mac: ''
+          };
+          setAvailableInterfaces([placeholderInterface, ...filteredInterfaces]);
+        } else {
+          setAvailableInterfaces(filteredInterfaces);
+        }
       }
     } catch (e) {
       console.error('Failed to fetch interfaces:', e);
@@ -144,8 +159,31 @@ const MultiWanSettings: React.FC = () => {
     }));
   };
 
+  // Helper function to get all interfaces (detected + currently selected)
+  const getAllAvailableInterfaces = () => {
+    const currentPrimary = config.primary_wan?.interface;
+    const currentSecondary = config.secondary_interfaces.map(iface => iface.interface);
+    const allCurrent = [currentPrimary, ...currentSecondary].filter(Boolean);
+    
+    // Add any currently selected interfaces that aren't in the detected list
+    const uniqueInterfaces = [...availableInterfaces];
+    allCurrent.forEach(ifaceName => {
+      if (!uniqueInterfaces.some(iface => iface.name === ifaceName)) {
+        uniqueInterfaces.push({
+          name: ifaceName,
+          type: 'ethernet', // Default type
+          status: 'unknown', // Default status
+          ip: null,
+          mac: ''
+        });
+      }
+    });
+    
+    return uniqueInterfaces;
+  };
+
   const getInterfaceDetails = (interfaceName: string) => {
-    return availableInterfaces.find(iface => iface.name === interfaceName);
+    return getAllAvailableInterfaces().find(iface => iface.name === interfaceName);
   };
 
   if (loading) return <div className="p-8 text-center text-slate-500">Loading Multi-WAN Configuration...</div>;
@@ -286,13 +324,15 @@ const MultiWanSettings: React.FC = () => {
                             <select 
                                 className="w-full p-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 value={config.primary_wan.interface}
-                                onChange={e => setConfig({
-                                    ...config, 
-                                    primary_wan: {...config.primary_wan, interface: e.target.value}
-                                })}
+                                onChange={e => {
+                                    setConfig({
+                                        ...config, 
+                                        primary_wan: {...config.primary_wan, interface: e.target.value}
+                                    });
+                                }}
                             >
                                 <option value="">Select Interface...</option>
-                                {availableInterfaces.map(iface => (
+                                {getAllAvailableInterfaces().map(iface => (
                                     <option key={iface.name} value={iface.name}>
                                         {iface.name} ({iface.type.toUpperCase()}) - {iface.status.toUpperCase()} {iface.ip ? `| IP: ${iface.ip}` : ''}
                                     </option>
@@ -461,7 +501,7 @@ const MultiWanSettings: React.FC = () => {
                                     onChange={e => setNewInterface({...newInterface, interface: e.target.value})}
                                 >
                                     <option value="">Select Interface...</option>
-                                    {availableInterfaces.map(iface => (
+                                    {getAllAvailableInterfaces().map(iface => (
                                         <option key={iface.name} value={iface.name}>
                                             {iface.name} ({iface.type.toUpperCase()}) - {iface.status.toUpperCase()} {iface.ip ? `| IP: ${iface.ip}` : ''}
                                         </option>
@@ -516,7 +556,7 @@ const MultiWanSettings: React.FC = () => {
                     {/* List */}
                     <div className="space-y-3">
                         {config.secondary_interfaces.map((iface, idx) => {
-                          const interfaceDetails = getInterfaceDetails(iface.interface);
+                          const interfaceDetails = getAllAvailableInterfaces().find(i => i.name === iface.interface);
                           return (
                             <div key={idx} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-blue-200 transition-colors">
                                 <div className="flex items-center gap-4">

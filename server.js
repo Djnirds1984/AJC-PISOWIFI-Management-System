@@ -4101,6 +4101,11 @@ app.post('/api/utilities/speedtest', requireAdmin, async (req, res) => {
       throw new Error('Received null or undefined data from speedtest');
     }
     
+    console.log('[SPEEDTEST] Data keys available:', Object.keys(data));
+    console.log('[SPEEDTEST] Raw download property:', data.download);
+    console.log('[SPEEDTEST] Raw upload property:', data.upload);
+    console.log('[SPEEDTEST] Raw speeds property:', data.speeds);
+    
     // Different speedtest libraries may have different data structures
     // Let's handle the most common ones
     let download = 0;
@@ -4111,22 +4116,62 @@ app.post('/api/utilities/speedtest', requireAdmin, async (req, res) => {
     // Check for the different possible data structures
     if (data.download && typeof data.download.bps !== 'undefined') {
       download = data.download.bps / 1000000; // Convert from bps to Mbps
+      console.log('[SPEEDTEST] Using download.bps format, raw value:', data.download.bps, 'calculated Mbps:', download);
     } else if (data.download && typeof data.download.bandwidth !== 'undefined') {
       download = data.download.bandwidth / 1000000; // Convert from bps to Mbps
+      console.log('[SPEEDTEST] Using download.bandwidth format, raw value:', data.download.bandwidth, 'calculated Mbps:', download);
+    } else if (data.download && typeof data.download.Mbps !== 'undefined') {
+      download = data.download.Mbps; // Already in Mbps
+      console.log('[SPEEDTEST] Using download.Mbps format, value:', download);
     } else if (data.download && typeof data.download === 'number') {
-      download = data.download; // Already in Mbps
-    } else if (data.speeds && data.speeds.download) {
-      download = data.speeds.download;
+      // Determine if this is already Mbps or bps based on magnitude
+      if (data.download > 10000) {
+        download = data.download / 1000000; // Likely in bps
+        console.log('[SPEEDTEST] Interpreting raw download number as bps, raw value:', data.download, 'calculated Mbps:', download);
+      } else {
+        download = data.download; // Likely already in Mbps
+        console.log('[SPEEDTEST] Interpreting raw download number as Mbps, value:', download);
+      }
+    } else if (data.speeds && typeof data.speeds.download !== 'undefined') {
+      if (typeof data.speeds.download === 'object' && typeof data.speeds.download.bandwidth !== 'undefined') {
+        download = data.speeds.download.bandwidth / 1000000; // Convert from bps to Mbps
+        console.log('[SPEEDTEST] Using speeds.download.bandwidth format, raw value:', data.speeds.download.bandwidth, 'calculated Mbps:', download);
+      } else {
+        download = data.speeds.download;
+        console.log('[SPEEDTEST] Using speeds.download format, value:', download);
+      }
+    } else {
+      console.log('[SPEEDTEST] No recognized download format found in data:', data.download);
     }
     
     if (data.upload && typeof data.upload.bps !== 'undefined') {
       upload = data.upload.bps / 1000000; // Convert from bps to Mbps
+      console.log('[SPEEDTEST] Using upload.bps format, raw value:', data.upload.bps, 'calculated Mbps:', upload);
     } else if (data.upload && typeof data.upload.bandwidth !== 'undefined') {
       upload = data.upload.bandwidth / 1000000; // Convert from bps to Mbps
+      console.log('[SPEEDTEST] Using upload.bandwidth format, raw value:', data.upload.bandwidth, 'calculated Mbps:', upload);
+    } else if (data.upload && typeof data.upload.Mbps !== 'undefined') {
+      upload = data.upload.Mbps; // Already in Mbps
+      console.log('[SPEEDTEST] Using upload.Mbps format, value:', upload);
     } else if (data.upload && typeof data.upload === 'number') {
-      upload = data.upload; // Already in Mbps
-    } else if (data.speeds && data.speeds.upload) {
-      upload = data.speeds.upload;
+      // Determine if this is already Mbps or bps based on magnitude
+      if (data.upload > 10000) {
+        upload = data.upload / 1000000; // likely in bps
+        console.log('[SPEEDTEST] Interpreting raw upload number as bps, raw value:', data.upload, 'calculated Mbps:', upload);
+      } else {
+        upload = data.upload; // likely already in Mbps
+        console.log('[SPEEDTEST] Interpreting raw upload number as Mbps, value:', upload);
+      }
+    } else if (data.speeds && typeof data.speeds.upload !== 'undefined') {
+      if (typeof data.speeds.upload === 'object' && typeof data.speeds.upload.bandwidth !== 'undefined') {
+        upload = data.speeds.upload.bandwidth / 1000000; // Convert from bps to Mbps
+        console.log('[SPEEDTEST] Using speeds.upload.bandwidth format, raw value:', data.speeds.upload.bandwidth, 'calculated Mbps:', upload);
+      } else {
+        upload = data.speeds.upload;
+        console.log('[SPEEDTEST] Using speeds.upload format, value:', upload);
+      }
+    } else {
+      console.log('[SPEEDTEST] No recognized upload format found in data:', data.upload);
     }
     
     if (data.ping && typeof data.ping.latency !== 'undefined') {
@@ -4147,6 +4192,7 @@ app.post('/api/utilities/speedtest', requireAdmin, async (req, res) => {
       download: parseFloat(download.toFixed(2)),
       upload: parseFloat(upload.toFixed(2)),
       ping: parseFloat(ping.toFixed(1)),
+      unit: 'Mbps', // Specify the unit to clarify it's Mbps not MBps
       server: server,
       requestedServerId: serverId || null,
       timestamp: new Date().toISOString()

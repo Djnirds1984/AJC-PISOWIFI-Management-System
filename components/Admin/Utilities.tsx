@@ -7,6 +7,7 @@ const Utilities: React.FC = () => {
     download: number;
     upload: number;
     ping: number;
+    unit: string;
     server: string;
     requestedServerId: string | null;
     timestamp: string;
@@ -72,6 +73,12 @@ const Utilities: React.FC = () => {
         if (typeof response[field] !== 'number') {
           throw new Error(`Invalid ${field} value: ${response[field]} (type: ${typeof response[field]})`);
         }
+      }
+      
+      // Validate unit field if present
+      const typedResponse = response as any;
+      if (typedResponse.unit && typeof typedResponse.unit !== 'string') {
+        throw new Error(`Invalid unit value: ${typedResponse.unit} (type: ${typeof typedResponse.unit})`);
       }
       
       addLog('Response validation passed');
@@ -181,12 +188,12 @@ const Utilities: React.FC = () => {
                 <div className="grid grid-cols-3 gap-4 mb-6">
                   <div className="bg-white rounded-lg p-4 text-center border border-slate-200">
                     <div className="text-2xl font-black text-blue-600">{speedtestResults.download.toFixed(2)}</div>
-                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Download Mbps</div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Download {(speedtestResults.unit || 'Mbps')}</div>
                   </div>
                   
                   <div className="bg-white rounded-lg p-4 text-center border border-slate-200">
                     <div className="text-2xl font-black text-green-600">{speedtestResults.upload.toFixed(2)}</div>
-                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Upload Mbps</div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Upload {(speedtestResults.unit || 'Mbps')}</div>
                   </div>
                   
                   <div className="bg-white rounded-lg p-4 text-center border border-slate-200">

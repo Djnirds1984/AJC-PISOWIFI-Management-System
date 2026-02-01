@@ -19,6 +19,7 @@ import ChatManager from './components/Admin/ChatManager';
 import ZeroTierManager from './components/Admin/ZeroTierManager';
 import { apiClient } from './lib/api';
 import { initAdminTheme, setAdminTheme } from './lib/theme';
+import Utilities from './components/Admin/Utilities';
 
 const App: React.FC = () => {
 
@@ -337,6 +338,7 @@ const App: React.FC = () => {
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.ZeroTier} onClick={() => setActiveTab(AdminTab.ZeroTier)} icon="🕸️" label="ZeroTier" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Machines} onClick={() => setActiveTab(AdminTab.Machines)} icon="🤖" label="Machines" collapsed={!sidebarOpen} />
                 <SidebarItem active={activeTab === AdminTab.System} onClick={() => setActiveTab(AdminTab.System)} icon="⚙️" label="System" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Utilities} onClick={() => setActiveTab(AdminTab.Utilities)} icon="🔧" label="Utilities" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Updater} onClick={() => setActiveTab(AdminTab.Updater)} icon="🚀" label="Updater" collapsed={!sidebarOpen} />
               </nav>
 
@@ -406,6 +408,7 @@ const App: React.FC = () => {
                   {activeTab === AdminTab.ZeroTier && <ZeroTierManager />}
                   {activeTab === AdminTab.Machines && <MyMachines />}
                   {activeTab === AdminTab.System && <SystemSettings />}
+                  {activeTab === AdminTab.Utilities && <Utilities />}
                   {activeTab === AdminTab.Updater && <SystemUpdater />}
                 </div>
                 {/* Bottom Spacer for Mobile */}

@@ -4045,3 +4045,37 @@ server.listen(80, '0.0.0.0', async () => {
   const canOperateNow = (isLicensedNow || trialStatusInfo.isTrialActive) && !isRevokedNow;
   await bootupRestore(!canOperateNow);
 });
+
+// Utility Endpoints
+const speedtest = require('speedtest-net');
+
+app.post('/api/utilities/speedtest', requireAdmin, async (req, res) => {
+  try {
+    // Create a promise to handle the asynchronous speedtest
+    const speedtestPromise = new Promise((resolve, reject) => {
+      const test = speedtest({
+        maxTime: 30000 // 30 seconds timeout
+      });
+
+      test.on('data', (data) => {
+        resolve({
+          download: parseFloat(data.speeds.download.toFixed(2)),
+          upload: parseFloat(data.speeds.upload.toFixed(2)),
+          ping: parseFloat(data.ping.latency.toFixed(1)),
+          server: data.server.name,
+          timestamp: new Date().toISOString()
+        });
+      });
+
+      test.on('error', (err) => {
+        reject(err);
+      });
+    });
+
+    const results = await speedtestPromise;
+    res.json(results);
+  } catch (error) {
+    console.error('Speedtest API error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});

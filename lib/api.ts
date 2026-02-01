@@ -772,5 +772,13 @@ export const apiClient = {
       headers: getHeaders() 
     });
     return handleResponse(res);
+  },
+
+  async runSpeedtest(): Promise<{ download: number; upload: number; ping: number; server: string; timestamp: string }> {
+    const res = await fetch(`${API_BASE}/utilities/speedtest`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
   }
 };

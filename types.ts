@@ -205,7 +205,8 @@ export enum AdminTab {
   Bandwidth = 'bandwidth',
   MultiWan = 'multi_wan',
   Chat = 'chat',
-  ZeroTier = 'zerotier'
+  ZeroTier = 'zerotier',
+  Utilities = 'utilities'
 }
 
 export interface UpdateLog {

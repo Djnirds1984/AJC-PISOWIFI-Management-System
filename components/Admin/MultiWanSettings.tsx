@@ -23,7 +23,7 @@ const MultiWanSettings: React.FC = () => {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [availableInterfaces, setAvailableInterfaces] = useState<string[]>([]);
+  const [availableInterfaces, setAvailableInterfaces] = useState<NetworkInterface[]>([]);
   const [newInterface, setNewInterface] = useState<WanInterface>({ interface: '', gateway: '', weight: 1 });
 
   useEffect(() => {
@@ -47,13 +47,18 @@ const MultiWanSettings: React.FC = () => {
 
   const fetchInterfaces = async () => {
     try {
-      const res = await fetch('/api/system/interfaces');
+      const res = await fetch('/api/interfaces');
       const data = await res.json();
-      if (data.interfaces) {
-        setAvailableInterfaces(data.interfaces.map((i: any) => i.name));
+      if (Array.isArray(data)) {
+        // Filter to show only ethernet, wifi, and vlan interfaces that are not loopback
+        const filteredInterfaces = data.filter((iface: any) => 
+          iface.type !== 'loopback' && 
+          (iface.type === 'ethernet' || iface.type === 'wifi' || iface.type === 'vlan')
+        );
+        setAvailableInterfaces(filteredInterfaces);
       }
     } catch (e) {
-      // Fallback or ignore
+      console.error('Failed to fetch interfaces:', e);
     }
   };
 
@@ -79,15 +84,38 @@ const MultiWanSettings: React.FC = () => {
   };
 
   const addInterface = () => {
-    if (!newInterface.interface || !newInterface.gateway) {
-      alert('Please select an interface and enter a gateway IP.');
+    let interfaceName = newInterface.interface;
+    
+    // Validate interface name
+    if (!interfaceName || interfaceName === '') {
+      alert('Please select an interface or enter a custom interface name.');
       return;
     }
+    
+    // Validate gateway
+    if (!newInterface.gateway) {
+      alert('Please enter a gateway IP.');
+      return;
+    }
+    
+    // Create interface object to add
+    const interfaceToAdd = {
+      interface: interfaceName,
+      gateway: newInterface.gateway,
+      weight: newInterface.weight
+    };
+    
     setConfig(prev => ({
       ...prev,
-      interfaces: [...prev.interfaces, newInterface]
+      interfaces: [...prev.interfaces, interfaceToAdd]
     }));
-    setNewInterface({ interface: '', gateway: '', weight: 1 });
+    
+    // Reset form
+    setNewInterface({ 
+      interface: '', 
+      gateway: '', 
+      weight: 1 
+    });
   };
 
   const removeInterface = (idx: number) => {
@@ -95,6 +123,10 @@ const MultiWanSettings: React.FC = () => {
       ...prev,
       interfaces: prev.interfaces.filter((_, i) => i !== idx)
     }));
+  };
+
+  const getInterfaceDetails = (interfaceName: string) => {
+    return availableInterfaces.find(iface => iface.name === interfaceName);
   };
 
   if (loading) return <div className="p-8 text-center text-slate-500">Loading Multi-WAN Configuration...</div>;
@@ -203,18 +235,32 @@ const MultiWanSettings: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100">
                         <div className="md:col-span-1">
                             <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Interface</label>
-                            {availableInterfaces.length > 0 ? (
+                            {newInterface.interface === 'custom' ? (
+                                <input 
+                                    type="text" 
+                                    placeholder="Enter custom interface name (e.g. eth2, ppp0)" 
+                                    className="w-full p-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    value=""
+                                    onChange={e => setNewInterface({...newInterface, interface: e.target.value})}
+                                />
+                            ) : availableInterfaces.length > 0 ? (
                                 <select 
                                     className="w-full p-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     value={newInterface.interface}
                                     onChange={e => setNewInterface({...newInterface, interface: e.target.value})}
                                 >
-                                    <option value="">Select...</option>
+                                    <option value="">Select Interface...</option>
                                     {availableInterfaces.map(iface => (
-                                        <option key={iface} value={iface}>{iface}</option>
+                                        <option key={iface.name} value={iface.name}>
+                                            {iface.name} ({iface.type.toUpperCase()}) - {iface.status.toUpperCase()} {iface.ip ? `| IP: ${iface.ip}` : ''}
+                                        </option>
                                     ))}
-                                    <option value="custom">Custom (Type manually)</option>
+                                    <option value="custom">Custom (Manual Entry)</option>
                                 </select>
+                            ) : availableInterfaces.length === 0 ? (
+                                <div className="text-sm text-slate-500 italic">
+                                    No interfaces available
+                                </div>
                             ) : (
                                 <input 
                                     type="text" 
@@ -258,15 +304,22 @@ const MultiWanSettings: React.FC = () => {
 
                     {/* List */}
                     <div className="space-y-3">
-                        {config.interfaces.map((iface, idx) => (
+                        {config.interfaces.map((iface, idx) => {
+                          const interfaceDetails = getInterfaceDetails(iface.interface);
+                          return (
                             <div key={idx} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-blue-200 transition-colors">
                                 <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600 font-black text-xs uppercase">
+                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-black text-xs uppercase ${interfaceDetails?.status === 'up' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                         {iface.interface.substring(0, 3)}
                                     </div>
                                     <div>
                                         <div className="font-black text-sm text-slate-800 uppercase">{iface.interface}</div>
-                                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">GW: {iface.gateway} • Weight: {iface.weight}</div>
+                                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                          Type: {interfaceDetails?.type?.toUpperCase() || 'N/A'} • Status: {interfaceDetails?.status?.toUpperCase() || 'N/A'}
+                                        </div>
+                                        <div className="text-[10px] text-slate-500 font-mono">
+                                          GW: {iface.gateway} • Weight: {iface.weight} {interfaceDetails?.ip ? `• IP: ${interfaceDetails.ip}` : ''}
+                                        </div>
                                     </div>
                                 </div>
                                 <button 
@@ -276,7 +329,8 @@ const MultiWanSettings: React.FC = () => {
                                     Remove
                                 </button>
                             </div>
-                        ))}
+                          );
+                        })}
                         {config.interfaces.length === 0 && (
                             <div className="text-center py-8 text-slate-400 text-xs font-bold uppercase border-2 border-dashed border-slate-200 rounded-xl">
                                 No WAN interfaces configured

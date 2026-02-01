@@ -80,6 +80,14 @@ apt-get install -y \
     sqlite3 \
     vlan
 
+# Install High-Performance Networking Tools for 10G+ Support
+apt-get install -y \
+    ethtool \  # For network interface tuning
+    irqbalance \  # For interrupt load balancing
+    numactl \  # For NUMA-aware network optimizations
+    cpufrequtils \  # For CPU frequency scaling control
+    linux-modules-extra-$(uname -r) || echo "Extra modules not available for this kernel"
+
 # Install Board-Specific Packages
 case $BOARD in
     "raspberry_pi")
@@ -157,6 +165,31 @@ echo -e "${GREEN}[8/8] Setting Kernel Capabilities...${NC}"
 # cap_net_bind_service allows binding to port 80 without being root
 # cap_net_admin/raw needed for raw socket access (some networking tools)
 setcap 'cap_net_bind_service,cap_net_admin,cap_net_raw+ep' $(eval readlink -f $(which node))
+
+# Configure High-Performance Network Parameters for 10G+ Support
+echo -e "${GREEN}[9/9] Configuring High-Performance Network Parameters...${NC}"
+cat << 'EOF' > /tmp/network-tuning.conf
+tcp_rmem = 4096 87380 134217728
+tcp_wmem = 4096 65536 134217728
+net.core.rmem_max = 134217728
+net.core.wmem_max = 134217728
+net.core.rmem_default = 262144
+net.core.wmem_default = 262144
+net.core.netdev_max_backlog = 5000
+net.core.netdev_budget = 600
+net.core.somaxconn = 65535
+net.ipv4.tcp_max_syn_backlog = 65535
+net.core.tcp_fin_timeout = 10
+net.ipv4.tcp_mtu_probing = 1
+net.core.busy_poll = 50
+net.core.busy_read = 50
+EOF
+
+cat /tmp/network-tuning.conf >> /etc/sysctl.conf
+rm /tmp/network-tuning.conf
+
+# Apply the network tuning parameters
+sysctl -p
 
 echo -e "${BLUE}==============================================${NC}"
 echo -e "${GREEN} INSTALLATION COMPLETE! ${NC}"

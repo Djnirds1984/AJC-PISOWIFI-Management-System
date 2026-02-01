@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { WifiDevice, Rate, BandwidthSettings } from '../../types';
 import { apiClient } from '../../lib/api';
 import GamingPriority from './GamingPriority';
+import MaxBandwidthSettings from './MaxBandwidthSettings';
 
 interface Props {
   devices: WifiDevice[];
@@ -12,6 +13,7 @@ const BandwidthManager: React.FC<Props> = ({ devices, rates }) => {
   const [defaultDownloadLimit, setDefaultDownloadLimit] = useState<number>(5);
   const [defaultUploadLimit, setDefaultUploadLimit] = useState<number>(5);
   const [autoApplyToNew, setAutoApplyToNew] = useState<boolean>(true);
+  const [maxBandwidth, setMaxBandwidth] = useState<number>(10000); // Default to 10G
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
@@ -24,6 +26,10 @@ const BandwidthManager: React.FC<Props> = ({ devices, rates }) => {
         setDefaultDownloadLimit(settings.defaultDownloadLimit);
         setDefaultUploadLimit(settings.defaultUploadLimit);
         setAutoApplyToNew(settings.autoApplyToNew);
+        
+        // Load max bandwidth setting
+        const maxBandwidthSettings = await apiClient.getMaxBandwidth();
+        setMaxBandwidth(maxBandwidthSettings.maxBandwidth);
       } catch (err) {
         console.error('Error loading bandwidth settings:', err);
         setError('Failed to load bandwidth settings');
@@ -92,6 +98,18 @@ const BandwidthManager: React.FC<Props> = ({ devices, rates }) => {
       setLoading(false);
     }
   };
+  
+  const handleSaveMaxBandwidth = async (newMaxBandwidth: number) => {
+    try {
+      const result = await apiClient.saveMaxBandwidth(newMaxBandwidth);
+      setMaxBandwidth(result.maxBandwidth);
+      setMessage('Maximum bandwidth setting saved successfully!');
+      // Refresh the QoS settings to apply the new max bandwidth
+      window.location.reload(); // Simple way to refresh, could be optimized
+    } catch (err: any) {
+      setError(err.message || 'Failed to save maximum bandwidth setting');
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-4">
@@ -102,6 +120,12 @@ const BandwidthManager: React.FC<Props> = ({ devices, rates }) => {
           Configure default limits for hotspot devices.
         </p>
       </div>
+
+      {/* Max Bandwidth Configuration */}
+      <MaxBandwidthSettings 
+        currentMaxBandwidth={maxBandwidth} 
+        onSave={handleSaveMaxBandwidth} 
+      />
 
       {/* Gaming Priority */}
       <GamingPriority />

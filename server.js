@@ -2898,6 +2898,36 @@ app.post('/api/system/flash-nodemcu', requireAdmin, async (req, res) => {
   });
 });
 
+// MAX BANDWIDTH CONFIGURATION API ENDPOINTS
+app.get('/api/max-bandwidth', requireAdmin, async (req, res) => {
+  try {
+    const maxBandwidthRow = await db.get("SELECT value FROM config WHERE key = 'max_bandwidth_mbps'");
+    const maxBandwidth = parseInt(maxBandwidthRow?.value || '10000'); // Default to 10G
+    
+    res.json({ maxBandwidth });
+  } catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  }
+});
+
+app.post('/api/max-bandwidth', requireAdmin, async (req, res) => {
+  try {
+    const { maxBandwidth } = req.body;
+    
+    // Validate input
+    if (typeof maxBandwidth !== 'number' || maxBandwidth <= 0 || maxBandwidth > 100000) { // Max 100G
+      return res.status(400).json({ error: 'Max bandwidth must be a positive number up to 100000 (100Gbps)' });
+    }
+    
+    // Save to database
+    await db.run("INSERT OR REPLACE INTO config (key, value) VALUES ('max_bandwidth_mbps', ?)", [maxBandwidth.toString()]);
+    
+    res.json({ success: true, maxBandwidth });
+  } catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  }
+});
+
 // BANDWIDTH MANAGEMENT API ENDPOINTS
 app.get('/api/bandwidth/settings', requireAdmin, async (req, res) => {
   try {

@@ -12,6 +12,7 @@ Whether you're managing a single vending machine or a fleet of hotspots, AJC PIS
 
 - **⚡ Real-time Coin Detection**: Instant credit updates with support for standard multi-coin slots (Pins configurable).
 - **🌐 Advanced Networking**: Full control over WAN/WLAN configurations, Bridge management, and 802.1Q VLAN support.
+- **⚡ 10G+ Network Support**: Optimized for high-speed networks up to 100Gbps with advanced traffic control.
 - **📱 Mobile-First Captive Portal**: A beautiful, responsive user interface that works perfectly on any device.
 - **📊 Professional Admin Dashboard**: Deep insights with real-time analytics, pricing management, and system health monitoring.
 - **🛡️ Robust Security**: Integrated firewall, captive portal redirection, and hardware-locked licensing system.

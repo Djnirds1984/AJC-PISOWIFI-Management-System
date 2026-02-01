@@ -621,6 +621,21 @@ export const apiClient = {
     await handleResponse(res);
   },
 
+  // Max Bandwidth Configuration APIs
+  async getMaxBandwidth(): Promise<{ maxBandwidth: number }> {
+    const res = await fetch(`${API_BASE}/max-bandwidth`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async saveMaxBandwidth(maxBandwidth: number): Promise<{ success: boolean, maxBandwidth: number }> {
+    const res = await fetch(`${API_BASE}/max-bandwidth`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ maxBandwidth })
+    });
+    return handleResponse(res);
+  },
+
   // NodeMCU Device Management APIs
   async registerNodeMCU(macAddress: string, ipAddress: string, authenticationKey: string): Promise<any> {
     const res = await fetch(`${API_BASE}/nodemcu/register`, {

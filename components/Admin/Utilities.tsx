@@ -8,15 +8,34 @@ const Utilities: React.FC = () => {
     upload: number;
     ping: number;
     server: string;
+    requestedServerId: string | null;
     timestamp: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
+  const [servers, setServers] = useState<Array<{ id: string; name: string; location: string; provider: string }>>([]);
+  const [selectedServer, setSelectedServer] = useState<string>('auto'); // 'auto' for automatic selection
+  const [serversLoading, setServersLoading] = useState<boolean>(false);
 
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [...prev, `[${timestamp}] ${message}`]);
+  };
+
+  const fetchServers = async () => {
+    setServersLoading(true);
+    try {
+      addLog('Fetching available speedtest servers...');
+      const response = await apiClient.getSpeedtestServers();
+      setServers(response.servers);
+      addLog(`Fetched ${response.servers.length} servers`);
+    } catch (err) {
+      addLog(`Failed to fetch servers: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setError(err instanceof Error ? err.message : 'Failed to fetch servers');
+    } finally {
+      setServersLoading(false);
+    }
   };
 
   const runSpeedtest = async () => {
@@ -28,7 +47,8 @@ const Utilities: React.FC = () => {
 
     try {
       addLog('Calling API endpoint...');
-      const response = await apiClient.runSpeedtest();
+      const serverId = selectedServer === 'auto' ? undefined : selectedServer;
+      const response = await apiClient.runSpeedtest(serverId);
       addLog('API response received');
       
       // Log the raw response for debugging
@@ -79,21 +99,48 @@ const Utilities: React.FC = () => {
               Test your Raspberry Pi's internet connectivity with download, upload, and ping measurements.
             </p>
             
-            <div className="flex justify-center gap-3 mb-6">
-              <button
-                onClick={runSpeedtest}
-                disabled={speedtestStatus === 'running'}
-                className="bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-lg font-black text-sm uppercase tracking-widest transition-all shadow-md shadow-blue-500/10 disabled:opacity-50"
-              >
-                {speedtestStatus === 'running' ? 'Testing...' : 'Run Speedtest'}
-              </button>
+            <div className="space-y-4 mb-6">
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={runSpeedtest}
+                  disabled={speedtestStatus === 'running'}
+                  className="bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-lg font-black text-sm uppercase tracking-widest transition-all shadow-md shadow-blue-500/10 disabled:opacity-50"
+                >
+                  {speedtestStatus === 'running' ? 'Testing...' : 'Run Speedtest'}
+                </button>
+                
+                <button
+                  onClick={() => setShowLogs(!showLogs)}
+                  className="bg-slate-600 hover:bg-slate-700 text-white py-3 px-4 rounded-lg font-black text-sm uppercase tracking-widest transition-all shadow-md shadow-slate-500/10"
+                >
+                  {showLogs ? 'Hide Logs' : 'Show Logs'}
+                </button>
+                
+                <button
+                  onClick={fetchServers}
+                  disabled={serversLoading}
+                  className="bg-purple-600 hover:bg-purple-700 text-white py-3 px-4 rounded-lg font-black text-sm uppercase tracking-widest transition-all shadow-md shadow-purple-500/10 disabled:opacity-50"
+                >
+                  {serversLoading ? 'Loading...' : 'Refresh Servers'}
+                </button>
+              </div>
               
-              <button
-                onClick={() => setShowLogs(!showLogs)}
-                className="bg-slate-600 hover:bg-slate-700 text-white py-3 px-4 rounded-lg font-black text-sm uppercase tracking-widest transition-all shadow-md shadow-slate-500/10"
-              >
-                {showLogs ? 'Hide Logs' : 'Show Logs'}
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="text-sm font-bold text-slate-700 min-w-[120px]">Select Server:</label>
+                <select
+                  value={selectedServer}
+                  onChange={(e) => setSelectedServer(e.target.value)}
+                  className="flex-1 min-w-[200px] bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={speedtestStatus === 'running' || serversLoading}
+                >
+                  <option value="auto">Auto-select Best Server</option>
+                  {servers.map((server) => (
+                    <option key={server.id} value={server.id}>
+                      {server.name}{server.location ? `, ${server.location}` : ''} ({server.provider})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {error && (

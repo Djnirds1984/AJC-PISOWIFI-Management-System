@@ -774,9 +774,18 @@ export const apiClient = {
     return handleResponse(res);
   },
 
-  async runSpeedtest(): Promise<{ download: number; upload: number; ping: number; server: string; timestamp: string }> {
+  async runSpeedtest(serverId?: string): Promise<{ download: number; upload: number; ping: number; server: string; requestedServerId: string | null; timestamp: string }> {
     const res = await fetch(`${API_BASE}/utilities/speedtest`, {
       method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ serverId: serverId || null })
+    });
+    return handleResponse(res);
+  },
+
+  async getSpeedtestServers(): Promise<{ servers: Array<{ id: string; name: string; location: string; provider: string }> }> {
+    const res = await fetch(`${API_BASE}/utilities/speedtest-servers`, {
+      method: 'GET',
       headers: getHeaders()
     });
     return handleResponse(res);

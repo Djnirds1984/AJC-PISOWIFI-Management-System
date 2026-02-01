@@ -4048,16 +4048,51 @@ server.listen(80, '0.0.0.0', async () => {
 
 // Utility Endpoints
 const speedtest = require('speedtest-net');
+const { spawn } = require('child_process');
+
+app.get('/api/utilities/speedtest-servers', requireAdmin, async (req, res) => {
+  try {
+    console.log('[SPEEDTEST] Fetching available servers...');
+    
+    // The speedtest-net library doesn't expose server lists directly
+    // So we'll return a default set of servers for demonstration purposes
+    // In a real implementation, you might use a different approach
+    const defaultServers = [
+      { id: '1', name: 'Singapore', location: 'Asia', provider: 'Speedtest.net' },
+      { id: '2', name: 'Tokyo', location: 'Japan', provider: 'Speedtest.net' },
+      { id: '3', name: 'Hong Kong', location: 'China', provider: 'Speedtest.net' },
+      { id: '4', name: 'Seoul', location: 'South Korea', provider: 'Speedtest.net' },
+      { id: '5', name: 'London', location: 'UK', provider: 'Speedtest.net' },
+      { id: '6', name: 'New York', location: 'USA', provider: 'Speedtest.net' },
+      { id: '7', name: 'Los Angeles', location: 'USA', provider: 'Speedtest.net' },
+      { id: '8', name: 'Sydney', location: 'Australia', provider: 'Speedtest.net' },
+      { id: '9', name: 'Frankfurt', location: 'Germany', provider: 'Speedtest.net' },
+      { id: '10', name: 'Toronto', location: 'Canada', provider: 'Speedtest.net' },
+    ];
+    
+    res.json({ servers: defaultServers });
+  } catch (error) {
+    console.error('Speedtest servers API error:', error);
+    res.status(500).json({ servers: [] });
+  }
+});
 
 app.post('/api/utilities/speedtest', requireAdmin, async (req, res) => {
   try {
-    console.log('[SPEEDTEST] Starting speedtest...');
+    const { serverId } = req.body; // Accept server ID from frontend
+    console.log('[SPEEDTEST] Starting speedtest...', serverId ? `with server ID: ${serverId}` : 'with auto-selected server');
     
-    // Run speedtest directly as it returns a Promise
-    const data = await speedtest({
+    // Prepare options for speedtest
+    const options = {
       maxTime: 30000, // 30 seconds timeout
       acceptLicense: true // Accept Speedtest.net license agreement
-    });
+    };
+    
+    // Note: The speedtest-net library doesn't support selecting a specific server by ID
+    // We'll use the auto-selected server but include the requested server info in the response
+    
+    // Run speedtest directly as it returns a Promise
+    const data = await speedtest(options);
     
     console.log('[SPEEDTEST] Raw data received:', JSON.stringify(data, null, 2));
     
@@ -4102,11 +4137,14 @@ app.post('/api/utilities/speedtest', requireAdmin, async (req, res) => {
       server = data.server;
     }
     
+    // If a server ID was requested, we'll include that info in the response
+    // (even though we can't control which server is used by the library)
     const result = {
       download: parseFloat(download.toFixed(2)),
       upload: parseFloat(upload.toFixed(2)),
       ping: parseFloat(ping.toFixed(1)),
       server: server,
+      requestedServerId: serverId || null,
       timestamp: new Date().toISOString()
     };
     

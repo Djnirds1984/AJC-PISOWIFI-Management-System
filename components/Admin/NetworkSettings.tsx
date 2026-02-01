@@ -173,11 +173,11 @@ const NetworkSettings: React.FC = () => {
       
       {/* Global Traffic Control */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-        <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-4">Global Traffic Control</h3>
+        <h3 className="text-[10px] font-black text-main uppercase tracking-widest mb-4">Global Traffic Control</h3>
         <div className="flex flex-col sm:flex-row items-center gap-4">
           <div className="flex-1 w-full">
-            <p className="text-[10px] text-slate-500 mb-3 font-medium">
-              Select Queue Discipline. <span className="font-bold text-slate-700">Cake</span> is recommended.
+            <p className="text-[10px] text-muted mb-3 font-medium">
+              Select Queue Discipline. <span className="font-bold text-main">Cake</span> is recommended.
             </p>
             <div className="flex gap-2">
               <button
@@ -210,7 +210,7 @@ const NetworkSettings: React.FC = () => {
       {/* 1. Hardware Link Status Engine */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hardware Link Engine</h3>
+          <h3 className="text-[10px] font-black text-main uppercase tracking-widest">Hardware Link Engine</h3>
           <button onClick={loadData} disabled={loading} className="text-[9px] font-black uppercase text-blue-600 hover:text-blue-700 disabled:opacity-50">
             {loading ? 'Syncing...' : 'Sync Kernel'}
           </button>
@@ -222,11 +222,11 @@ const NetworkSettings: React.FC = () => {
                 <span className={`text-[7px] font-black uppercase px-1 py-0.5 rounded ${iface.status === 'up' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                   {iface.status}
                 </span>
-                <span className="text-[8px] text-slate-400 font-mono uppercase">{iface.type}</span>
+                <span className="text-[8px] text-muted font-mono uppercase">{iface.type}</span>
               </div>
               <div>
-                <h4 className="font-black text-slate-900 text-xs">{iface.name}</h4>
-                <p className="text-[9px] text-slate-500 font-mono truncate">{iface.ip || '-'}</p>
+                <h4 className="font-black text-main text-xs">{iface.name}</h4>
+                <p className="text-[9px] text-muted font-mono truncate">{iface.ip || '-'}</p>
               </div>
             </div>
           ))}
@@ -236,22 +236,22 @@ const NetworkSettings: React.FC = () => {
       {/* 2. Wireless Interface Manager */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-1 bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
-          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Wireless AP Layer</h3>
+          <h3 className="text-[10px] font-black text-main uppercase tracking-widest mb-4">Wireless AP Layer</h3>
           <div className="space-y-3">
             <div>
-              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Link</label>
+              <label className="text-[8px] font-medium text-muted uppercase tracking-wide mb-1 block">Link</label>
               <select 
                 value={newWifi.interface}
                 onChange={e => setNewWifi({...newWifi, interface: e.target.value})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-medium text-main"
               >
                 <option value="">Select Link...</option>
                 {interfaces.filter(isPotentialWifi).map(i => <option key={i.name} value={i.name}>{i.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">SSID</label>
-              <input type="text" value={newWifi.ssid} onChange={e => setNewWifi({...newWifi, ssid: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-black" />
+              <label className="text-[8px] font-medium text-muted uppercase tracking-wide mb-1 block">SSID</label>
+              <input type="text" value={newWifi.ssid} onChange={e => setNewWifi({...newWifi, ssid: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-main" />
             </div>
             <div>
               <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Passkey</label>
@@ -262,20 +262,20 @@ const NetworkSettings: React.FC = () => {
         </div>
 
         <div className="lg:col-span-2 bg-slate-50 rounded-xl border border-slate-200 p-4">
-          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Active Radio Nodes</h4>
+          <h4 className="text-[10px] font-black text-main uppercase tracking-widest mb-4">Active Radio Nodes</h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {wirelessArr.length > 0 ? wirelessArr.map(w => (
               <div key={w.interface} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
                 <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center text-sm">📶</div>
                 <div className="flex-1">
-                  <p className="text-[11px] font-black text-slate-900 uppercase">{w.ssid}</p>
-                  <p className="text-[8px] text-slate-400 font-bold uppercase">
+                  <p className="text-[11px] font-black text-main uppercase">{w.ssid}</p>
+                  <p className="text-[8px] text-muted font-bold uppercase">
                     {w.interface} • CH {w.channel}
                   </p>
                 </div>
               </div>
             )) : (
-              <div className="col-span-full py-10 text-center text-slate-400 text-[10px] font-bold uppercase">No Active Radios</div>
+              <div className="col-span-full py-10 text-center text-muted text-[10px] font-bold uppercase">No Active Radios</div>
             )}
           </div>
         </div>
@@ -283,45 +283,45 @@ const NetworkSettings: React.FC = () => {
 
       {/* 3. Hotspot Server Manager */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-1 bg-blue-600 rounded-xl p-4 text-white shadow-lg shadow-blue-500/10">
-          <h3 className="text-[10px] font-black text-blue-100 uppercase tracking-widest mb-4">Portal Segment</h3>
+        <div className="lg:col-span-1 bg-blue-500 rounded-xl p-4 text-white shadow-md shadow-blue-500/10">
+          <h3 className="text-[10px] font-bold text-blue-100 uppercase tracking-wide mb-4">Portal Segment</h3>
           <div className="space-y-3">
             <div>
-              <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">Bind</label>
+              <label className="text-[8px] font-medium text-blue-100 uppercase tracking-wide mb-1 block">Bind</label>
               <select 
                 value={newHS.interface}
                 onChange={e => setNewHS({...newHS, interface: e.target.value})}
-                className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-bold text-white outline-none"
+                className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-medium text-main outline-none"
               >
-                <option value="" className="bg-blue-600">Select Link...</option>
-                {interfaces.map(i => <option key={i.name} value={i.name} className="bg-blue-600">{i.name}</option>)}
+                <option value="" className="bg-blue-500 text-main">Select Link...</option>
+                {interfaces.map(i => <option key={i.name} value={i.name} className="bg-blue-500 text-main">{i.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">Gateway</label>
-              <input type="text" value={newHS.ip_address} onChange={e => setNewHS({...newHS, ip_address: e.target.value})} className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono" />
+              <label className="text-[8px] font-medium text-blue-100 uppercase tracking-wide mb-1 block">Gateway</label>
+              <input type="text" value={newHS.ip_address} onChange={e => setNewHS({...newHS, ip_address: e.target.value})} className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono text-main placeholder:text-muted" placeholder="10.0.10.1" />
             </div>
-            <button onClick={createHotspot} disabled={loading} className="w-full bg-white text-blue-600 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest shadow-md hover:bg-slate-50 transition-all disabled:opacity-50">Commit Portal</button>
+            <button onClick={createHotspot} disabled={loading} className="w-full bg-white text-blue-600 py-2 rounded-lg font-medium text-[9px] uppercase tracking-wide shadow-md hover:bg-gray-50 transition-all disabled:opacity-50">Commit Portal</button>
           </div>
         </div>
 
         <div className="lg:col-span-2 space-y-3">
-          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Portal Segments</h4>
+          <h4 className="text-[10px] font-bold text-muted uppercase tracking-wide">Active Portal Segments</h4>
           {hotspots.length > 0 ? hotspots.map(hs => (
-             <div key={hs.interface} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between group">
+             <div key={hs.interface} className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between group">
                <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center text-lg">🏛️</div>
+                 <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center text-lg">🏛️</div>
                  <div>
-                   <h5 className="font-black text-slate-900 text-[11px] uppercase">{hs.interface}</h5>
-                   <p className="text-[9px] text-slate-500 font-mono">
+                   <h5 className="font-bold text-main text-[11px] uppercase">{hs.interface}</h5>
+                   <p className="text-[9px] text-muted font-mono">
                      {hs.ip_address} • {hs.dhcp_range}
                    </p>
                  </div>
                </div>
-               <button onClick={() => deleteHotspot(hs.interface)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg font-black text-[8px] uppercase hover:bg-red-100 transition-opacity opacity-0 group-hover:opacity-100">Terminate</button>
+               <button onClick={() => deleteHotspot(hs.interface)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg font-medium text-[8px] uppercase hover:bg-red-100 transition-opacity opacity-0 group-hover:opacity-100">Terminate</button>
              </div>
           )) : (
-            <div className="py-10 text-center border-2 border-dashed border-slate-200 rounded-xl text-slate-300 text-[10px] font-black uppercase">No Active Segments</div>
+            <div className="py-10 text-center border-2 border-dashed border-gray-300 rounded-xl text-muted text-[10px] font-medium uppercase">No Active Segments</div>
           )}
         </div>
       </section>
@@ -333,26 +333,26 @@ const NetworkSettings: React.FC = () => {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Parent</label>
+                <label className="text-[8px] font-medium text-muted uppercase tracking-wide mb-1 block">Parent</label>
                 <select 
                   value={vlan.parentInterface}
                   onChange={e => setVlan({...vlan, parentInterface: e.target.value, name: `${e.target.value}.${vlan.id}`})}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-medium text-main"
                 >
                   {interfaces.filter(i => i.type === 'ethernet' || i.name.startsWith('wlan')).map(i => <option key={i.name} value={i.name}>{i.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">VLAN ID</label>
-                <input type="number" value={vlan.id} onChange={e => setVlan({...vlan, id: parseInt(e.target.value), name: `${vlan.parentInterface}.${e.target.value}`})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono" />
+                <label className="text-[8px] font-medium text-muted uppercase tracking-wide mb-1 block">VLAN ID</label>
+                <input type="number" value={vlan.id} onChange={e => setVlan({...vlan, id: parseInt(e.target.value), name: `${vlan.parentInterface}.${e.target.value}`})} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono text-main" />
               </div>
             </div>
-            <button onClick={generateVlan} disabled={loading} className="w-full bg-slate-900 text-white py-2 rounded-lg font-black text-[9px] uppercase tracking-widest">Create: {vlan.name}</button>
+            <button onClick={generateVlan} disabled={loading} className="w-full bg-blue-500 text-white py-2 rounded-lg font-medium text-[9px] uppercase tracking-wide text-main">Create: {vlan.name}</button>
             
             <div className="space-y-1.5">
               {vlans.map(v => (
                 <div key={v.name} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-100 group">
-                  <p className="text-[10px] font-black text-slate-900">{v.name} <span className="text-[8px] text-slate-400 font-mono ml-1">ID: {v.id}</span></p>
+                  <p className="text-[10px] font-black text-main">{v.name} <span className="text-[8px] text-muted font-mono ml-1">ID: {v.id}</span></p>
                   <button onClick={() => deleteVlan(v.name)} className="text-red-600 text-[8px] font-black uppercase opacity-0 group-hover:opacity-100">Delete</button>
                 </div>
               ))}
@@ -364,25 +364,25 @@ const NetworkSettings: React.FC = () => {
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Bridge Engine</h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <input type="text" value={bridge.name} onChange={e => setBridge({...bridge, name: e.target.value})} className="w-1/2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono" placeholder="Bridge Name" />
+              <input type="text" value={bridge.name} onChange={e => setBridge({...bridge, name: e.target.value})} className="w-1/2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-main" placeholder="Bridge Name" />
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={bridge.stp} onChange={e => setBridge({...bridge, stp: e.target.checked})} className="w-3 h-3 rounded border-slate-300 text-blue-600" />
-                <span className="text-[8px] font-black text-slate-600 uppercase">STP</span>
+                <span className="text-[8px] font-black text-main uppercase">STP</span>
               </label>
             </div>
             <div className="grid grid-cols-4 gap-1.5">
                {interfaces.map(iface => (
-                 <button key={iface.name} onClick={() => toggleBridgeMember(iface.name)} className={`py-1 rounded border text-[7px] font-black uppercase transition-all ${bridge.members.includes(iface.name) ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-400'}`}>
+                 <button key={iface.name} onClick={() => toggleBridgeMember(iface.name)} className={`py-1 rounded border text-[7px] font-black uppercase transition-all ${bridge.members.includes(iface.name) ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-main'}`}>
                    {iface.name}
                  </button>
                ))}
             </div>
-            <button onClick={deployBridge} disabled={loading} className="w-full border border-slate-900 text-slate-900 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all">Deploy Bridge</button>
+            <button onClick={deployBridge} disabled={loading} className="w-full border border-slate-900 text-main py-2 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all">Deploy Bridge</button>
             
             <div className="space-y-1.5">
               {bridges.map(b => (
                 <div key={b.name} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-100 group">
-                  <p className="text-[10px] font-black text-slate-900">{b.name} <span className="text-[8px] text-slate-400 font-mono ml-1">({(b.members || []).join(',')})</span></p>
+                  <p className="text-[10px] font-black text-main">{b.name} <span className="text-[8px] text-muted font-mono ml-1">({(b.members || []).join(',')})</span></p>
                   <button onClick={() => deleteBridge(b.name)} className="text-red-600 text-[8px] font-black uppercase opacity-0 group-hover:opacity-100">Delete</button>
                 </div>
               ))}

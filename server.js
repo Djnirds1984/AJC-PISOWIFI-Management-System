@@ -4111,6 +4111,8 @@ app.post('/api/utilities/speedtest', requireAdmin, async (req, res) => {
     // Check for the different possible data structures
     if (data.download && typeof data.download.bps !== 'undefined') {
       download = data.download.bps / 1000000; // Convert from bps to Mbps
+    } else if (data.download && typeof data.download.bandwidth !== 'undefined') {
+      download = data.download.bandwidth / 1000000; // Convert from bps to Mbps
     } else if (data.download && typeof data.download === 'number') {
       download = data.download; // Already in Mbps
     } else if (data.speeds && data.speeds.download) {
@@ -4119,6 +4121,8 @@ app.post('/api/utilities/speedtest', requireAdmin, async (req, res) => {
     
     if (data.upload && typeof data.upload.bps !== 'undefined') {
       upload = data.upload.bps / 1000000; // Convert from bps to Mbps
+    } else if (data.upload && typeof data.upload.bandwidth !== 'undefined') {
+      upload = data.upload.bandwidth / 1000000; // Convert from bps to Mbps
     } else if (data.upload && typeof data.upload === 'number') {
       upload = data.upload; // Already in Mbps
     } else if (data.speeds && data.speeds.upload) {

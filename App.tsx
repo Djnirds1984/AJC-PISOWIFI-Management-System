@@ -73,7 +73,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Initialize theme based on current mode
     if (isCurrentlyAdminPath()) {
-      initAdminTheme();
+      // Set to light minimal theme for admin
+      setAdminTheme('light_minimal');
     } else {
       // Ensure portal always uses default theme (or specific portal theme logic)
       setAdminTheme('default');
@@ -85,7 +86,7 @@ const App: React.FC = () => {
       setIsAdmin(isNowAdmin);
       
       if (isNowAdmin) {
-        initAdminTheme();
+        setAdminTheme('light_minimal');
       } else {
         setAdminTheme('default');
       }
@@ -258,10 +259,10 @@ const App: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-blue-400 font-bold tracking-widest uppercase text-xs">AJC Core Initializing...</p>
+          <div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-blue-600 font-bold tracking-widest uppercase text-xs">AJC Core Initializing...</p>
         </div>
       </div>
     );
@@ -269,21 +270,21 @@ const App: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white p-8 rounded-[32px] shadow-2xl border border-red-100 text-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg border border-gray-200 text-center">
           <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">⚠️</div>
-          <h2 className="text-xl font-black text-slate-900 mb-2 uppercase tracking-tight">System Offline</h2>
-          <p className="text-slate-500 text-sm mb-8 leading-relaxed">{error}</p>
-          <button onClick={() => { setLoading(true); loadData(); }} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-black shadow-xl shadow-slate-900/20">Retry System Link</button>
+          <h2 className="text-xl font-bold text-gray-900 mb-2 uppercase tracking-tight">System Offline</h2>
+          <p className="text-gray-600 text-sm mb-8 leading-relaxed">{error}</p>
+          <button onClick={() => { setLoading(true); loadData(); }} className="w-full bg-blue-500 text-white py-3 rounded-lg font-medium hover:bg-blue-600 transition-colors">Retry System Link</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-white font-['Euclid_Circular_A',_system-ui,_sans-serif]">
       <div className="fixed bottom-4 right-4 z-[999] hidden md:block">
-        <button onClick={handleToggleAdmin} className="bg-slate-950 text-white px-5 py-3 rounded-full text-[10px] font-black tracking-widest uppercase hover:bg-blue-600 shadow-2xl border border-white/10 active:scale-95 transition-all flex items-center gap-2">
+        <button onClick={handleToggleAdmin} className="bg-blue-500 text-white px-5 py-3 rounded-full text-xs font-medium tracking-wide uppercase hover:bg-blue-600 shadow-lg transition-all flex items-center gap-2">
           <span>{isAdmin ? '🚪' : '🔐'}</span>
           {isAdmin ? 'Exit Admin' : 'Admin Login'}
         </button>
@@ -291,7 +292,7 @@ const App: React.FC = () => {
 
       {isAdmin ? (
         isAuthenticated ? (
-          <div className="flex h-screen overflow-hidden bg-slate-100 font-sans selection:bg-blue-100">
+          <div className="flex h-screen overflow-hidden bg-gray-50 font-['Euclid_Circular_A',_system-ui,_sans-serif] selection:bg-blue-100">
             {/* Mobile Sidebar Overlay */}
             {sidebarOpen && (
               <div 
@@ -304,21 +305,21 @@ const App: React.FC = () => {
             <aside className={`
               fixed md:relative h-full
               ${sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64 md:translate-x-0 md:w-20'} 
-              bg-slate-900 text-white flex flex-col shrink-0 transition-all duration-300 ease-in-out z-50 border-r border-slate-800
+              bg-white text-gray-800 flex flex-col shrink-0 transition-all duration-300 ease-in-out z-50 border-r border-gray-200 shadow-sm
             `}>
-              <div className={`p-4 border-b border-white/5 flex items-center ${sidebarOpen ? 'justify-between' : 'justify-center'}`}>
+              <div className={`p-4 border-b border-gray-200 flex items-center ${sidebarOpen ? 'justify-between' : 'justify-center'}`}>
                 {sidebarOpen ? (
                   <>
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 bg-blue-600 rounded flex items-center justify-center font-black text-xs">AJC</div>
-                      <h1 className="text-lg font-bold tracking-tight text-white">PISOWIFI</h1>
+                      <div className="w-7 h-7 bg-blue-500 rounded-lg flex items-center justify-center font-bold text-xs text-white">AJC</div>
+                      <h1 className="text-lg font-bold tracking-tight text-main">PISOWIFI</h1>
                     </div>
-                    <button onClick={() => setSidebarOpen(false)} className="p-1.5 hover:bg-white/10 rounded-md text-slate-400 md:hidden">
+                    <button onClick={() => setSidebarOpen(false)} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 md:hidden">
                       ✕
                     </button>
                   </>
                 ) : (
-                  <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center font-black text-xs">A</div>
+                  <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-bold text-xs text-white">A</div>
                 )}
               </div>
               
@@ -340,18 +341,18 @@ const App: React.FC = () => {
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Updater} onClick={() => setActiveTab(AdminTab.Updater)} icon="🚀" label="Updater" collapsed={!sidebarOpen} />
               </nav>
 
-              <div className={`p-4 border-t border-white/5 bg-black/20 ${sidebarOpen ? 'block' : 'hidden md:block'}`}>
+              <div className={`p-4 border-t border-gray-200 bg-gray-50 ${sidebarOpen ? 'block' : 'hidden md:block'}`}>
                  <div className="flex flex-col gap-3">
                    <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                      {sidebarOpen && <span className="text-slate-500 text-[9px] font-bold uppercase tracking-wider">v3.4.0-beta.1 ONLINE</span>}
+                      {sidebarOpen && <span className="text-muted text-[9px] font-medium uppercase tracking-wider">v3.4.0-beta.1 ONLINE</span>}
                    </div>
                    
                    {/* Mobile Exit Button */}
                    {sidebarOpen && (
                      <button 
                        onClick={handleToggleAdmin}
-                       className="w-full bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-colors md:hidden"
+                       className="w-full bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-2 rounded-lg text-xs font-medium uppercase tracking-wide flex items-center justify-center gap-2 transition-colors md:hidden"
                      >
                        <span>🚪</span> Exit Admin
                      </button>
@@ -361,29 +362,29 @@ const App: React.FC = () => {
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col min-w-0 bg-slate-100 overflow-hidden">
+            <main className="flex-1 flex flex-col min-w-0 bg-gray-50 overflow-hidden">
               {/* Compact Top Bar */}
-              <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0 z-30">
+              <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0 z-30">
                 <div className="flex items-center gap-3">
                   <button 
                     onClick={() => setSidebarOpen(!sidebarOpen)}
-                    className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
+                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
                   </button>
-                  <h2 className="text-sm font-bold text-slate-800 uppercase tracking-tight block">
+                  <h2 className="text-sm font-bold text-main uppercase tracking-tight block">
                     {activeTab}
                   </h2>
                 </div>
 
                 <div className="flex items-center gap-3">
                   <div className="hidden md:flex flex-col items-end mr-2">
-                    <span className="text-[10px] font-bold text-slate-900 uppercase">Administrator</span>
-                    <span className="text-[9px] text-green-600 font-bold uppercase tracking-tighter">System Verified</span>
+                    <span className="text-[10px] font-medium text-main uppercase">Administrator</span>
+                    <span className="text-[9px] text-green-600 font-medium uppercase tracking-tighter">System Verified</span>
                   </div>
-                  <div className="w-8 h-8 bg-slate-800 rounded-md flex items-center justify-center text-white font-bold text-xs shadow-sm">
+                  <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center text-white font-bold text-xs shadow-sm">
                     AD
                   </div>
                 </div>
@@ -442,14 +443,14 @@ const SidebarItem: React.FC<{ active: boolean; onClick: () => void; icon: string
     disabled={disabled}
     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group ${
       disabled 
-        ? 'opacity-20 cursor-not-allowed grayscale' 
+        ? 'opacity-30 cursor-not-allowed' 
         : active 
-          ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' 
-          : 'text-slate-400 hover:bg-white/5 hover:text-white'
+          ? 'bg-blue-500 text-white shadow-sm' 
+          : 'text-muted hover:bg-blue-50 hover:text-blue-700'
     } ${collapsed ? 'justify-center' : 'justify-start'}`}
   >
     <span className={`text-lg ${active ? 'scale-110' : 'group-hover:scale-110'} transition-transform`}>{icon}</span>
-    {!collapsed && <span className="uppercase tracking-wider text-[10px] font-bold">{label}</span>}
+    {!collapsed && <span className="uppercase tracking-wide text-xs font-medium">{label}</span>}
   </button>
 );
 

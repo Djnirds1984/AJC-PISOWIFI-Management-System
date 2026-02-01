@@ -4051,21 +4051,45 @@ const speedtest = require('speedtest-net');
 
 app.post('/api/utilities/speedtest', requireAdmin, async (req, res) => {
   try {
+    console.log('[SPEEDTEST] Starting speedtest...');
+    
     // Run speedtest directly as it returns a Promise
     const data = await speedtest({
       maxTime: 30000, // 30 seconds timeout
       acceptLicense: true // Accept Speedtest.net license agreement
     });
-
-    res.json({
+    
+    console.log('[SPEEDTEST] Raw data received:', JSON.stringify(data, null, 2));
+    
+    // Validate the data structure before accessing properties
+    if (!data) {
+      throw new Error('Received null or undefined data from speedtest');
+    }
+    
+    if (!data.speeds) {
+      console.log('[SPEEDTEST] Available properties:', Object.keys(data));
+      throw new Error('Missing "speeds" property in response');
+    }
+    
+    if (typeof data.speeds.download === 'undefined') {
+      console.log('[SPEEDTEST] Available speeds properties:', Object.keys(data.speeds || {}));
+      throw new Error('Missing "download" property in speeds object');
+    }
+    
+    const result = {
       download: parseFloat(data.speeds.download.toFixed(2)),
       upload: parseFloat(data.speeds.upload.toFixed(2)),
       ping: parseFloat(data.ping.latency.toFixed(1)),
-      server: data.server.name,
+      server: data.server ? data.server.name : 'Unknown',
       timestamp: new Date().toISOString()
-    });
+    };
+    
+    console.log('[SPEEDTEST] Processed result:', result);
+    
+    res.json(result);
   } catch (error) {
     console.error('Speedtest API error:', error);
+    console.error('Full error details:', error.stack);
     res.status(500).json({ error: error.message });
   }
 });

@@ -23,14 +23,24 @@ const SystemUpdater: React.FC = () => {
     setIsBackupLoading(true);
     try {
       const token = localStorage.getItem('ajc_admin_token');
-      const headers: HeadersInit = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (!token) {
+        alert('No admin token found. Please login to admin panel first.');
+        setIsBackupLoading(false);
+        return;
+      }
+      
+      const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`
+      };
 
       const res = await fetch('/api/system/backup', {
           headers
       });
 
-      if (!res.ok) throw new Error('Backup failed');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Backup failed with status ${res.status}`);
+      }
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -52,7 +62,7 @@ const SystemUpdater: React.FC = () => {
       alert(`Backup created successfully! Size: ${formatFileSize(blob.size)}`);
       
     } catch (error) {
-      console.error(error);
+      console.error('Backup error:', error);
       alert('Backup failed: ' + (error as Error).message);
     } finally {
       setIsBackupLoading(false);

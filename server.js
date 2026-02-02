@@ -1607,7 +1607,22 @@ app.post('/api/sessions/start', async (req, res) => {
       const identifiers = await DeviceIdentifier.identifyDevice(req, mac);
       const sessionId = await db.get('SELECT last_insert_rowid() as id');
       if (sessionId && sessionId.id) {
-        await DeviceIdentifier.updateSessionIdentification(sessionId.id, identifiers);
+        await DeviceIdentifier.updateSessionIdentification(sessionId.id, identifiers, 'sessions');
+      }
+      
+      // Also try to store in clients table if Supabase is configured
+      try {
+        const wifiSync = require('./lib/wifi-sync');
+        if (wifiSync.supabase && wifiSync.machineId && wifiSync.vendorId) {
+          // Store in clients table as well
+          const clientSessionId = await db.get('SELECT id FROM clients WHERE session_token = ? ORDER BY created_at DESC LIMIT 1', [token]);
+          if (clientSessionId && clientSessionId.id) {
+            await DeviceIdentifier.updateSessionIdentification(clientSessionId.id, identifiers, 'clients');
+          }
+        }
+      } catch (supabaseErr) {
+        // Supabase not configured or failed, that's okay
+        console.log('[AUTH] Supabase fingerprint storage skipped:', supabaseErr.message);
       }
     } catch (fingerprintErr) {
       console.log('[AUTH] Failed to store device fingerprint:', fingerprintErr.message);
@@ -1657,6 +1672,9 @@ app.post('/api/sessions/restore', async (req, res) => {
     
     const { session, identifierUsed } = sessionMatch;
     console.log(`[AUTH] Session found using ${identifierUsed.type}: ${identifierUsed.value}`);
+    
+    // Determine source table for session updates
+    const sourceTable = session.source_table || 'sessions';
     
     // Handle case where MAC resolution failed but we have a valid session token
     if (!mac) {
@@ -1713,10 +1731,18 @@ app.post('/api/sessions/restore', async (req, res) => {
     await db.run('DELETE FROM sessions WHERE mac = ?', [session.mac]);
     
     // Insert new record with merged data
-    await db.run(
-      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, download_limit, upload_limit, token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [mac, clientIp, session.remaining_seconds + extraTime, session.total_paid + extraPaid, session.connected_at, session.download_limit, session.upload_limit, token]
-    );
+    if (sourceTable === 'sessions') {
+      await db.run(
+        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, download_limit, upload_limit, token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [mac, clientIp, session.remaining_seconds + extraTime, session.total_paid + extraPaid, session.connected_at, session.download_limit, session.upload_limit, token]
+      );
+    } else {
+      // For clients table in Supabase
+      await db.run(
+        'INSERT INTO clients (session_token, mac_address, machine_id, vendor_id, remaining_seconds, total_paid, ip_address, connected_at, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [token, mac, session.machine_id, session.vendor_id, session.remaining_seconds + extraTime, session.total_paid + extraPaid, clientIp, session.connected_at, true]
+      );
+    }
     
     // Switch whitelist
     await network.blockMAC(session.mac, session.ip); // Block old

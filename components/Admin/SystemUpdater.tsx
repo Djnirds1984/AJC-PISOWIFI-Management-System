@@ -1,26 +1,10 @@
 import React, { useState, useRef } from 'react';
 
-interface BackupMetadata {
-  version: string;
-  timestamp: string;
-  hostname: string;
-  platform: string;
-  arch: string;
-  backupType: string;
-  hardwareId?: string | null;
-  licenseStatus?: {
-    isLicensed: boolean;
-    licenseKey?: string;
-    expiresAt?: string;
-  } | null;
-}
-
 const SystemUpdater: React.FC = () => {
   const [isBackupLoading, setIsBackupLoading] = useState(false);
   const [isRestoreLoading, setIsRestoreLoading] = useState(false);
   const [isUpdateLoading, setIsUpdateLoading] = useState(false);
-  const [backupInfo, setBackupInfo] = useState<BackupMetadata | null>(null);
-  const [restorePreview, setRestorePreview] = useState<{ name: string; size: number; metadata?: BackupMetadata } | null>(null);
+  const [restorePreview, setRestorePreview] = useState<{ name: string; size: number } | null>(null);
   
   const restoreFileRef = useRef<HTMLInputElement>(null);
   const updateFileRef = useRef<HTMLInputElement>(null);
@@ -76,36 +60,15 @@ const SystemUpdater: React.FC = () => {
   };
 
   const handleFilePreview = async (file: File) => {
-    try {
-      // Read the .nxs file to extract metadata
-      const arrayBuffer = await file.arrayBuffer();
-      const AdmZip = (await import('adm-zip')).default;
-      const zip = new AdmZip(Buffer.from(arrayBuffer));
-      
-      const entries = zip.getEntries();
-      const metadataEntry = entries.find(e => e.entryName === 'metadata.json');
-      
-      if (metadataEntry) {
-        const metadataContent = zip.readAsText(metadataEntry);
-        const metadata = JSON.parse(metadataContent) as BackupMetadata;
-        setRestorePreview({
-          name: file.name,
-          size: file.size,
-          metadata
-        });
-      } else {
-        setRestorePreview({
-          name: file.name,
-          size: file.size
-        });
-      }
-    } catch (error) {
-      console.error('Could not read backup file:', error);
-      setRestorePreview({
-        name: file.name,
-        size: file.size
-      });
-    }
+    // Set basic file info without parsing the zip contents
+    // This avoids importing adm-zip in the frontend which causes build issues
+    setRestorePreview({
+      name: file.name,
+      size: file.size
+    });
+    
+    // Note: Full metadata parsing would require server-side processing
+    // or using a browser-compatible zip library like JSZip
   };
 
   const handleRestore = async () => {
@@ -115,18 +78,10 @@ const SystemUpdater: React.FC = () => {
       return;
     }
 
-    // Show detailed confirmation
+    // Show confirmation with basic file info
     let confirmMsg = `WARNING: This will overwrite the entire system database and configuration.\n\n`;
-    if (restorePreview?.metadata) {
-      const meta = restorePreview.metadata;
-      confirmMsg += `Backup Info:\n`;
-      confirmMsg += `- Created: ${formatDate(meta.timestamp)}\n`;
-      confirmMsg += `- System: ${meta.hostname} (${meta.platform})\n`;
-      if (meta.hardwareId) confirmMsg += `- Hardware ID: ${meta.hardwareId}\n`;
-      if (meta.licenseStatus) {
-        confirmMsg += `- License: ${meta.licenseStatus.isLicensed ? 'Valid' : 'Not Licensed'}\n`;
-      }
-    }
+    confirmMsg += `Selected Backup: ${restorePreview?.name}\n`;
+    confirmMsg += `File Size: ${formatFileSize(restorePreview?.size || 0)}\n`;
     confirmMsg += `\nThis action cannot be undone. Are you sure?`;
 
     if (!confirm(confirmMsg)) {
@@ -318,7 +273,7 @@ const SystemUpdater: React.FC = () => {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Backup Information
+                Selected Backup
               </h4>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
@@ -329,26 +284,12 @@ const SystemUpdater: React.FC = () => {
                   <span className="text-slate-500">Size:</span>
                   <div className="font-medium">{formatFileSize(restorePreview.size)}</div>
                 </div>
-                {restorePreview.metadata && (
-                  <>
-                    <div>
-                      <span className="text-slate-500">Created:</span>
-                      <div>{formatDate(restorePreview.metadata.timestamp)}</div>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">System:</span>
-                      <div className="font-medium">{restorePreview.metadata.hostname}</div>
-                    </div>
-                    {restorePreview.metadata.hardwareId && (
-                      <div className="col-span-2">
-                        <span className="text-slate-500">Hardware ID:</span>
-                        <div className="font-mono text-xs bg-slate-100 p-1 rounded inline-block">
-                          {restorePreview.metadata.hardwareId}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
+              </div>
+              <div className="mt-2 text-xs text-amber-700">
+                <svg className="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Full backup metadata will be displayed during restore process
               </div>
             </div>
           )}

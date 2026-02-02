@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Backup file naming and content-disposition headers
 - Restore process now properly handles configuration file conflicts
 - Database import/export functionality for cross-platform compatibility
+- Removed adm-zip frontend dependency that caused build errors
+- Fixed esbuild bundling issues with Node.js built-in modules
 
 ### Security
 - Enhanced backup file validation and integrity checking

@@ -4,6 +4,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const si = require('systeminformation');
 const db = require('./lib/db');
 const { initGPIO, updateGPIO, registerSlotCallback, unregisterSlotCallback } = require('./lib/gpio');
@@ -1921,9 +1922,9 @@ app.get('/api/system/info', requireAdmin, async (req, res) => {
     res.json({
       manufacturer: system.manufacturer,
       model: system.model,
-      distro: os.distro,
-      arch: os.arch,
-      platform: os.platform
+      distro: os.platform(),
+      arch: os.arch(),
+      platform: os.platform()
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

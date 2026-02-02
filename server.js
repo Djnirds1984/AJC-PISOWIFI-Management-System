@@ -3613,7 +3613,7 @@ app.post('/api/wifi/heartbeat', async (req, res) => {
     
     // Update local session
     const result = await db.run(
-      'UPDATE sessions SET remaining_seconds = ?, last_updated = ? WHERE mac = ? AND session_token = ?',
+      'UPDATE sessions SET remaining_seconds = ?, last_updated = ? WHERE mac = ? AND token = ?',
       [remaining_seconds, Date.now(), mac_address, session_token]
     );
     

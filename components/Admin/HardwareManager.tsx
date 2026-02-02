@@ -94,7 +94,25 @@ const HardwareManager: React.FC = () => {
     try {
       const cfg = await apiClient.getConfig();
       setBoard(cfg.boardType);
-      setPin(cfg.coinPin);
+      
+      // Convert stored GPIO number to physical pin number for Orange Pi
+      if (cfg.boardType === 'orange_pi' && cfg.boardModel && cfg.coinPin) {
+        const modelMapping = mappings[cfg.boardModel];
+        if (modelMapping) {
+          // Find physical pin that maps to this GPIO
+          const entry = Object.entries(modelMapping.pins).find(([_, gpio]) => gpio === cfg.coinPin);
+          if (entry) {
+            setPin(parseInt(entry[0])); // Set physical pin number
+          } else {
+            setPin(cfg.coinPin); // Fallback to GPIO if no mapping found
+          }
+        } else {
+          setPin(cfg.coinPin);
+        }
+      } else {
+        setPin(cfg.coinPin);
+      }
+      
       if (cfg.boardModel) setBoardModel(cfg.boardModel);
 
       if (cfg.coinSlots && cfg.coinSlots.length > 0) {
@@ -220,10 +238,10 @@ const HardwareManager: React.FC = () => {
                        {board === 'raspberry_pi' || board === 'orange_pi' 
                          ? (() => {
                              const pins = getAvailablePins();
-                             const selectedPin = pins.find(p => p.gpio === pin);
+                             const selectedPin = pins.find(p => p.physical === pin);
                              return selectedPin 
-                               ? `PIN ${selectedPin.physical} (GPIO ${pin})`
-                               : `GPIO ${pin}`;
+                               ? `PIN ${selectedPin.physical} (GPIO ${selectedPin.gpio})`
+                               : `Physical Pin ${pin}`;
                            })()
                          : `GPIO ${pin}`
                        }
@@ -238,13 +256,13 @@ const HardwareManager: React.FC = () => {
                          : [{ physical: pin, gpio: pin, name: `GPIO ${pin}` }]
                        ).map(pinOption => (
                          <button
-                           key={pinOption.gpio}
+                           key={pinOption.physical}
                            onClick={() => {
-                             setPin(pinOption.gpio);
+                             setPin(pinOption.physical);
                              setShowPinDropdown(false);
                            }}
                            className={`w-full text-left px-3 py-2 text-[9px] font-bold hover:bg-slate-100 transition-colors ${
-                             pin === pinOption.gpio ? 'bg-slate-200 text-slate-900' : 'text-slate-700'
+                             pin === pinOption.physical ? 'bg-slate-200 text-slate-900' : 'text-slate-700'
                            }`}
                          >
                            PIN {pinOption.physical} (GPIO {pinOption.gpio})
@@ -318,10 +336,10 @@ const HardwareManager: React.FC = () => {
                     {board === 'raspberry_pi' || board === 'orange_pi' 
                       ? (() => {
                           const pins = getAvailablePins();
-                          const selectedPin = pins.find(p => p.gpio === pin);
+                          const selectedPin = pins.find(p => p.physical === pin);
                           return selectedPin 
-                            ? `PIN ${selectedPin.physical} (GPIO ${pin})`
-                            : `GPIO ${pin}`;
+                            ? `PIN ${selectedPin.physical} (GPIO ${selectedPin.gpio})`
+                            : `Physical Pin ${pin}`;
                         })()
                       : `GPIO ${pin}`
                     }

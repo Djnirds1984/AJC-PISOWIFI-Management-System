@@ -15,6 +15,7 @@ const { verifyPassword, hashPassword } = require('./lib/auth');
 const crypto = require('crypto');
 const multer = require('multer');
 const edgeSync = require('./lib/edge-sync');
+const wifiSync = require('./lib/wifi-sync');
 const zerotier = require('./lib/zerotier');
 const AdmZip = require('adm-zip');
 
@@ -3597,6 +3598,159 @@ app.delete('/api/devices/:id', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ============================================
+// WiFi DEVICE SYNC API ENDPOINTS
+// ============================================
+
+// Device heartbeat endpoint (called by devices to update their session)
+app.post('/api/wifi/heartbeat', async (req, res) => {
+  try {
+    const { mac_address, session_token, remaining_seconds } = req.body;
+    
+    if (!mac_address || !session_token || remaining_seconds === undefined) {
+      return res.status(400).json({ error: 'Missing required fields: mac_address, session_token, remaining_seconds' });
+    }
+    
+    // Update local session
+    const result = await db.run(
+      'UPDATE sessions SET remaining_seconds = ?, last_updated = ? WHERE mac = ? AND session_token = ?',
+      [remaining_seconds, Date.now(), mac_address, session_token]
+    );
+    
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    // Update local device last_seen
+    await db.run(
+      'UPDATE wifi_devices SET last_seen = ? WHERE mac = ?',
+      [Date.now(), mac_address]
+    );
+    
+    // Sync to cloud
+    if (wifiSync && typeof wifiSync.handleDeviceHeartbeat === 'function') {
+      await wifiSync.handleDeviceHeartbeat(mac_address, session_token, remaining_seconds);
+    }
+    
+    res.json({ success: true, message: 'Heartbeat received' });
+  } catch (err) {
+    console.error('[API] Heartbeat error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Check if device has session on another machine (for cross-machine roaming)
+app.get('/api/wifi/session/:mac_address', async (req, res) => {
+  try {
+    const { mac_address } = req.params;
+    
+    if (!mac_address) {
+      return res.status(400).json({ error: 'Missing mac_address' });
+    }
+    
+    // Check cloud for device session
+    let cloudSession = null;
+    if (wifiSync && typeof wifiSync.checkDeviceSession === 'function') {
+      cloudSession = await wifiSync.checkDeviceSession(mac_address);
+    }
+    
+    // Check local session
+    const localSession = await db.get(
+      'SELECT * FROM sessions WHERE mac = ? AND remaining_seconds > 0',
+      [mac_address]
+    );
+    
+    res.json({
+      has_cloud_session: !!cloudSession,
+      cloud_session: cloudSession,
+      has_local_session: !!localSession,
+      local_session: localSession,
+      can_roam: !!cloudSession && cloudSession.machine_id !== wifiSync?.machineId
+    });
+  } catch (err) {
+    console.error('[API] Session check error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Grant cross-machine access to a device
+app.post('/api/wifi/grant-access', requireAdmin, async (req, res) => {
+  try {
+    const { session_token, target_machine_ids } = req.body;
+    
+    if (!session_token || !Array.isArray(target_machine_ids)) {
+      return res.status(400).json({ error: 'Missing required fields: session_token, target_machine_ids (array)' });
+    }
+    
+    // Update in cloud
+    if (wifiSync.supabase) {
+      const { data, error } = await wifiSync.supabase
+        .rpc('grant_cross_machine_access', {
+          p_session_token: session_token,
+          p_target_machine_ids: target_machine_ids
+        });
+      
+      if (error) throw error;
+      
+      res.json({
+        success: true,
+        message: 'Cross-machine access granted',
+        result: data
+      });
+    } else {
+      res.status(501).json({ error: 'Cloud sync not configured' });
+    }
+  } catch (err) {
+    console.error('[API] Grant access error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Sync device session across machines
+app.post('/api/wifi/sync-session', async (req, res) => {
+  try {
+    const { mac_address, session_token, remaining_seconds } = req.body;
+    
+    if (!mac_address || !session_token || remaining_seconds === undefined) {
+      return res.status(400).json({ error: 'Missing required fields: mac_address, session_token, remaining_seconds' });
+    }
+    
+    // Sync to cloud
+    if (wifiSync.supabase) {
+      const { data, error } = await wifiSync.supabase
+        .rpc('sync_device_session', {
+          p_mac_address: mac_address,
+          p_session_token: session_token,
+          p_remaining_seconds: remaining_seconds,
+          p_current_machine_id: wifiSync.machineId
+        });
+      
+      if (error) throw error;
+      
+      res.json({
+        success: true,
+        message: 'Session synced successfully',
+        result: data
+      });
+    } else {
+      res.status(501).json({ error: 'Cloud sync not configured' });
+    }
+  } catch (err) {
+    console.error('[API] Session sync error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get WiFi sync statistics
+app.get('/api/wifi/sync-stats', requireAdmin, (req, res) => {
+  try {
+    const stats = wifiSync.getSyncStats();
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/devices/:id/connect', requireAdmin, async (req, res) => {
   try {
     const device = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
@@ -4182,6 +4336,26 @@ server.listen(80, '0.0.0.0', async () => {
   } else {
     console.warn('[EdgeSync] Cloud sync disabled - MACHINE_ID or VENDOR_ID not set in .env');
   }
+  
+  // Log WiFi Sync status
+  setTimeout(() => {
+    try {
+      const wifiStats = wifiSync.getSyncStats();
+      console.log('[WifiSync] Configuration:', wifiStats.configured ? '✓ Connected' : '✗ Not configured');
+      if (wifiStats.configured) {
+        console.log(`[WifiSync] Machine ID: ${wifiStats.machineId}`);
+        console.log(`[WifiSync] Vendor ID: ${wifiStats.vendorId}`);
+        console.log(`[WifiSync] Device sync: ${wifiStats.syncActive ? 'Active (30s interval)' : 'Inactive'}`);
+        if (wifiStats.queuedItems > 0) {
+          console.log(`[WifiSync] Queued items: ${wifiStats.queuedItems} (will retry)`);
+        }
+      } else {
+        console.warn('[WifiSync] WiFi device sync disabled - check Supabase credentials');
+      }
+    } catch (e) {
+      console.warn('[WifiSync] Failed to get sync stats:', e.message);
+    }
+  }, 3000); // Wait 3 seconds for initialization
 
   // Start Background Timers only after DB is initialized
   setInterval(async () => {

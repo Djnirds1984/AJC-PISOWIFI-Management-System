@@ -31,6 +31,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced backup file validation and integrity checking
 - Improved authentication handling for backup/restore operations 
 
+## [3.6.0-ONLINE-BETA] - 2026-02-03
+
+### Added
+- **MAC Address Roaming Fix**: Implemented seamless cross-Pi session continuity
+  - Enhanced session token management with 7-day explicit expiration
+  - Automatic MAC address change detection on portal load
+  - Real-time Supabase synchronization for roaming devices
+  - LocalStorage-based session persistence (more stable than cookies)
+  - Automatic network permission updates when MAC changes
+
+### Changed
+- Updated project version to v3.6.0-ONLINE-BETA
+- Refactored session management with dedicated mac-roaming utilities
+- Improved captive portal session restoration logic
+- Enhanced WiFi device sync with better error handling
+
+### Fixed
+- Resolved identity loss during Random MAC roaming between Pis
+- Fixed session token expiration handling
+- Improved MAC address synchronization across access points
+- Enhanced cross-machine session transfer reliability
+
+### Security
+- Strengthened session token validation with explicit expiration
+- Improved MAC address change verification process
+
 ## [3.5.0-beta.1] - 2026-02-02
 
 ### Added

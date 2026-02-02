@@ -1,6 +1,6 @@
 {
   "name": "ajc-pisowifi",
-  "version": "3.6.0-ONLINE-BETA"
+  "version": "3.6.0-ONLINE-BETA",
   "description": "Enterprise-grade PisoWiFi Management System with 10G+ Network Support",
   "main": "server.js",
   "type": "commonjs",

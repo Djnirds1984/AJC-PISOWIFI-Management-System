@@ -355,6 +355,8 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
                   </span>
                 )}
                 <span>Session ID: {myMac}</span>
+                <span>Paid: ₱{mySession.totalPaid || 0}</span>
+                <span>Connected Since: {new Date(mySession.connectedAt).toLocaleTimeString()}</span>
               </div>
               
               {!mySession.isPaused ? (
@@ -390,17 +392,64 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
                 <span>{isRefreshing ? '⟳' : '🔄'}</span> 
                 {isRefreshing ? 'REFRESHING...' : 'REFRESH CONNECTION'}
               </button>
+              
+              {/* Session Information Panel */}
+              <div className="mt-6 pt-6 border-t border-slate-200">
+                <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest mb-3 text-center">Session Information</h3>
+                <div className="grid grid-cols-2 gap-3 text-[9px] font-bold uppercase tracking-widest">
+                  <div className="bg-slate-50 p-3 rounded-xl text-center">
+                    <div className="text-slate-500 mb-1">Total Paid</div>
+                    <div className="text-green-600 text-lg font-black">₱{mySession.totalPaid || 0}</div>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-xl text-center">
+                    <div className="text-slate-500 mb-1">Coins Used</div>
+                    <div className="text-blue-600 text-lg font-black">{(mySession.totalPaid || 0) / 5}</div>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-xl text-center">
+                    <div className="text-slate-500 mb-1">Connected</div>
+                    <div className="text-purple-600 text-[8px] font-black">
+                      {new Date(mySession.connectedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </div>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-xl text-center">
+                    <div className="text-slate-500 mb-1">Status</div>
+                    <div className={`text-[8px] font-black ${mySession.isPaused ? 'text-orange-500' : 'text-green-600'}`}>
+                      {mySession.isPaused ? 'PAUSED' : 'ACTIVE'}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="mb-6 text-center">
               <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">📡</div>
               <h2 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Insert Coins to Connect</h2>
               <p className="text-slate-500 text-xs mb-4 px-4">Drop coins to enable high-speed internet access.</p>
+              
+              {/* Quick Rates Preview */}
+              <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <h3 className="text-[9px] font-black text-slate-700 uppercase tracking-widest mb-2">Quick Rates</h3>
+                <div className="flex justify-center gap-3 text-[8px] font-bold uppercase tracking-wider">
+                  <div className="text-center">
+                    <div className="text-blue-600 font-black">1 COIN</div>
+                    <div className="text-slate-500">30 MINUTES</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-green-600 font-black">5 COINS</div>
+                    <div className="text-slate-500">3 HOURS</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-purple-600 font-black">10 COINS</div>
+                    <div className="text-slate-500">12 HOURS</div>
+                  </div>
+                </div>
+              </div>
+              
               <button 
                 onClick={() => setShowRatesModal(true)}
                 className="inline-flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-colors"
               >
-                💰 RATES
+                💰 VIEW ALL RATES
               </button>
             </div>
           )}
@@ -462,6 +511,21 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
               Lost Connection? Restore Session
             </button>
           )}
+          
+          {/* System Status Indicator */}
+          <div className="mt-6 pt-4 border-t border-slate-100">
+            <div className="flex items-center justify-center gap-2 text-[9px] font-bold uppercase tracking-widest text-slate-500">
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                System Online
+              </span>
+              <span>•</span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                {availableSlots.length + 1} Coinslots
+              </span>
+            </div>
+          </div>
         </div>
 
         <div className="mb-8 px-6">

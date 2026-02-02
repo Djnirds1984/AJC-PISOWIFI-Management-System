@@ -1750,8 +1750,8 @@ app.post('/api/coinslot/release', async (req, res) => {
 
 app.get('/api/sessions', async (req, res) => {
   try {
-    // Fetch ALL active sessions from database, not just local ones
-    const rows = await db.all(`
+    // Fetch only LOCAL active sessions from SQLite database
+    const localSessions = await db.all(`
       SELECT 
         mac, 
         ip, 
@@ -1763,27 +1763,51 @@ app.get('/api/sessions', async (req, res) => {
         'local' as source
       FROM sessions 
       WHERE remaining_seconds > 0
-      
-      UNION ALL
-      
-      SELECT 
-        mac_address as mac,
-        ip_address as ip,
-        remaining_seconds as remainingSeconds,
-        total_paid as totalPaid,
-        session_start_time as connectedAt,
-        FALSE as isPaused,
-        session_token as token,
-        'cloud' as source
-      FROM wifi_devices 
-      WHERE is_connected = true 
-        AND remaining_seconds > 0
-        AND mac_address NOT IN (
-          SELECT mac FROM sessions WHERE remaining_seconds > 0
-        )
     `);
-    res.json(rows);
+    
+    // Fetch cloud sessions separately through Supabase
+    let cloudSessions = [];
+    try {
+      const wifiSyncModule = require('./lib/wifi-sync');
+      if (wifiSyncModule.supabase) {
+        const { data, error } = await wifiSyncModule.supabase
+          .from('wifi_devices')
+          .select(`
+            mac_address,
+            ip_address,
+            remaining_seconds,
+            total_paid,
+            session_start_time,
+            session_token,
+            vendors(machine_name)
+          `)
+          .eq('is_connected', true)
+          .gt('remaining_seconds', 0);
+        
+        if (!error && data) {
+          cloudSessions = data.map(session => ({
+            mac: session.mac_address,
+            ip: session.ip_address || 'Unknown',
+            remainingSeconds: session.remaining_seconds,
+            totalPaid: session.total_paid || 0,
+            connectedAt: new Date(session.session_start_time).getTime(),
+            isPaused: false,
+            token: session.session_token,
+            source: 'cloud',
+            machineInfo: session.vendors?.machine_name || 'Remote Machine'
+          }));
+        }
+      }
+    } catch (cloudErr) {
+      console.log('[API] Cloud sessions fetch failed:', cloudErr.message);
+      // Continue with local sessions only
+    }
+    
+    // Combine local and cloud sessions
+    const allSessions = [...localSessions, ...cloudSessions];
+    res.json(allSessions);
   } catch (err) { 
+    console.error('[API] Sessions fetch error:', err.message);
     res.status(500).json({ error: err.message }); 
   }
 });

@@ -230,7 +230,17 @@ const App: React.FC = () => {
         
         const data = await res.json();
         
-        // Handle cross-machine roaming scenario
+        // Handle cross-machine session transfer
+        if (data.success && data.transferred) {
+          console.log('[Session] Session transferred from another machine');
+          console.log(`[Session] Transferred ${data.remainingSeconds} seconds from machine ${data.transferredFrom}`);
+          alert(`✅ Session transferred successfully!\n\nYour ${Math.floor(data.remainingSeconds / 60)} minutes of internet access has been moved to this access point.`);
+          // Keep the token and let the session continue
+          loadData(); // Refresh session data
+          return;
+        }
+        
+        // Handle cross-machine roaming scenario (fallback)
         if (data.success && data.roaming) {
           console.log('[Session] Cross-machine roaming detected');
           alert(`📱 ${data.message}\n\nYour session is active on another machine (${data.originalMachine}). Please connect to that access point to continue your session.`);

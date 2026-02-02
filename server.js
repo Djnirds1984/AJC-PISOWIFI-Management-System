@@ -1679,6 +1679,7 @@ app.post('/api/sessions/restore', async (req, res) => {
     // Handle case where MAC resolution failed but we have a valid session token
     if (!mac) {
       console.log(`[AUTH] MAC resolution failed for IP ${clientIp}, but session found via ${identifierUsed.type}`);
+      console.log(`[AUTH] Session details - MAC: ${session.mac}, Token: ${session.token}, Remaining: ${session.remaining_seconds}s`);
       
       // Check if WiFi sync is enabled and check cloud for session
       try {
@@ -1688,11 +1689,17 @@ app.post('/api/sessions/restore', async (req, res) => {
           if (cloudSession && cloudSession.machine_id !== wifiSync.machineId) {
             // Device has session on another machine - this is cross-machine roaming
             console.log(`[AUTH] Cross-machine roaming detected for token ${token}`);
+            console.log(`[AUTH] Transferring session from machine ${cloudSession.machine_id} to current machine`);
+            
+            // Transfer the session to this machine instead of rejecting
+            await transferSessionFromCloud(cloudSession, mac, clientIp, token);
+            
             return res.json({ 
               success: true, 
-              roaming: true,
-              message: 'Cross-machine session detected. Please connect to the original access point.',
-              originalMachine: cloudSession.machine_id
+              transferred: true,
+              message: 'Session transferred successfully from another machine.',
+              transferredFrom: cloudSession.machine_id,
+              remainingSeconds: cloudSession.remaining_seconds
             });
           }
         }
@@ -1808,6 +1815,67 @@ app.delete('/api/rates/:id', requireAdmin, async (req, res) => {
   try { await db.run('DELETE FROM rates WHERE id = ?', [req.params.id]); res.json({ success: true }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// Helper function to transfer session from cloud to local machine
+async function transferSessionFromCloud(cloudSession, mac, ip, token) {
+  try {
+    console.log(`[AUTH] Starting session transfer for ${mac}`);
+    
+    // Get rate information for QoS limits
+    let downloadLimit = 0;
+    let uploadLimit = 0;
+    
+    try {
+      const rate = await db.get('SELECT * FROM rates WHERE pesos = ? ORDER BY minutes DESC LIMIT 1', 
+        [Math.floor(cloudSession.remaining_seconds / 60)]);
+      if (rate) {
+        downloadLimit = rate.download_limit || 0;
+        uploadLimit = rate.upload_limit || 0;
+      }
+    } catch (rateErr) {
+      console.log('[AUTH] Rate lookup failed, using default limits');
+    }
+    
+    // Create local session record
+    await db.run(
+      'INSERT OR REPLACE INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, download_limit, upload_limit, token, is_paused) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [mac, ip, cloudSession.remaining_seconds, 0, Date.now(), downloadLimit, uploadLimit, token, 0]
+    );
+    
+    // Apply network permissions
+    await network.whitelistMAC(mac, ip);
+    
+    // Apply QoS limits
+    if (downloadLimit > 0 || uploadLimit > 0) {
+      await network.setSpeedLimit(mac, ip, downloadLimit, uploadLimit);
+    }
+    
+    console.log(`[AUTH] Session transfer completed for ${mac} (${ip}) - ${cloudSession.remaining_seconds}s remaining`);
+    
+    // Update cloud session to reflect new machine ownership
+    try {
+      const wifiSync = require('./lib/wifi-sync');
+      if (wifiSync.supabase) {
+        await wifiSync.supabase
+          .from('wifi_devices')
+          .update({
+            machine_id: wifiSync.machineId,
+            ip: ip,
+            last_heartbeat: new Date().toISOString(),
+            is_connected: true
+          })
+          .eq('mac_address', mac);
+        console.log(`[AUTH] Cloud session updated to current machine`);
+      }
+    } catch (updateErr) {
+      console.log(`[AUTH] Failed to update cloud session:`, updateErr.message);
+    }
+    
+  } catch (err) {
+    console.error(`[AUTH] Session transfer failed:`, err.message);
+    throw err;
+  }
+}
 
 // NETWORK REFRESH API - Help devices reconnect after session creation
 app.post('/api/network/refresh', async (req, res) => {

@@ -1046,10 +1046,10 @@ async function getMacFromIp(ip) {
         const wifiSyncModule = require('./lib/wifi-sync');
         if (wifiSyncModule.supabase) {
           const { data: cloudSession, error } = await wifiSyncModule.supabase
-            .from('clients')
+            .from('wifi_devices')
             .select('*')
             .eq('mac_address', mac)
-            .eq('is_active', true)
+            .eq('is_connected', true)
             .maybeSingle();
           
           if (cloudSession && !error) {
@@ -1206,10 +1206,10 @@ app.get('/generate_204', async (req, res) => {
         const wifiSyncModule = require('./lib/wifi-sync');
         if (wifiSyncModule.supabase) {
           const { data: cloudSession } = await wifiSyncModule.supabase
-            .from('clients')
+            .from('wifi_devices')
             .select('mac_address')
             .eq('mac_address', mac.toUpperCase())
-            .eq('is_active', true)
+            .eq('is_connected', true)
             .maybeSingle();
           
           if (cloudSession) {
@@ -1246,10 +1246,10 @@ app.get('/hotspot-detect.html', async (req, res) => {
         const wifiSyncModule = require('./lib/wifi-sync');
         if (wifiSyncModule.supabase) {
           const { data: cloudSession } = await wifiSyncModule.supabase
-            .from('clients')
+            .from('wifi_devices')
             .select('mac_address')
             .eq('mac_address', mac.toUpperCase())
-            .eq('is_active', true)
+            .eq('is_connected', true)
             .maybeSingle();
           
           if (cloudSession) {
@@ -1286,10 +1286,10 @@ app.get('/ncsi.txt', async (req, res) => {
         const wifiSyncModule = require('./lib/wifi-sync');
         if (wifiSyncModule.supabase) {
           const { data: cloudSession } = await wifiSyncModule.supabase
-            .from('clients')
+            .from('wifi_devices')
             .select('mac_address')
             .eq('mac_address', mac.toUpperCase())
-            .eq('is_active', true)
+            .eq('is_connected', true)
             .maybeSingle();
           
           if (cloudSession) {
@@ -1326,10 +1326,10 @@ app.get('/connecttest.txt', async (req, res) => {
         const wifiSyncModule = require('./lib/wifi-sync');
         if (wifiSyncModule.supabase) {
           const { data: cloudSession } = await wifiSyncModule.supabase
-            .from('clients')
+            .from('wifi_devices')
             .select('mac_address')
             .eq('mac_address', mac.toUpperCase())
-            .eq('is_active', true)
+            .eq('is_connected', true)
             .maybeSingle();
           
           if (cloudSession) {
@@ -1366,10 +1366,10 @@ app.get('/success.txt', async (req, res) => {
         const wifiSyncModule = require('./lib/wifi-sync');
         if (wifiSyncModule.supabase) {
           const { data: cloudSession } = await wifiSyncModule.supabase
-            .from('clients')
+            .from('wifi_devices')
             .select('mac_address')
             .eq('mac_address', mac.toUpperCase())
-            .eq('is_active', true)
+            .eq('is_connected', true)
             .maybeSingle();
           
           if (cloudSession) {
@@ -1407,10 +1407,10 @@ app.get('/library/test/success.html', async (req, res) => {
         const wifiSyncModule = require('./lib/wifi-sync');
         if (wifiSyncModule.supabase) {
           const { data: cloudSession } = await wifiSyncModule.supabase
-            .from('clients')
+            .from('wifi_devices')
             .select('mac_address')
             .eq('mac_address', mac.toUpperCase())
-            .eq('is_active', true)
+            .eq('is_connected', true)
             .maybeSingle();
           
           if (cloudSession) {
@@ -1457,10 +1457,10 @@ app.use(async (req, res, next) => {
           const wifiSyncModule = require('./lib/wifi-sync');
           if (wifiSyncModule.supabase) {
             const { data: cloudSession } = await wifiSyncModule.supabase
-              .from('clients')
+              .from('wifi_devices')
               .select('mac_address')
               .eq('mac_address', mac.toUpperCase())
-              .eq('is_active', true)
+              .eq('is_connected', true)
               .maybeSingle();
             
             if (cloudSession) {
@@ -1521,10 +1521,10 @@ app.use(async (req, res, next) => {
         const wifiSyncModule = require('./lib/wifi-sync');
         if (wifiSyncModule.supabase) {
           const { data: cloudSession } = await wifiSyncModule.supabase
-            .from('clients')
+            .from('wifi_devices')
             .select('mac_address, ip_address, remaining_seconds')
             .eq('mac_address', mac.toUpperCase())
-            .eq('is_active', true)
+            .eq('is_connected', true)
             .maybeSingle();
           
           if (cloudSession) {

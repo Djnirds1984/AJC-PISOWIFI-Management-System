@@ -1681,9 +1681,15 @@ app.post('/api/sessions/restore', async (req, res) => {
       console.log(`[AUTH] MAC resolution failed for IP ${clientIp}, but session found via ${identifierUsed.type}`);
       console.log(`[AUTH] Session details - MAC: ${session.mac}, Token: ${session.token}, Remaining: ${session.remaining_seconds}s`);
       
+      // Log additional debug information
+      console.log(`[AUTH] Checking cloud session for MAC: ${session.mac}`);
+      console.log(`[AUTH] Current machine ID: ${require('./lib/wifi-sync').machineId || 'Unknown'}`);
+      
       // Check if WiFi sync is enabled and check cloud for session
       try {
         const wifiSync = require('./lib/wifi-sync');
+        console.log(`[AUTH] WiFi Sync status - Supabase: ${!!wifiSync.supabase}, Machine ID: ${wifiSync.machineId || 'Unknown'}`);
+        
         if (wifiSync.supabase) {
           const cloudSession = await wifiSync.checkDeviceSession(session.mac);
           if (cloudSession && cloudSession.machine_id !== wifiSync.machineId) {

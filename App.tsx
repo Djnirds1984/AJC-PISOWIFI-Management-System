@@ -188,12 +188,12 @@ const App: React.FC = () => {
           alert('✅ Internet access granted! Connection should activate automatically.');
         }
         
-        // Try to help the connection by forcing a page reload after a short delay
+        // Instead of reloading, trigger session restoration immediately
         setTimeout(() => {
           if (window.location.pathname === '/') {
-            window.location.reload();
+            restoreSession(3); // Try to restore the newly created session
           }
-        }, 2000);
+        }, 1000);
       } else {
         alert('❌ Failed to authorize session: ' + data.error);
       }
@@ -221,6 +221,7 @@ const App: React.FC = () => {
   const restoreSession = async (retries = 5) => {
     const sessionToken = localStorage.getItem('ajc_session_token');
     if (sessionToken) {
+      console.log(`[Session] Attempting to restore session (retries left: ${retries})`);
       try {
         const res = await fetch('/api/sessions/restore', {
           method: 'POST',
@@ -263,11 +264,12 @@ const App: React.FC = () => {
         }
 
         if (data.success) {
-          console.log('Session restored successfully');
+          console.log('[Session] Session restored successfully');
           if (data.migrated) {
-            console.log('Session migrated to new network info');
-            loadData(); // Reload to see active session
+            console.log('[Session] Session migrated to new network info');
           }
+          // Always refresh data to ensure UI shows current session state
+          await loadData();
         } else if (res.status === 404) {
           // Token invalid/expired - only remove if we are sure
           console.log('[Session] Token expired or invalid');

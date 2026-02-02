@@ -7,14 +7,19 @@ import {
   Monitor,
   Wifi,
   CheckCircle,
-  Edit2
+  Edit2,
+  ChevronDown
 } from 'lucide-react';
 import NodeMCUManager from './NodeMCUManager';
+
+// Import pin mappings
+const { mappings } = require('../../lib/opi_pinout.js');
 
 const HardwareManager: React.FC = () => {
   const [board, setBoard] = useState<BoardType>('none');
   const [pin, setPin] = useState(2);
   const [boardModel, setBoardModel] = useState<string>('orange_pi_one');
+  const [showPinDropdown, setShowPinDropdown] = useState(false);
   
   const [coinSlots, setCoinSlots] = useState<CoinSlotConfig[]>([]);
   const [nodemcuDevices, setNodemcuDevices] = useState<NodeMCUDevice[]>([]);
@@ -22,6 +27,59 @@ const HardwareManager: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+
+  // Pin mapping definitions
+  const raspberryPiPins = [
+    { physical: 3, gpio: 2, name: 'SDA1' },
+    { physical: 5, gpio: 3, name: 'SCL1' },
+    { physical: 7, gpio: 4, name: 'GPIO4' },
+    { physical: 8, gpio: 14, name: 'TXD0' },
+    { physical: 10, gpio: 15, name: 'RXD0' },
+    { physical: 11, gpio: 17, name: 'GPIO17' },
+    { physical: 12, gpio: 18, name: 'GPIO18' },
+    { physical: 13, gpio: 27, name: 'GPIO27' },
+    { physical: 15, gpio: 22, name: 'GPIO22' },
+    { physical: 16, gpio: 23, name: 'GPIO23' },
+    { physical: 18, gpio: 24, name: 'GPIO24' },
+    { physical: 19, gpio: 10, name: 'SPI_MOSI' },
+    { physical: 21, gpio: 9, name: 'SPI_MISO' },
+    { physical: 22, gpio: 25, name: 'GPIO25' },
+    { physical: 23, gpio: 11, name: 'SPI_CLK' },
+    { physical: 24, gpio: 8, name: 'SPI_CE0_N' },
+    { physical: 26, gpio: 7, name: 'SPI_CE1_N' },
+    { physical: 29, gpio: 5, name: 'GPIO5' },
+    { physical: 31, gpio: 6, name: 'GPIO6' },
+    { physical: 32, gpio: 12, name: 'GPIO12' },
+    { physical: 33, gpio: 13, name: 'GPIO13' },
+    { physical: 35, gpio: 19, name: 'GPIO19' },
+    { physical: 36, gpio: 16, name: 'GPIO16' },
+    { physical: 37, gpio: 26, name: 'GPIO26' },
+    { physical: 38, gpio: 20, name: 'GPIO20' },
+    { physical: 40, gpio: 21, name: 'GPIO21' }
+  ];
+
+  const orangePiModels = [
+    { id: 'orange_pi_one', name: 'Orange Pi One' },
+    { id: 'orange_pi_zero_3', name: 'Orange Pi Zero 3' },
+    { id: 'orange_pi_pc', name: 'Orange Pi PC' },
+    { id: 'orange_pi_5', name: 'Orange Pi 5' }
+  ];
+
+  const getAvailablePins = () => {
+    if (board === 'raspberry_pi') {
+      return raspberryPiPins;
+    } else if (board === 'orange_pi') {
+      const modelMapping = mappings[boardModel];
+      if (!modelMapping) return [];
+      
+      return Object.entries(modelMapping.pins).map(([physical, gpio]) => ({
+        physical: parseInt(physical),
+        gpio: gpio as number,
+        name: `Pin ${physical}`
+      })).sort((a, b) => a.physical - b.physical);
+    }
+    return [];
+  };
 
   useEffect(() => {
     loadConfig();
@@ -134,21 +192,72 @@ const HardwareManager: React.FC = () => {
              </div>
 
              <div className="flex flex-col sm:flex-row gap-4">
-               <div className="flex-1 bg-slate-50 rounded-lg p-3 border border-slate-200">
-                 <div className="flex justify-between items-center mb-2">
-                   <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Coin Pin (Main)</label>
-                   <div className="text-[10px] font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">GPIO {pin}</div>
+               {/* Board Model Selection */}
+               {board === 'orange_pi' && (
+                 <div className="flex-1 bg-slate-50 rounded-lg p-3 border border-slate-200">
+                   <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-2">Board Model</label>
+                   <select 
+                     value={boardModel}
+                     onChange={(e) => setBoardModel(e.target.value)}
+                     className="w-full text-[10px] font-bold bg-white border border-slate-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-900 uppercase tracking-wider"
+                   >
+                     {orangePiModels.map(model => (
+                       <option key={model.id} value={model.id}>{model.name}</option>
+                     ))}
+                   </select>
                  </div>
-                 <input 
-                   type="range" 
-                   min="2" 
-                   max="27" 
-                   value={pin} 
-                   onChange={(e) => setPin(parseInt(e.target.value))}
-                   className="w-full accent-slate-900 h-1.5 rounded-lg appearance-none bg-slate-200 cursor-pointer"
-                 />
-               </div>
+               )}
                
+               {/* Pin Selection Dropdown */}
+               <div className="flex-1 bg-slate-50 rounded-lg p-3 border border-slate-200 relative">
+                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-2">Coin Pin (Main)</label>
+                 <div className="relative">
+                   <button
+                     onClick={() => setShowPinDropdown(!showPinDropdown)}
+                     className="w-full text-left text-[10px] font-bold bg-white border border-slate-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-900 flex justify-between items-center uppercase tracking-wider"
+                   >
+                     <span>
+                       {board === 'raspberry_pi' || board === 'orange_pi' 
+                         ? (() => {
+                             const pins = getAvailablePins();
+                             const selectedPin = pins.find(p => p.gpio === pin);
+                             return selectedPin 
+                               ? `PIN ${selectedPin.physical} (GPIO ${pin})`
+                               : `GPIO ${pin}`;
+                           })()
+                         : `GPIO ${pin}`
+                       }
+                     </span>
+                     <ChevronDown size={12} className="text-slate-500" />
+                   </button>
+                   
+                   {showPinDropdown && (
+                     <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded shadow-lg max-h-48 overflow-y-auto z-10">
+                       {(board === 'raspberry_pi' || board === 'orange_pi' 
+                         ? getAvailablePins()
+                         : [{ physical: pin, gpio: pin, name: `GPIO ${pin}` }]
+                       ).map(pinOption => (
+                         <button
+                           key={pinOption.gpio}
+                           onClick={() => {
+                             setPin(pinOption.gpio);
+                             setShowPinDropdown(false);
+                           }}
+                           className={`w-full text-left px-3 py-2 text-[9px] font-bold hover:bg-slate-100 transition-colors ${
+                             pin === pinOption.gpio ? 'bg-slate-200 text-slate-900' : 'text-slate-700'
+                           }`}
+                         >
+                           PIN {pinOption.physical} (GPIO {pinOption.gpio})
+                           {pinOption.name && (
+                             <span className="ml-2 text-slate-500 font-normal">{pinOption.name}</span>
+                           )}
+                         </button>
+                       ))}
+                     </div>
+                   )}
+                 </div>
+               </div>
+
                <button
                  onClick={handleSave}
                  disabled={saving}
@@ -158,6 +267,32 @@ const HardwareManager: React.FC = () => {
                  {saving ? 'Saving...' : 'Apply Config'}
                </button>
              </div>
+             
+             {/* Physical Pin Mapping Display */}
+             {(board === 'raspberry_pi' || board === 'orange_pi') && (
+               <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                 <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Available Pins</div>
+                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1 max-h-32 overflow-y-auto">
+                   {getAvailablePins().slice(0, 16).map(pinOption => (
+                     <div 
+                       key={pinOption.gpio}
+                       className={`text-[8px] font-bold px-2 py-1 rounded border ${
+                         pin === pinOption.gpio 
+                           ? 'bg-slate-900 text-white border-slate-900' 
+                           : 'bg-white text-slate-700 border-slate-200'
+                       }`}
+                     >
+                       P{pinOption.physical}<br/>GPIO{pinOption.gpio}
+                     </div>
+                   ))}
+                 </div>
+                 {getAvailablePins().length > 16 && (
+                   <div className="text-[8px] text-slate-500 mt-2 text-center">
+                     Showing first 16 of {getAvailablePins().length} available pins
+                   </div>
+                 )}
+               </div>
+             )}
           </div>
         </div>
 
@@ -179,14 +314,33 @@ const HardwareManager: React.FC = () => {
                 </div>
                 <div className="flex justify-between border-b border-slate-200/50 pb-1">
                   <span className="text-slate-500 uppercase">Input:</span>
-                  <span className="font-bold text-slate-900">GPIO {pin}</span>
+                  <span className="font-bold text-slate-900">
+                    {board === 'raspberry_pi' || board === 'orange_pi' 
+                      ? (() => {
+                          const pins = getAvailablePins();
+                          const selectedPin = pins.find(p => p.gpio === pin);
+                          return selectedPin 
+                            ? `PIN ${selectedPin.physical} (GPIO ${pin})`
+                            : `GPIO ${pin}`;
+                        })()
+                      : `GPIO ${pin}`
+                    }
+                  </span>
                 </div>
                 {board === 'orange_pi' && (
-                  <div className="flex justify-between">
+                  <div className="flex justify-between border-b border-slate-200/50 pb-1">
                     <span className="text-slate-500 uppercase">Model:</span>
-                    <span className="font-bold text-slate-900">{boardModel}</span>
+                    <span className="font-bold text-slate-900">{orangePiModels.find(m => m.id === boardModel)?.name || boardModel}</span>
                   </div>
                 )}
+                <div className="flex justify-between">
+                  <span className="text-slate-500 uppercase">Method:</span>
+                  <span className="font-bold text-slate-900">
+                    {board === 'raspberry_pi' ? 'BCM GPIO' : 
+                     board === 'orange_pi' ? 'Physical Pin' : 
+                     board === 'x64_pc' ? 'Serial Bridge' : 'Virtual'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -200,7 +354,7 @@ const HardwareManager: React.FC = () => {
         </div>
       </div>
 
-      {/* Sub-Vendo Controller Section */}
+      {/* Sub-Vendo Controller Section - NODEMCU SECTION LEFT UNTOUCHED AS REQUESTED */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100 bg-slate-950 flex items-center justify-between">
           <div className="flex items-center gap-3">

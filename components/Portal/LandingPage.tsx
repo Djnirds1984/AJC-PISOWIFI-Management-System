@@ -93,7 +93,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     }
   }, []);
 
-  const mySession = sessions.find(s => s.mac === myMac);
+  const mySession = sessions.find(s => s.mac.toUpperCase() === myMac.toUpperCase());
 
   const handleOpenModal = async (e: React.MouseEvent) => {
     e.preventDefault();

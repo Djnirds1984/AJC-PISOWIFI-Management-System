@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# AJC PISOWIFI - Automated Installation Script v3.4.0-beta.1
+# AJC PISOWIFI - Automated Installation Script v3.5.0-beta.1
 # Hardware Support: Raspberry Pi, Orange Pi, x86_64
 # Process Manager: PM2
 
@@ -14,7 +14,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 echo -e "${BLUE}==============================================${NC}"
-echo -e "${BLUE}   AJC PISOWIFI SYSTEM INSTALLER v3.4.0-beta.1 ${NC}"
+echo -e "${BLUE}   AJC PISOWIFI SYSTEM INSTALLER v3.5.0-beta.1 ${NC}"
 echo -e "${BLUE}==============================================${NC}"
 
 # Check for root
@@ -82,10 +82,10 @@ apt-get install -y \
 
 # Install High-Performance Networking Tools for 10G+ Support
 apt-get install -y \
-    ethtool \  # For network interface tuning
-    irqbalance \  # For interrupt load balancing
-    numactl \  # For NUMA-aware network optimizations
-    cpufrequtils \  # For CPU frequency scaling control
+    ethtool \
+    irqbalance \
+    numactl \
+    cpufrequtils \
     linux-modules-extra-$(uname -r) || echo "Extra modules not available for this kernel"
 
 # Install Board-Specific Packages

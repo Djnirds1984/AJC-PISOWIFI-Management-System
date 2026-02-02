@@ -4,6 +4,7 @@ import CoinModal from './CoinModal';
 import ChatWidget from './ChatWidget';
 import { apiClient } from '../../lib/api';
 import { getPortalConfig, fetchPortalConfig, PortalConfig, DEFAULT_PORTAL_CONFIG } from '../../lib/theme';
+import { getSessionToken, setSessionToken, checkAndUpdateMACAddress, saveCurrentMAC } from '../../lib/mac-roaming';
 
 // Add refreshSessions prop to Props interface
 interface Props {
@@ -78,7 +79,14 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
       try {
         const data = await apiClient.whoAmI();
         if (data.mac && data.mac !== 'unknown') {
-          setMyMac(data.mac);
+          const newMac = data.mac;
+          setMyMac(newMac);
+          
+          // Check for MAC address change and update cloud if needed
+          const sessionToken = getSessionToken();
+          if (sessionToken) {
+            await checkAndUpdateMACAddress(newMac, sessionToken);
+          }
         }
         setCanInsertCoin(data.canInsertCoin !== false);
         setIsRevoked(data.isRevoked === true);
@@ -154,6 +162,11 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   };
 
   const handleGoToInternet = () => {
+    // Save current MAC as last known before navigating
+    const sessionToken = getSessionToken();
+    if (sessionToken && myMac) {
+      saveCurrentMAC(sessionToken, myMac);
+    }
     // Navigate to success page which will trigger captive portal exit
     window.location.href = '/success';
   };

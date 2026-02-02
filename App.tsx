@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminTab, UserSession, Rate, WifiDevice } from './types';
+import { apiClient } from './lib/api';
+import { getSessionToken, setSessionToken } from './lib/mac-roaming';
 import LandingPage from './components/Portal/LandingPage';
 import Analytics from './components/Admin/Analytics';
 import RatesManager from './components/Admin/RatesManager';
@@ -17,7 +19,6 @@ import BandwidthManager from './components/Admin/BandwidthManager';
 import MultiWanSettings from './components/Admin/MultiWanSettings';
 import ChatManager from './components/Admin/ChatManager';
 import ZeroTierManager from './components/Admin/ZeroTierManager';
-import { apiClient } from './lib/api';
 import { initAdminTheme, setAdminTheme } from './lib/theme';
 
 const App: React.FC = () => {
@@ -178,7 +179,11 @@ const App: React.FC = () => {
       const data = await res.json();
       if (data.success) {
         if (data.token) {
-          localStorage.setItem('ajc_session_token', data.token);
+          setSessionToken(data.token);
+          // Save initial MAC address
+          if (data.mac) {
+            localStorage.setItem(`ajc_last_mac_${data.token}`, data.mac);
+          }
         }
         await loadData();
         // Show connection message to user
@@ -217,9 +222,18 @@ const App: React.FC = () => {
     await loadData();
   };
 
+  // Enhanced session token management with explicit expiration
+  const getSessionTokenWrapper = () => {
+    return getSessionToken();
+  };
+
+  const setSessionTokenWrapper = (token: string) => {
+    setSessionToken(token);
+  };
+
   // Check for existing session token and try to restore (Enhanced for MAC roaming)
   const restoreSession = async (retries = 5) => {
-    const sessionToken = localStorage.getItem('ajc_session_token');
+    const sessionToken = getSessionTokenWrapper();
     if (sessionToken) {
       console.log(`[Session] Attempting to restore session (retries left: ${retries})`);
       try {

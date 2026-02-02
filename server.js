@@ -1812,6 +1812,66 @@ app.get('/api/sessions', async (req, res) => {
   }
 });
 
+// API endpoint to update MAC address for roaming devices
+app.post('/api/session/update-mac', async (req, res) => {
+  try {
+    const { sessionToken, oldMac, newMac } = req.body;
+    
+    if (!sessionToken || !oldMac || !newMac) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+    
+    console.log(`[MAC-Update] Updating MAC from ${oldMac} to ${newMac} for session ${sessionToken}`);
+    
+    // Update in local sessions table
+    await db.run(
+      'UPDATE sessions SET mac = ? WHERE mac = ? AND token = ?',
+      [newMac, oldMac, sessionToken]
+    );
+    
+    // Update in wifi_devices table
+    await db.run(
+      'UPDATE wifi_devices SET mac = ? WHERE mac = ?',
+      [newMac, oldMac]
+    );
+    
+    // Update in clients table (Supabase)
+    try {
+      const wifiSync = require('./lib/wifi-sync');
+      if (wifiSync.supabase) {
+        await wifiSync.supabase
+          .from('wifi_devices')
+          .update({
+            mac_address: newMac.toUpperCase(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('session_token', sessionToken)
+          .eq('mac_address', oldMac.toUpperCase());
+        
+        console.log(`[MAC-Update] Successfully updated MAC in Supabase`);
+      }
+    } catch (supabaseErr) {
+      console.log(`[MAC-Update] Supabase update failed:`, supabaseErr.message);
+      // Don't fail the whole request if Supabase fails
+    }
+    
+    // Update network permissions
+    try {
+      const network = require('./lib/network');
+      await network.blockMAC(oldMac); // Remove old MAC
+      // Note: New MAC will be whitelisted when session is accessed
+    } catch (networkErr) {
+      console.log(`[MAC-Update] Network permission update failed:`, networkErr.message);
+    }
+    
+    res.json({ success: true, message: 'MAC address updated successfully' });
+    
+  } catch (err) {
+    console.error(`[MAC-Update] Error updating MAC address:`, err.message);
+    res.status(500).json({ error: 'Failed to update MAC address' });
+  }
+});
+
 app.post('/api/sessions/start', async (req, res) => {
   const { minutes, pesos, slot: requestedSlot, lockId } = req.body;
   let clientIp = req.ip.replace('::ffff:', '');

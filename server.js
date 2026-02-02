@@ -1039,6 +1039,29 @@ async function getMacFromIp(ip) {
     if (session && session.mac) {
       const mac = session.mac.toUpperCase();
       console.log(`[MAC-Resolve] Found MAC via active session: ${mac}`);
+      
+      // After MAC is resolved, check for active sessions in cloud
+      try {
+        // Check if there's an active session for this MAC anywhere in the system
+        const wifiSyncModule = require('./lib/wifi-sync');
+        if (wifiSyncModule.supabase) {
+          const { data: cloudSession, error } = await wifiSyncModule.supabase
+            .from('sessions')
+            .select('*')
+            .eq('mac_address', mac)
+            .eq('is_active', true)
+            .maybeSingle();
+          
+          if (cloudSession && !error) {
+            console.log(`[MAC-Resolve] Found active cloud session for ${mac}`);
+            // Trigger automatic session transfer to this machine
+            await transferSessionFromCloud(cloudSession, mac, ip, cloudSession.session_token);
+          }
+        }
+      } catch (syncErr) {
+        console.log(`[MAC-Resolve] Cloud session check failed:`, syncErr.message);
+      }
+      
       return mac;
     }
   } catch (e) {
@@ -1174,7 +1197,32 @@ app.get('/generate_204', async (req, res) => {
   const mac = await getMacFromIp(clientIp);
   
   if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
+    // Check local session first
+    let session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
+    
+    // If no local session, check cloud
+    if (!session) {
+      try {
+        const wifiSyncModule = require('./lib/wifi-sync');
+        if (wifiSyncModule.supabase) {
+          const { data: cloudSession } = await wifiSyncModule.supabase
+            .from('sessions')
+            .select('mac_address')
+            .eq('mac_address', mac.toUpperCase())
+            .eq('is_active', true)
+            .maybeSingle();
+          
+          if (cloudSession) {
+            // Transfer session automatically
+            await transferSessionFromCloud(cloudSession, mac, clientIp, cloudSession.session_token);
+            session = { mac }; // Mark as found
+          }
+        }
+      } catch (cloudErr) {
+        console.log('[Portal] Cloud session check failed:', cloudErr.message);
+      }
+    }
+    
     if (session) {
       return res.status(204).send();
     }
@@ -1189,7 +1237,32 @@ app.get('/hotspot-detect.html', async (req, res) => {
   const mac = await getMacFromIp(clientIp);
   
   if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
+    // Check local session first
+    let session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
+    
+    // If no local session, check cloud
+    if (!session) {
+      try {
+        const wifiSyncModule = require('./lib/wifi-sync');
+        if (wifiSyncModule.supabase) {
+          const { data: cloudSession } = await wifiSyncModule.supabase
+            .from('sessions')
+            .select('mac_address')
+            .eq('mac_address', mac.toUpperCase())
+            .eq('is_active', true)
+            .maybeSingle();
+          
+          if (cloudSession) {
+            // Transfer session automatically
+            await transferSessionFromCloud(cloudSession, mac, clientIp, cloudSession.session_token);
+            session = { mac }; // Mark as found
+          }
+        }
+      } catch (cloudErr) {
+        console.log('[Portal] Cloud session check failed:', cloudErr.message);
+      }
+    }
+    
     if (session) {
       return res.type('text/plain').send('Success');
     }
@@ -1204,7 +1277,32 @@ app.get('/ncsi.txt', async (req, res) => {
   const mac = await getMacFromIp(clientIp);
   
   if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
+    // Check local session first
+    let session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
+    
+    // If no local session, check cloud
+    if (!session) {
+      try {
+        const wifiSyncModule = require('./lib/wifi-sync');
+        if (wifiSyncModule.supabase) {
+          const { data: cloudSession } = await wifiSyncModule.supabase
+            .from('sessions')
+            .select('mac_address')
+            .eq('mac_address', mac.toUpperCase())
+            .eq('is_active', true)
+            .maybeSingle();
+          
+          if (cloudSession) {
+            // Transfer session automatically
+            await transferSessionFromCloud(cloudSession, mac, clientIp, cloudSession.session_token);
+            session = { mac }; // Mark as found
+          }
+        }
+      } catch (cloudErr) {
+        console.log('[Portal] Cloud session check failed:', cloudErr.message);
+      }
+    }
+    
     if (session) {
       return res.type('text/plain').send('Microsoft NCSI');
     }
@@ -1219,7 +1317,32 @@ app.get('/connecttest.txt', async (req, res) => {
   const mac = await getMacFromIp(clientIp);
   
   if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
+    // Check local session first
+    let session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
+    
+    // If no local session, check cloud
+    if (!session) {
+      try {
+        const wifiSyncModule = require('./lib/wifi-sync');
+        if (wifiSyncModule.supabase) {
+          const { data: cloudSession } = await wifiSyncModule.supabase
+            .from('sessions')
+            .select('mac_address')
+            .eq('mac_address', mac.toUpperCase())
+            .eq('is_active', true)
+            .maybeSingle();
+          
+          if (cloudSession) {
+            // Transfer session automatically
+            await transferSessionFromCloud(cloudSession, mac, clientIp, cloudSession.session_token);
+            session = { mac }; // Mark as found
+          }
+        }
+      } catch (cloudErr) {
+        console.log('[Portal] Cloud session check failed:', cloudErr.message);
+      }
+    }
+    
     if (session) {
       return res.type('text/plain').send('Success');
     }
@@ -1234,7 +1357,32 @@ app.get('/success.txt', async (req, res) => {
   const mac = await getMacFromIp(clientIp);
   
   if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
+    // Check local session first
+    let session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
+    
+    // If no local session, check cloud
+    if (!session) {
+      try {
+        const wifiSyncModule = require('./lib/wifi-sync');
+        if (wifiSyncModule.supabase) {
+          const { data: cloudSession } = await wifiSyncModule.supabase
+            .from('sessions')
+            .select('mac_address')
+            .eq('mac_address', mac.toUpperCase())
+            .eq('is_active', true)
+            .maybeSingle();
+          
+          if (cloudSession) {
+            // Transfer session automatically
+            await transferSessionFromCloud(cloudSession, mac, clientIp, cloudSession.session_token);
+            session = { mac }; // Mark as found
+          }
+        }
+      } catch (cloudErr) {
+        console.log('[Portal] Cloud session check failed:', cloudErr.message);
+      }
+    }
+    
     if (session) {
       return res.type('text/plain').send('Success');
     }
@@ -1250,7 +1398,32 @@ app.get('/library/test/success.html', async (req, res) => {
   const mac = await getMacFromIp(clientIp);
   
   if (mac) {
-    const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
+    // Check local session first
+    let session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
+    
+    // If no local session, check cloud
+    if (!session) {
+      try {
+        const wifiSyncModule = require('./lib/wifi-sync');
+        if (wifiSyncModule.supabase) {
+          const { data: cloudSession } = await wifiSyncModule.supabase
+            .from('sessions')
+            .select('mac_address')
+            .eq('mac_address', mac.toUpperCase())
+            .eq('is_active', true)
+            .maybeSingle();
+          
+          if (cloudSession) {
+            // Transfer session automatically
+            await transferSessionFromCloud(cloudSession, mac, clientIp, cloudSession.session_token);
+            session = { mac }; // Mark as found
+          }
+        }
+      } catch (cloudErr) {
+        console.log('[Portal] Cloud session check failed:', cloudErr.message);
+      }
+    }
+    
     if (session) {
       return res.type('text/plain').send('Success');
     }
@@ -1275,7 +1448,32 @@ app.use(async (req, res, next) => {
 
     const mac = await getMacFromIp(clientIp);
     if (mac) {
-      const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
+      // Check local session first
+      let session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
+      
+      // If no local session, check cloud
+      if (!session) {
+        try {
+          const wifiSyncModule = require('./lib/wifi-sync');
+          if (wifiSyncModule.supabase) {
+            const { data: cloudSession } = await wifiSyncModule.supabase
+              .from('sessions')
+              .select('mac_address')
+              .eq('mac_address', mac.toUpperCase())
+              .eq('is_active', true)
+              .maybeSingle();
+            
+            if (cloudSession) {
+              // Transfer session automatically
+              await transferSessionFromCloud(cloudSession, mac, clientIp, cloudSession.session_token);
+              session = { mac }; // Mark as found
+            }
+          }
+        } catch (cloudErr) {
+          console.log('[Portal] Cloud session check failed:', cloudErr.message);
+        }
+      }
+      
       if (session) {
         // Authorized client - return success
         if (url.includes('/generate_204') || url.includes('/connecttest.txt')) {
@@ -1314,7 +1512,36 @@ app.use(async (req, res, next) => {
 
   const mac = await getMacFromIp(clientIp);
   if (mac) {
-    const session = await db.get('SELECT mac, ip, remaining_seconds FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    // Check local session first
+    let session = await db.get('SELECT mac, ip, remaining_seconds FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    
+    // If no local session, check cloud
+    if (!session) {
+      try {
+        const wifiSyncModule = require('./lib/wifi-sync');
+        if (wifiSyncModule.supabase) {
+          const { data: cloudSession } = await wifiSyncModule.supabase
+            .from('sessions')
+            .select('mac_address, ip_address, remaining_seconds')
+            .eq('mac_address', mac.toUpperCase())
+            .eq('is_active', true)
+            .maybeSingle();
+          
+          if (cloudSession) {
+            // Transfer session automatically
+            await transferSessionFromCloud(cloudSession, mac, clientIp, cloudSession.session_token);
+            session = { 
+              mac: cloudSession.mac_address,
+              ip: cloudSession.ip_address,
+              remaining_seconds: cloudSession.remaining_seconds
+            }; // Mark as found
+          }
+        }
+      } catch (cloudErr) {
+        console.log('[Portal] Cloud session check failed:', cloudErr.message);
+      }
+    }
+    
     if (session) {
       // If IP has changed, update the whitelist rule
       if (session.ip !== clientIp) {
@@ -1523,9 +1750,42 @@ app.post('/api/coinslot/release', async (req, res) => {
 
 app.get('/api/sessions', async (req, res) => {
   try {
-    const rows = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt, is_paused as isPaused, token FROM sessions');
+    // Fetch ALL active sessions from database, not just local ones
+    const rows = await db.all(`
+      SELECT 
+        mac, 
+        ip, 
+        remaining_seconds as remainingSeconds, 
+        total_paid as totalPaid, 
+        connected_at as connectedAt, 
+        is_paused as isPaused, 
+        token,
+        'local' as source
+      FROM sessions 
+      WHERE remaining_seconds > 0
+      
+      UNION ALL
+      
+      SELECT 
+        mac_address as mac,
+        ip_address as ip,
+        remaining_seconds as remainingSeconds,
+        total_paid as totalPaid,
+        session_start_time as connectedAt,
+        FALSE as isPaused,
+        session_token as token,
+        'cloud' as source
+      FROM wifi_devices 
+      WHERE is_connected = true 
+        AND remaining_seconds > 0
+        AND mac_address NOT IN (
+          SELECT mac FROM sessions WHERE remaining_seconds > 0
+        )
+    `);
     res.json(rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 app.post('/api/sessions/start', async (req, res) => {
@@ -1608,6 +1868,67 @@ app.post('/api/sessions/start', async (req, res) => {
       const sessionId = await db.get('SELECT last_insert_rowid() as id');
       if (sessionId && sessionId.id) {
         await DeviceIdentifier.updateSessionIdentification(sessionId.id, identifiers, 'sessions');
+      }
+      
+      // Trigger immediate WiFi sync for this device
+      try {
+        const wifiSync = require('./lib/wifi-sync');
+        if (wifiSync.supabase && wifiSync.machineId && wifiSync.vendorId) {
+          console.log(`[AUTH] Triggering immediate WiFi sync for device ${mac}`);
+          // Force sync this specific device
+          setTimeout(async () => {
+            try {
+              const deviceData = {
+                mac: mac,
+                ip: clientIp,
+                hostname: '',
+                interface: 'unknown',
+                ssid: 'unknown',
+                signal: 0,
+                connected_at: Date.now(),
+                last_seen: Date.now(),
+                is_active: 1
+              };
+              
+              const session = {
+                session_token: token,
+                remaining_seconds: seconds,
+                total_paid: pesos,
+                connected_at: Date.now()
+              };
+              
+              await wifiSync.syncDeviceToCloud({
+                vendor_id: wifiSync.vendorId,
+                machine_id: wifiSync.machineId,
+                mac_address: mac,
+                device_name: null,
+                device_type: 'other',
+                session_token: token,
+                session_start_time: new Date().toISOString(),
+                session_duration_seconds: 0,
+                remaining_seconds: seconds,
+                ip_address: clientIp,
+                signal_strength: 0,
+                connected_ssid: 'unknown',
+                total_paid: pesos,
+                coins_used: Math.floor(pesos / 5),
+                is_connected: true,
+                last_heartbeat: new Date().toISOString(),
+                last_sync_attempt: new Date().toISOString(),
+                sync_status: 'pending',
+                allowed_machines: null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              });
+              
+              console.log(`[AUTH] WiFi sync triggered successfully for ${mac}`);
+            } catch (syncErr) {
+              console.log(`[AUTH] WiFi sync trigger failed:`, syncErr.message);
+            }
+          }, 1000); // Delay by 1 second to ensure database commit
+        }
+      } catch (syncTriggerErr) {
+        console.log(`[AUTH] WiFi sync trigger setup failed:`, syncTriggerErr.message);
       }
       
       // Also try to store in clients table if Supabase is configured
@@ -3517,12 +3838,62 @@ app.get('/api/devices', requireAdmin, async (req, res) => {
     // Get all devices with their current session information
     const devices = await db.all('SELECT * FROM wifi_devices ORDER BY connected_at DESC');
     
-    // Get all active sessions
-    const sessions = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt, is_paused as isPaused FROM sessions WHERE remaining_seconds > 0');
+    // Get ALL active sessions from BOTH local and cloud sources
+    const localSessions = await db.all(`
+      SELECT 
+        mac, 
+        ip, 
+        remaining_seconds as remainingSeconds, 
+        total_paid as totalPaid, 
+        connected_at as connectedAt, 
+        is_paused as isPaused,
+        'local' as source
+      FROM sessions 
+      WHERE remaining_seconds > 0
+    `);
     
-    // Create a map of sessions by MAC for quick lookup
+    // Get cloud sessions for devices not in local sessions
+    let cloudSessions = [];
+    try {
+      const wifiSyncModule = require('./lib/wifi-sync');
+      if (wifiSyncModule.supabase) {
+        const { data, error } = await wifiSyncModule.supabase
+          .from('wifi_devices')
+          .select(`
+            mac_address,
+            ip_address,
+            remaining_seconds,
+            total_paid,
+            session_start_time,
+            session_token,
+            vendors(machine_name, location)
+          `)
+          .eq('is_connected', true)
+          .gt('remaining_seconds', 0);
+          
+        if (!error && data) {
+          cloudSessions = data.map(session => ({
+            mac: session.mac_address,
+            ip: session.ip_address,
+            remainingSeconds: session.remaining_seconds,
+            totalPaid: session.total_paid,
+            connectedAt: new Date(session.session_start_time).getTime(),
+            isPaused: false,
+            source: 'cloud',
+            machineInfo: session.vendors ? `${session.vendors.machine_name} (${session.vendors.location})` : 'Cloud'
+          }));
+        }
+      }
+    } catch (cloudErr) {
+      console.log('[API] Cloud sessions fetch failed:', cloudErr.message);
+    }
+    
+    // Combine all sessions
+    const allSessions = [...localSessions, ...cloudSessions];
+    
+    // Create session map for quick lookup
     const sessionMap = new Map();
-    sessions.forEach(session => {
+    allSessions.forEach(session => {
       sessionMap.set(session.mac.toUpperCase(), session);
     });
     
@@ -3553,7 +3924,7 @@ app.get('/api/devices', requireAdmin, async (req, res) => {
     });
 
     // Add devices that have active sessions but were not found in the scan/db
-    sessions.forEach(session => {
+    allSessions.forEach(session => {
       const sessionMac = session.mac.toUpperCase();
       if (!formattedDevices.find(d => d.mac.toUpperCase() === sessionMac)) {
         formattedDevices.push({
@@ -3569,7 +3940,9 @@ app.get('/api/devices', requireAdmin, async (req, res) => {
           isActive: true,
           customName: '',
           sessionTime: session.remainingSeconds,
-          totalPaid: session.totalPaid
+          totalPaid: session.totalPaid,
+          source: session.source || 'unknown',
+          machineInfo: session.machineInfo || ''
         });
       }
     });

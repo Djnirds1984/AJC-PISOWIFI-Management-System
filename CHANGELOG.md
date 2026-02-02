@@ -8,16 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- 
+- Enhanced system backup functionality with comprehensive .nxs files
+- Real-time backup preview and validation in updater interface
+- Detailed backup metadata including hardware ID and license status
+- Database export/import capabilities for complete system migration
+- Progress indicators and improved UX for backup/restore operations
 
 ### Changed
-- 
+- Refactored SystemUpdater component with modern UI design
+- Improved backup file structure with metadata.json, database.sql, and config files
+- Enhanced restore process with validation and selective file restoration
+- Better error handling and user feedback throughout backup/restore workflows
 
 ### Fixed
-- 
+- Backup file naming and content-disposition headers
+- Restore process now properly handles configuration file conflicts
+- Database import/export functionality for cross-platform compatibility
 
-### Removed
-- 
+### Security
+- Enhanced backup file validation and integrity checking
+- Improved authentication handling for backup/restore operations 
 
 ## [3.5.0-beta.1] - 2026-02-02
 

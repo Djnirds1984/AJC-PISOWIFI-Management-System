@@ -217,7 +217,7 @@ const App: React.FC = () => {
     await loadData();
   };
 
-  // Check for existing session token and try to restore (Fix for randomized MACs/SSID switching)
+  // Check for existing session token and try to restore (Enhanced for MAC roaming)
   const restoreSession = async (retries = 5) => {
     const sessionToken = localStorage.getItem('ajc_session_token');
     if (sessionToken) {
@@ -228,14 +228,30 @@ const App: React.FC = () => {
           body: JSON.stringify({ token: sessionToken })
         });
         
-        // If 400 (Bad Request), it likely means MAC resolution failed temporarily. Retry.
-        if (res.status === 400 && retries > 0) {
-          console.log(`[Session] Restore failed (400), retrying... (${retries} left)`);
-          setTimeout(() => restoreSession(retries - 1), 2000);
+        const data = await res.json();
+        
+        // Handle cross-machine roaming scenario
+        if (data.success && data.roaming) {
+          console.log('[Session] Cross-machine roaming detected');
+          alert(`📱 ${data.message}\n\nYour session is active on another machine (${data.originalMachine}). Please connect to that access point to continue your session.`);
+          localStorage.removeItem('ajc_session_token'); // Clean up local token
           return;
         }
+        
+        // Handle MAC resolution failure with retry logic
+        if (res.status === 400) {
+          if (data.macResolutionFailed && retries > 0) {
+            console.log(`[Session] MAC resolution failed, retrying... (${retries} left)`);
+            setTimeout(() => restoreSession(retries - 1), 3000); // Longer delay for ARP table updates
+            return;
+          } else if (!data.macResolutionFailed) {
+            // Other 400 error (invalid request)
+            console.log('[Session] Invalid restore request:', data.error);
+            localStorage.removeItem('ajc_session_token');
+            return;
+          }
+        }
 
-        const data = await res.json();
         if (data.success) {
           console.log('Session restored successfully');
           if (data.migrated) {
@@ -246,11 +262,20 @@ const App: React.FC = () => {
           // Token invalid/expired - only remove if we are sure
           console.log('[Session] Token expired or invalid');
           localStorage.removeItem('ajc_session_token');
+        } else if (res.status >= 500) {
+          // Server error - retry with exponential backoff
+          if (retries > 0) {
+            const delay = Math.min(5000, 1000 * Math.pow(2, 5 - retries)); // Max 5 seconds
+            console.log(`[Session] Server error, retrying in ${delay}ms... (${retries} left)`);
+            setTimeout(() => restoreSession(retries - 1), delay);
+            return;
+          }
         }
       } catch (e) {
-        console.error('Failed to restore session:', e);
+        console.error('Network error restoring session:', e);
         if (retries > 0) {
-          setTimeout(() => restoreSession(retries - 1), 2000);
+          const delay = Math.min(5000, 1000 * Math.pow(2, 5 - retries));
+          setTimeout(() => restoreSession(retries - 1), delay);
         }
       }
     }

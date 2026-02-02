@@ -964,16 +964,30 @@ let systemHardwareId = null;
 async function getMacFromIp(ip) {
   if (ip === '::1' || ip === '127.0.0.1' || !ip) return null;
   
+  console.log(`[MAC-Resolve] Resolving MAC for IP: ${ip}`);
+  
   // 1. Try to ping the IP to ensure it's in the ARP table (fast check)
-  try { await execPromise(`ping -c 1 -W 1 ${ip}`); } catch (e) {}
+  try { 
+    await execPromise(`ping -c 1 -W 1 ${ip}`);
+    console.log(`[MAC-Resolve] Ping successful for ${ip}`);
+  } catch (e) {
+    console.log(`[MAC-Resolve] Ping failed for ${ip}:`, e.message);
+  }
 
   // 2. Check ip neigh (modern ARP)
   try {
     const { stdout } = await execPromise(`ip neigh show ${ip}`);
+    console.log(`[MAC-Resolve] ip neigh output for ${ip}:`, stdout.trim());
     // Output: 10.0.0.5 dev wlan0 lladdr aa:bb:cc:dd:ee:ff REACHABLE
     const match = stdout.match(/lladdr\s+([a-fA-F0-9:]+)/);
-    if (match && match[1]) return match[1].toUpperCase();
-  } catch (e) {}
+    if (match && match[1]) {
+      const mac = match[1].toUpperCase();
+      console.log(`[MAC-Resolve] Found MAC via ip neigh: ${mac}`);
+      return mac;
+    }
+  } catch (e) {
+    console.log(`[MAC-Resolve] ip neigh failed for ${ip}:`, e.message);
+  }
 
   // 3. Fallback to /proc/net/arp
   try {
@@ -983,11 +997,15 @@ async function getMacFromIp(ip) {
       if (line.includes(ip)) {
         const parts = line.split(/\s+/);
         if (parts[3] && parts[3] !== '00:00:00:00:00:00') {
-           return parts[3].toUpperCase();
+          const mac = parts[3].toUpperCase();
+          console.log(`[MAC-Resolve] Found MAC via /proc/net/arp: ${mac}`);
+          return mac;
         }
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    console.log(`[MAC-Resolve] /proc/net/arp failed:`, e.message);
+  }
 
   // 4. Check DHCP Leases (dnsmasq) - essential for clients that block ping
   try {
@@ -995,18 +1013,23 @@ async function getMacFromIp(ip) {
     for (const file of leaseFiles) {
       if (fs.existsSync(file)) {
         const content = fs.readFileSync(file, 'utf8');
+        console.log(`[MAC-Resolve] Checking DHCP leases in ${file}`);
         // dnsmasq lease format: <timestamp> <mac> <ip> <hostname> <client-id>
         const lines = content.split('\n');
         for (const line of lines) {
            const parts = line.split(' ');
            // Check for IP match (usually 3rd column)
            if (parts.length >= 3 && parts[2] === ip) {
-             return parts[1].toUpperCase();
+             const mac = parts[1].toUpperCase();
+             console.log(`[MAC-Resolve] Found MAC via DHCP lease: ${mac}`);
+             return mac;
            }
         }
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    console.log(`[MAC-Resolve] DHCP lease check failed:`, e.message);
+  }
 
   // 5. Fallback: Check Active Sessions in DB
   // Solves issue where idle devices (ARP expired) get disconnected despite having time.
@@ -1014,12 +1037,15 @@ async function getMacFromIp(ip) {
   try {
     const session = await db.get('SELECT mac FROM sessions WHERE ip = ? AND remaining_seconds > 0', [ip]);
     if (session && session.mac) {
-      return session.mac.toUpperCase();
+      const mac = session.mac.toUpperCase();
+      console.log(`[MAC-Resolve] Found MAC via active session: ${mac}`);
+      return mac;
     }
   } catch (e) {
     console.error(`[MAC-Resolve] DB Fallback error for ${ip}:`, e.message);
   }
 
+  console.log(`[MAC-Resolve] Failed to resolve MAC for IP: ${ip}`);
   return null;
 }
 
@@ -1575,6 +1601,18 @@ app.post('/api/sessions/start', async (req, res) => {
       [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, token, seconds, pesos, clientIp, downloadLimit, uploadLimit, token]
     );
     
+    // Store device fingerprint for future identification
+    try {
+      const DeviceIdentifier = require('./lib/device-identifier');
+      const identifiers = await DeviceIdentifier.identifyDevice(req, mac);
+      const sessionId = await db.get('SELECT last_insert_rowid() as id');
+      if (sessionId && sessionId.id) {
+        await DeviceIdentifier.updateSessionIdentification(sessionId.id, identifiers);
+      }
+    } catch (fingerprintErr) {
+      console.log('[AUTH] Failed to store device fingerprint:', fingerprintErr.message);
+    }
+    
     // Whitelist the device in firewall
     await network.whitelistMAC(mac, clientIp);
     
@@ -1600,11 +1638,53 @@ app.post('/api/sessions/restore', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
   const mac = await getMacFromIp(clientIp);
   
-  if (!token || !mac) return res.status(400).json({ error: 'Invalid request' });
+  if (!token) return res.status(400).json({ error: 'Token required' });
 
   try {
-    const session = await db.get('SELECT * FROM sessions WHERE token = ?', [token]);
-    if (!session) return res.status(404).json({ error: 'Session not found' });
+    // Import device identifier
+    const DeviceIdentifier = require('./lib/device-identifier');
+    
+    // Get multiple device identifiers
+    const identifiers = await DeviceIdentifier.identifyDevice(req, mac);
+    console.log(`[AUTH] Device identifiers for ${clientIp}:`, identifiers.map(id => `${id.type}:${id.value.substring(0,8)}(${id.confidence}%)`));
+    
+    // Try to find session using any of the identifiers
+    const sessionMatch = await DeviceIdentifier.findMatchingSession(identifiers, token);
+    
+    if (!sessionMatch) {
+      return res.status(404).json({ error: 'Session not found for this device' });
+    }
+    
+    const { session, identifierUsed } = sessionMatch;
+    console.log(`[AUTH] Session found using ${identifierUsed.type}: ${identifierUsed.value}`);
+    
+    // Handle case where MAC resolution failed but we have a valid session token
+    if (!mac) {
+      console.log(`[AUTH] MAC resolution failed for IP ${clientIp}, but session found via ${identifierUsed.type}`);
+      
+      // Check if WiFi sync is enabled and check cloud for session
+      try {
+        const wifiSync = require('./lib/wifi-sync');
+        if (wifiSync.supabase) {
+          const cloudSession = await wifiSync.checkDeviceSession(session.mac);
+          if (cloudSession && cloudSession.machine_id !== wifiSync.machineId) {
+            // Device has session on another machine - this is cross-machine roaming
+            console.log(`[AUTH] Cross-machine roaming detected for token ${token}`);
+            return res.json({ 
+              success: true, 
+              roaming: true,
+              message: 'Cross-machine session detected. Please connect to the original access point.',
+              originalMachine: cloudSession.machine_id
+            });
+          }
+        }
+      } catch (cloudErr) {
+        console.log('[AUTH] Cloud session check failed:', cloudErr.message);
+      }
+      
+      // If no cloud session found, proceed with fingerprint-based restoration
+      console.log(`[AUTH] Proceeding with fingerprint-based session restoration`);
+    }
     
     if (session.mac === mac) {
        // Same device, just update IP if changed and ensure whitelisted

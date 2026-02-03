@@ -1914,7 +1914,7 @@ app.get('/api/system/interfaces', requireAdmin, async (req, res) => {
 
 app.get('/api/system/info', requireAdmin, async (req, res) => {
   try {
-    const [system, os] = await Promise.all([
+    const [system, osInfo] = await Promise.all([
       si.system(),
       si.osInfo()
     ]);
@@ -1922,9 +1922,9 @@ app.get('/api/system/info', requireAdmin, async (req, res) => {
     res.json({
       manufacturer: system.manufacturer,
       model: system.model,
-      distro: os.platform(),
-      arch: os.arch(),
-      platform: os.platform()
+      distro: osInfo.platform,
+      arch: osInfo.arch,
+      platform: osInfo.platform
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

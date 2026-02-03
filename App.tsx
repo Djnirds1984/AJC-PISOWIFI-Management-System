@@ -80,7 +80,11 @@ const App: React.FC = () => {
       setAdminTheme('default');
     }
 
-    loadData();
+    // Only load data immediately for non-admin routes
+    // Admin routes will load data after authentication check
+    if (!isCurrentlyAdminPath()) {
+      loadData();
+    }
     const handleLocationChange = () => {
       const isNowAdmin = isCurrentlyAdminPath();
       setIsAdmin(isNowAdmin);
@@ -104,12 +108,19 @@ const App: React.FC = () => {
           const data = await res.json();
           if (data.authenticated) {
             setIsAuthenticated(true);
+            // Load data for authenticated admin users
+            loadData();
           } else {
             localStorage.removeItem('ajc_admin_token');
             setIsAuthenticated(false);
           }
         } catch (e) {
           setIsAuthenticated(false);
+          // Even if auth check fails, we might be on admin route without token
+          // Load data anyway as some endpoints might be accessible
+          if (isCurrentlyAdminPath()) {
+            loadData();
+          }
         }
       }
     };
@@ -127,9 +138,13 @@ const App: React.FC = () => {
       // Periodic refresh from server to ensure sync
       try {
         const sessions = await apiClient.getSessions();
-        const fetchedDevices = await apiClient.getWifiDevices();
         setActiveSessions(sessions);
-        setDevices(fetchedDevices);
+        
+        // Only fetch devices for authenticated admin users
+        if (isAdmin && isAuthenticated) {
+          const fetchedDevices = await apiClient.getWifiDevices();
+          setDevices(fetchedDevices);
+        }
       } catch (e) {
         // Local decrement as fallback for smooth UI - skip if paused
         setActiveSessions(prev => 

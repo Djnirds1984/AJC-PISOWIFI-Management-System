@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Authentication</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Authentication Debug Tool</h1>
+    
+    <div>
+        <button onclick="testLogin()">Test Login</button>
+        <button onclick="checkAuth()">Check Auth Status</button>
+        <button onclick="testDevicesApi()">Test Devices API</button>
+        <button onclick="testBackupApi()">Test Backup API</button>
+        <button onclick="clearToken()">Clear Token</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        const resultsDiv = document.getElementById('results');
+
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}:</strong> ${message}`;
+            resultsDiv.appendChild(div);
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+        }
+
+        function logResponse(response, data) {
+            const pre = document.createElement('pre');
+            pre.textContent = JSON.stringify({ status: response.status, data: data }, null, 2);
+            resultsDiv.appendChild(pre);
+        }
+
+        async function testLogin() {
+            log('Testing login...', 'info');
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: 'admin', password: 'admin' })
+                });
+                
+                const data = await response.json();
+                logResponse(response, data);
+                
+                if (data.success && data.token) {
+                    localStorage.setItem('ajc_admin_token', data.token);
+                    log('Login successful! Token saved.', 'success');
+                } else {
+                    log('Login failed: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                log('Login error: ' + error.message, 'error');
+            }
+        }
+
+        async function checkAuth() {
+            const token = localStorage.getItem('ajc_admin_token');
+            if (!token) {
+                log('No token found in localStorage', 'error');
+                return;
+            }
+
+            log('Checking authentication status...', 'info');
+            try {
+                const response = await fetch('/api/admin/check-auth', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                const data = await response.json();
+                logResponse(response, data);
+                
+                if (response.ok && data.authenticated) {
+                    log(`Authenticated as: ${data.username}`, 'success');
+                } else {
+                    log('Authentication failed or expired', 'error');
+                    localStorage.removeItem('ajc_admin_token');
+                }
+            } catch (error) {
+                log('Auth check error: ' + error.message, 'error');
+            }
+        }
+
+        async function testDevicesApi() {
+            const token = localStorage.getItem('ajc_admin_token');
+            if (!token) {
+                log('No token found. Please login first.', 'error');
+                return;
+            }
+
+            log('Testing devices API...', 'info');
+            try {
+                const response = await fetch('/api/devices', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                const data = await response.json();
+                logResponse(response, data);
+                
+                if (response.ok) {
+                    log(`Successfully fetched ${data.length} devices`, 'success');
+                } else {
+                    log(`Devices API failed: ${data.error || response.status}`, 'error');
+                }
+            } catch (error) {
+                log('Devices API error: ' + error.message, 'error');
+            }
+        }
+
+        async function testBackupApi() {
+            const token = localStorage.getItem('ajc_admin_token');
+            if (!token) {
+                log('No token found. Please login first.', 'error');
+                return;
+            }
+
+            log('Testing backup API...', 'info');
+            try {
+                const response = await fetch('/api/system/backup', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'debug-backup.nxs';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    log(`Backup successful! Size: ${(blob.size / 1024 / 1024).toFixed(2)} MB`, 'success');
+                } else {
+                    const data = await response.json();
+                    logResponse(response, data);
+                    log(`Backup failed: ${data.error || response.status}`, 'error');
+                }
+            } catch (error) {
+                log('Backup API error: ' + error.message, 'error');
+            }
+        }
+
+        function clearToken() {
+            localStorage.removeItem('ajc_admin_token');
+            log('Token cleared from localStorage', 'info');
+        }
+
+        // Show current token status on load
+        window.onload = function() {
+            const token = localStorage.getItem('ajc_admin_token');
+            if (token) {
+                log('Token found in localStorage (first 20 chars): ' + token.substring(0, 20) + '...', 'info');
+            } else {
+                log('No token found in localStorage', 'error');
+            }
+        };
+    </script>
+</body>
+</html>

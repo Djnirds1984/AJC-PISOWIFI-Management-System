@@ -4,6 +4,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const si = require('systeminformation');
 const db = require('./lib/db');
 const { initGPIO, updateGPIO, registerSlotCallback, unregisterSlotCallback } = require('./lib/gpio');
@@ -1921,9 +1922,9 @@ app.get('/api/system/info', requireAdmin, async (req, res) => {
     res.json({
       manufacturer: system.manufacturer,
       model: system.model,
-      distro: os.distro,
-      arch: os.arch,
-      platform: os.platform
+      distro: os.platform(),
+      arch: os.arch(),
+      platform: os.platform()
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2639,9 +2640,66 @@ app.post('/api/system/reset', requireAdmin, async (req, res) => {
 app.get('/api/system/backup', requireAdmin, async (req, res) => {
   try {
     const zip = new AdmZip();
-    const exclude = ['node_modules', '.git', '.next', 'dist', 'uploads', 'package-lock.json'];
+    const exclude = ['node_modules', '.git', '.next', 'dist', 'package-lock.json', 'backups'];
     
-    // Add files from root
+    // Add system metadata
+    const metadata = {
+      version: '1.0.0',
+      timestamp: new Date().toISOString(),
+      hostname: os.hostname(),
+      platform: os.platform(),
+      arch: os.arch(),
+      backupType: 'full-system',
+      hardwareId: null,
+      licenseStatus: null
+    };
+    
+    // Try to get hardware and license info
+    try {
+      const hardwareInfo = await db.getHardwareInfo();
+      metadata.hardwareId = hardwareInfo?.hardware_id || null;
+      
+      const licenseData = await db.getCurrentLicense();
+      metadata.licenseStatus = licenseData ? {
+        isLicensed: licenseData.is_licensed,
+        licenseKey: licenseData.license_key,
+        expiresAt: licenseData.expires_at
+      } : null;
+    } catch (e) {
+      console.warn('Could not fetch hardware/license info for backup:', e.message);
+    }
+    
+    zip.addFile('metadata.json', Buffer.from(JSON.stringify(metadata, null, 2)));
+    
+    // Add database export
+    try {
+      const dbExport = await db.exportDatabase();
+      zip.addFile('database.sql', Buffer.from(dbExport));
+    } catch (e) {
+      console.warn('Could not export database:', e.message);
+      // Continue without database export
+    }
+    
+    // Add configuration files
+    const configFiles = [
+      '.env',
+      'config.json',
+      'network.json'
+    ];
+    
+    for (const configFile of configFiles) {
+      const configPath = path.join(__dirname, configFile);
+      if (fs.existsSync(configPath)) {
+        try {
+          const content = fs.readFileSync(configPath, 'utf8');
+          zip.addFile(`config/${configFile}`, Buffer.from(content));
+        } catch (e) {
+          console.warn(`Could not read config file ${configFile}:`, e.message);
+        }
+      }
+    }
+    
+    // Add application files and directories
     const rootFiles = fs.readdirSync(__dirname);
     for (const file of rootFiles) {
       if (exclude.includes(file)) continue;
@@ -2649,25 +2707,39 @@ app.get('/api/system/backup', requireAdmin, async (req, res) => {
       const filePath = path.join(__dirname, file);
       const stats = fs.statSync(filePath);
       
-      if (stats.isDirectory()) {
-         zip.addLocalFolder(filePath, file);
-      } else {
-        zip.addLocalFile(filePath);
+      try {
+        if (stats.isDirectory()) {
+          // Skip uploads directory entirely - too large
+          if (file === 'uploads') continue;
+          zip.addLocalFolder(filePath, file);
+        } else {
+          zip.addLocalFile(filePath);
+        }
+      } catch (e) {
+        console.warn(`Could not add ${file} to backup:`, e.message);
       }
     }
     
-    // Special handling for uploads (only audio)
-    if (fs.existsSync(path.join(__dirname, 'uploads/audio'))) {
-        zip.addLocalFolder(path.join(__dirname, 'uploads/audio'), 'uploads/audio');
+    // Add uploads/audio if it exists
+    const audioPath = path.join(__dirname, 'uploads/audio');
+    if (fs.existsSync(audioPath)) {
+      try {
+        zip.addLocalFolder(audioPath, 'uploads/audio');
+      } catch (e) {
+        console.warn('Could not add audio files to backup:', e.message);
+      }
     }
-
+    
     const buffer = zip.toBuffer();
-    const filename = `backup-${new Date().toISOString().replace(/[:.]/g, '-')}.nxs`;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `pisowifi-backup-${timestamp}.nxs`;
     
     res.set('Content-Type', 'application/octet-stream');
-    res.set('Content-Disposition', `attachment; filename=${filename}`);
+    res.set('Content-Disposition', `attachment; filename="${filename}"`);
     res.set('Content-Length', buffer.length);
     res.send(buffer);
+    
+    console.log(`[Backup] Created backup: ${filename} (${Math.round(buffer.length / 1024 / 1024 * 100) / 100} MB)`);
   } catch (err) {
     console.error('Backup failed:', err);
     res.status(500).json({ error: 'Backup failed: ' + err.message });
@@ -2678,28 +2750,116 @@ app.post('/api/system/restore', requireAdmin, uploadBackup.single('file'), async
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   
   try {
-    // Attempt to close DB to avoid lock issues on Windows
-    try {
-        await db.close();
-    } catch (e) {
-        console.warn('Could not close DB:', e);
-    }
-
+    console.log(`[Restore] Starting restore from: ${req.file.originalname}`);
+    
     const zip = new AdmZip(req.file.path);
-    // Extract everything, overwriting existing files
-    zip.extractAllTo(__dirname, true);
+    const entries = zip.getEntries();
+    
+    // Validate backup structure
+    const hasMetadata = entries.some(e => e.entryName === 'metadata.json');
+    const hasDatabase = entries.some(e => e.entryName === 'database.sql');
+    
+    if (!hasMetadata) {
+      throw new Error('Invalid backup file: missing metadata.json');
+    }
+    
+    // Read metadata
+    const metadataEntry = entries.find(e => e.entryName === 'metadata.json');
+    const metadata = JSON.parse(zip.readAsText(metadataEntry));
+    
+    console.log(`[Restore] Backup metadata:`, {
+      version: metadata.version,
+      timestamp: metadata.timestamp,
+      hostname: metadata.hostname,
+      platform: metadata.platform
+    });
+    
+    // Close database connection
+    try {
+      await db.close();
+      console.log('[Restore] Database connection closed');
+    } catch (e) {
+      console.warn('[Restore] Could not close DB:', e.message);
+    }
+    
+    // Extract application files (excluding special files)
+    const specialFiles = ['metadata.json', 'database.sql'];
+    const configFiles = [];
+    
+    for (const entry of entries) {
+      if (specialFiles.includes(entry.entryName)) continue;
+      
+      try {
+        if (entry.entryName.startsWith('config/')) {
+          // Handle config files separately
+          configFiles.push(entry);
+        } else {
+          // Extract regular files/directories
+          zip.extractEntryTo(entry, __dirname, true, true);
+        }
+      } catch (e) {
+        console.warn(`[Restore] Could not extract ${entry.entryName}:`, e.message);
+      }
+    }
+    
+    // Handle config files
+    for (const entry of configFiles) {
+      try {
+        const fileName = entry.entryName.replace('config/', '');
+        const targetPath = path.join(__dirname, fileName);
+        
+        // Only restore .env if it doesn't exist or is empty
+        if (fileName === '.env' && fs.existsSync(targetPath)) {
+          const currentEnv = fs.readFileSync(targetPath, 'utf8').trim();
+          if (currentEnv) {
+            console.log('[Restore] Skipping .env restore - file already exists with content');
+            continue;
+          }
+        }
+        
+        zip.extractEntryTo(entry, __dirname, true, true);
+        console.log(`[Restore] Restored config file: ${fileName}`);
+      } catch (e) {
+        console.warn(`[Restore] Could not restore config ${entry.entryName}:`, e.message);
+      }
+    }
+    
+    // Restore database if present
+    if (hasDatabase) {
+      try {
+        const dbEntry = entries.find(e => e.entryName === 'database.sql');
+        const sqlContent = zip.readAsText(dbEntry);
+        
+        // Import database
+        await db.importDatabase(sqlContent);
+        console.log('[Restore] Database imported successfully');
+      } catch (e) {
+        console.error('[Restore] Database import failed:', e.message);
+        throw new Error('Database restore failed: ' + e.message);
+      }
+    }
     
     // Cleanup
     fs.unlinkSync(req.file.path);
     
-    res.json({ success: true, message: 'System restored successfully. Restarting...' });
+    res.json({ 
+      success: true, 
+      message: 'System restored successfully. Restarting...',
+      backupInfo: {
+        version: metadata.version,
+        timestamp: metadata.timestamp,
+        hostname: metadata.hostname
+      }
+    });
+    
+    console.log('[Restore] Restore completed. Initiating restart...');
     
     // Restart logic
     setTimeout(() => {
         process.exit(0); // PM2 should restart it
     }, 2000);
   } catch (err) {
-    console.error('Restore failed:', err);
+    console.error('[Restore] Restore failed:', err);
     res.status(500).json({ error: 'Restore failed: ' + err.message });
   }
 });
@@ -3673,54 +3833,6 @@ app.get('/api/system/logs', requireAdmin, async (req, res) => {
     const { stdout } = await execPromise('tail -n 100 /var/log/syslog || tail -n 100 /var/log/messages').catch(() => ({ stdout: 'No logs available' }));
     res.json({ logs: stdout || 'No logs found' });
   } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// Centralized Key Management API
-app.get('/api/system/centralized-key', requireAdmin, async (req, res) => {
-  try {
-    // Get the first vendor record to get the centralized key
-    const vendor = await db.get('SELECT centralized_key FROM vendors LIMIT 1');
-    res.json({ centralized_key: vendor?.centralized_key || null });
-  } catch (err) {
-    console.error('Error fetching centralized key:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/system/centralized-key', requireAdmin, async (req, res) => {
-  try {
-    const { centralizedKey } = req.body;
-    
-    if (!centralizedKey) {
-      return res.status(400).json({ error: 'Centralized key is required' });
-    }
-    
-    // Update or insert the centralized key in the first vendor record
-    const existingVendor = await db.get('SELECT id FROM vendors LIMIT 1');
-    
-    if (existingVendor) {
-      await db.run('UPDATE vendors SET centralized_key = ? WHERE id = ?', [centralizedKey, existingVendor.id]);
-    } else {
-      // Create a default vendor record if none exists
-      await db.run('INSERT INTO vendors (machine_name, centralized_key) VALUES (?, ?)', ['Default', centralizedKey]);
-    }
-    
-    res.json({ success: true, message: 'Centralized key updated successfully' });
-  } catch (err) {
-    console.error('Error setting centralized key:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/system/centralized-key', requireAdmin, async (req, res) => {
-  try {
-    // Clear the centralized key from all vendor records
-    await db.run('UPDATE vendors SET centralized_key = NULL');
-    res.json({ success: true, message: 'Centralized key cleared successfully' });
-  } catch (err) {
-    console.error('Error clearing centralized key:', err);
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // Multi-WAN Configuration API

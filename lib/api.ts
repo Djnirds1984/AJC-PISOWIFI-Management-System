@@ -18,16 +18,41 @@ const getHeaders = (customHeaders: HeadersInit = {}) => {
 const handleResponse = async (res: Response) => {
   const contentType = res.headers.get('content-type');
   if (!res.ok) {
-    let errorMsg = `Server error: ${res.status}`;
+    let errorMsg = `Server error: ${res.status} ${res.statusText}`;
+    
+    // Try to get detailed error information
     try {
       if (contentType?.includes('application/json')) {
         const errJson = await res.json();
         errorMsg = errJson.error || errorMsg;
+        // Add more context for debugging
+        if (errJson.details) {
+          errorMsg += ` (${errJson.details})`;
+        }
+      } else {
+        const text = await res.text();
+        if (text) errorMsg += ` - ${text.substring(0, 100)}`;
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      errorMsg += ` (Failed to parse error response: ${e instanceof Error ? e.message : 'unknown'})`;
+    }
+    
+    // Log for debugging
+    console.error(`API Error ${res.status}:`, errorMsg);
     throw new Error(errorMsg);
   }
-  return res.json();
+  
+  // Handle successful responses
+  try {
+    if (contentType?.includes('application/json')) {
+      return await res.json();
+    } else {
+      return await res.text();
+    }
+  } catch (e) {
+    console.warn('Failed to parse response:', e);
+    return null;
+  }
 };
 
 export const apiClient = {
@@ -289,8 +314,14 @@ export const apiClient = {
 
   // Device Management APIs
   async getWifiDevices(): Promise<WifiDevice[]> {
-    const res = await fetch(`${API_BASE}/devices`, { headers: getHeaders() });
-    return handleResponse(res);
+    try {
+      const res = await fetch(`${API_BASE}/devices`, { headers: getHeaders() });
+      return handleResponse(res);
+    } catch (error) {
+      console.error('Failed to fetch devices:', error);
+      // Return empty array as fallback instead of throwing
+      return [];
+    }
   },
 
   async getWifiDevice(id: string): Promise<WifiDevice> {
@@ -464,8 +495,14 @@ export const apiClient = {
   },
 
   async getSessions(): Promise<any[]> {
-    const res = await fetch(`${API_BASE}/sessions`);
-    return handleResponse(res);
+    try {
+      const res = await fetch(`${API_BASE}/sessions`, { headers: getHeaders() });
+      return handleResponse(res);
+    } catch (error) {
+      console.error('Failed to fetch sessions:', error);
+      // Return empty array as fallback instead of throwing
+      return [];
+    }
   },
 
   async pauseSession(token: string): Promise<{ success: boolean; message: string }> {
@@ -785,31 +822,6 @@ export const apiClient = {
   async getVendorNodeMCULicenses(): Promise<any> {
     const res = await fetch(`${API_BASE}/nodemcu/license/vendor`, { 
       headers: getHeaders() 
-    });
-    return handleResponse(res);
-  },
-
-  // Centralized Key Management APIs
-  async getCentralizedKey(): Promise<{ centralized_key: string | null }> {
-    const res = await fetch(`${API_BASE}/system/centralized-key`, { 
-      headers: getHeaders() 
-    });
-    return handleResponse(res);
-  },
-
-  async setCentralizedKey(centralizedKey: string): Promise<{ success: boolean; message: string }> {
-    const res = await fetch(`${API_BASE}/system/centralized-key`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ centralizedKey })
-    });
-    return handleResponse(res);
-  },
-
-  async clearCentralizedKey(): Promise<{ success: boolean; message: string }> {
-    const res = await fetch(`${API_BASE}/system/centralized-key`, {
-      method: 'DELETE',
-      headers: getHeaders()
     });
     return handleResponse(res);
   }

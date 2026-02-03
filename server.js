@@ -1813,62 +1813,140 @@ app.get('/api/sessions', async (req, res) => {
 });
 
 // API endpoint to update MAC address for roaming devices
+// Enhanced with robust error handling and comprehensive updates
 app.post('/api/session/update-mac', async (req, res) => {
   try {
     const { sessionToken, oldMac, newMac } = req.body;
     
+    // Validate required parameters
     if (!sessionToken || !oldMac || !newMac) {
-      return res.status(400).json({ error: 'Missing required parameters' });
+      console.log(`[MAC-Update] Missing required parameters: sessionToken=${!!sessionToken}, oldMac=${!!oldMac}, newMac=${!!newMac}`);
+      return res.status(400).json({ error: 'Missing required parameters: sessionToken, oldMac, newMac' });
     }
     
-    console.log(`[MAC-Update] Updating MAC from ${oldMac} to ${newMac} for session ${sessionToken}`);
+    // Validate MAC address format
+    const macRegex = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/i;
+    if (!macRegex.test(oldMac) || !macRegex.test(newMac)) {
+      console.log(`[MAC-Update] Invalid MAC format: old=${oldMac}, new=${newMac}`);
+      return res.status(400).json({ error: 'Invalid MAC address format' });
+    }
     
-    // Update in local sessions table
-    await db.run(
-      'UPDATE sessions SET mac = ? WHERE mac = ? AND token = ?',
-      [newMac, oldMac, sessionToken]
-    );
+    // Normalize MAC addresses
+    const normalizedOldMac = oldMac.toUpperCase();
+    const normalizedNewMac = newMac.toUpperCase();
     
-    // Update in wifi_devices table
-    await db.run(
-      'UPDATE wifi_devices SET mac = ? WHERE mac = ?',
-      [newMac, oldMac]
-    );
+    if (normalizedOldMac === normalizedNewMac) {
+      console.log(`[MAC-Update] MAC addresses are identical: ${normalizedOldMac}`);
+      return res.json({ success: true, message: 'MAC addresses are identical, no update needed' });
+    }
     
-    // Update in clients table (Supabase)
+    console.log(`[MAC-Update] Updating MAC from ${normalizedOldMac} to ${normalizedNewMac} for session ${sessionToken.substring(0, 8)}...`);
+    
+    let updatesPerformed = [];
+    let errors = [];
+    
+    // 1. Update in local sessions table
+    try {
+      const sessionResult = await db.run(
+        'UPDATE sessions SET mac = ? WHERE mac = ? AND token = ?',
+        [normalizedNewMac, normalizedOldMac, sessionToken]
+      );
+      if (sessionResult.changes > 0) {
+        updatesPerformed.push('local_sessions');
+        console.log(`[MAC-Update] Updated local sessions table (${sessionResult.changes} rows)`);
+      } else {
+        console.log(`[MAC-Update] No matching session found in local sessions table`);
+      }
+    } catch (dbErr) {
+      console.error(`[MAC-Update] Failed to update local sessions:`, dbErr.message);
+      errors.push(`Local sessions: ${dbErr.message}`);
+    }
+    
+    // 2. Update in wifi_devices table
+    try {
+      const wifiResult = await db.run(
+        'UPDATE wifi_devices SET mac = ?, updated_at = CURRENT_TIMESTAMP WHERE mac = ?',
+        [normalizedNewMac, normalizedOldMac]
+      );
+      if (wifiResult.changes > 0) {
+        updatesPerformed.push('wifi_devices');
+        console.log(`[MAC-Update] Updated wifi_devices table (${wifiResult.changes} rows)`);
+      } else {
+        console.log(`[MAC-Update] No matching device found in wifi_devices table`);
+      }
+    } catch (dbErr) {
+      console.error(`[MAC-Update] Failed to update wifi_devices:`, dbErr.message);
+      errors.push(`WiFi devices: ${dbErr.message}`);
+    }
+    
+    // 3. Update in clients table (Supabase)
     try {
       const wifiSync = require('./lib/wifi-sync');
       if (wifiSync.supabase) {
-        await wifiSync.supabase
+        const { data, error } = await wifiSync.supabase
           .from('wifi_devices')
           .update({
-            mac_address: newMac.toUpperCase(),
+            mac_address: normalizedNewMac,
             updated_at: new Date().toISOString()
           })
           .eq('session_token', sessionToken)
-          .eq('mac_address', oldMac.toUpperCase());
+          .eq('mac_address', normalizedOldMac);
         
+        if (error) {
+          throw new Error(error.message);
+        }
+        
+        updatesPerformed.push('supabase');
         console.log(`[MAC-Update] Successfully updated MAC in Supabase`);
+      } else {
+        console.log(`[MAC-Update] Supabase not configured, skipping cloud update`);
       }
     } catch (supabaseErr) {
-      console.log(`[MAC-Update] Supabase update failed:`, supabaseErr.message);
+      console.error(`[MAC-Update] Supabase update failed:`, supabaseErr.message);
+      errors.push(`Supabase: ${supabaseErr.message}`);
       // Don't fail the whole request if Supabase fails
     }
     
-    // Update network permissions
+    // 4. Update network permissions
     try {
       const network = require('./lib/network');
-      await network.blockMAC(oldMac); // Remove old MAC
-      // Note: New MAC will be whitelisted when session is accessed
+      // Remove old MAC from whitelist/block old MAC
+      await network.blockMAC(normalizedOldMac);
+      console.log(`[MAC-Update] Blocked old MAC ${normalizedOldMac} from network`);
+      
+      // Note: New MAC will be automatically whitelisted when session is next accessed
+      updatesPerformed.push('network_permissions');
     } catch (networkErr) {
-      console.log(`[MAC-Update] Network permission update failed:`, networkErr.message);
+      console.error(`[MAC-Update] Network permission update failed:`, networkErr.message);
+      errors.push(`Network permissions: ${networkErr.message}`);
+      // Continue even if network update fails
     }
     
-    res.json({ success: true, message: 'MAC address updated successfully' });
+    // Prepare response
+    const response = {
+      success: updatesPerformed.length > 0,
+      message: updatesPerformed.length > 0 
+        ? `MAC address updated successfully in: ${updatesPerformed.join(', ')}`
+        : 'No updates were performed',
+      updates: updatesPerformed,
+      warnings: errors
+    };
+    
+    if (errors.length > 0) {
+      console.warn(`[MAC-Update] Completed with warnings:`, errors);
+      response.warnings = errors;
+    }
+    
+    console.log(`[MAC-Update] MAC update completed. Updates: ${updatesPerformed.length}, Warnings: ${errors.length}`);
+    res.json(response);
     
   } catch (err) {
-    console.error(`[MAC-Update] Error updating MAC address:`, err.message);
-    res.status(500).json({ error: 'Failed to update MAC address' });
+    console.error(`[MAC-Update] Critical error updating MAC address:`, err.message);
+    console.error(err.stack);
+    res.status(500).json({ 
+      error: 'Failed to update MAC address', 
+      details: err.message 
+    });
   }
 });
 

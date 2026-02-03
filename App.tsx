@@ -229,6 +229,21 @@ const App: React.FC = () => {
 
   const setSessionTokenWrapper = (token: string) => {
     setSessionToken(token);
+    
+    // Store initial MAC address when session token is set
+    // This ensures we have a baseline for MAC roaming detection
+    setTimeout(async () => {
+      try {
+        const whoAmIData = await apiClient.whoAmI();
+        if (whoAmIData.mac && whoAmIData.mac !== 'unknown') {
+          const { saveCurrentMAC } = require('./lib/mac-roaming');
+          saveCurrentMAC(token, whoAmIData.mac);
+          console.log(`[App] Stored initial MAC ${whoAmIData.mac} for new session ${token.substring(0, 8)}...`);
+        }
+      } catch (e) {
+        console.log('[App] Could not store initial MAC address:', e);
+      }
+    }, 100); // Small delay to ensure token is properly stored
   };
 
   // Check for existing session token and try to restore (Enhanced for MAC roaming)
@@ -236,6 +251,18 @@ const App: React.FC = () => {
     const sessionToken = getSessionTokenWrapper();
     if (sessionToken) {
       console.log(`[Session] Attempting to restore session (retries left: ${retries})`);
+      
+      // Check and update MAC address before attempting session restore
+      try {
+        const whoAmIData = await apiClient.whoAmI();
+        if (whoAmIData.mac && whoAmIData.mac !== 'unknown') {
+          const { checkAndUpdateMACAddress } = require('./lib/mac-roaming');
+          await checkAndUpdateMACAddress(whoAmIData.mac, sessionToken);
+        }
+      } catch (macErr) {
+        console.log('[Session] MAC address check failed, continuing with session restore:', macErr);
+      }
+      
       try {
         const res = await fetch('/api/sessions/restore', {
           method: 'POST',

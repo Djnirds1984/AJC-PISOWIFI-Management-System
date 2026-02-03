@@ -15,6 +15,26 @@ interface Props {
   onRestoreSession?: () => void;
 }
 
+// Add periodic MAC address checking for active sessions
+const usePeriodicMACCheck = (sessionToken: string | null) => {
+  useEffect(() => {
+    if (!sessionToken) return;
+    
+    const interval = setInterval(async () => {
+      try {
+        const data = await apiClient.whoAmI();
+        if (data.mac && data.mac !== 'unknown') {
+          await checkAndUpdateMACAddress(data.mac, sessionToken);
+        }
+      } catch (e) {
+        console.log('[LandingPage] Periodic MAC check failed:', e);
+      }
+    }, 30000); // Check every 30 seconds
+    
+    return () => clearInterval(interval);
+  }, [sessionToken]);
+};
+
 const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refreshSessions, onRestoreSession }) => {
   const [showModal, setShowModal] = useState(false);
   const [myMac, setMyMac] = useState('');
@@ -29,6 +49,15 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   const [coinSlotLockId, setCoinSlotLockId] = useState<string | null>(null);
   const [reservedSlot, setReservedSlot] = useState<string | null>(null);
   const [showRatesModal, setShowRatesModal] = useState(false);
+  
+  // Get session token for MAC checking
+  const sessionToken = getSessionToken();
+  
+  // Enable periodic MAC address checking for active sessions
+  usePeriodicMACCheck(sessionToken);
+  
+  // Enable periodic MAC address checking for active sessions
+  usePeriodicMACCheck(sessionToken);
 
   // Hardcoded default rates in case the API fetch returns nothing
   const defaultRates: Rate[] = [
@@ -91,13 +120,27 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
         setCanInsertCoin(data.canInsertCoin !== false);
         setIsRevoked(data.isRevoked === true);
       } catch (e) {
-        console.error('Failed to identify client');
+        console.error('[LandingPage] Failed to identify client:', e);
       }
     };
     
     // Only fetch if we have a valid IP (not localhost)
     if (!window.location.hostname.includes('localhost')) {
       fetchWhoAmI();
+    
+    // Also save current MAC immediately for session tracking
+    if (sessionToken) {
+      setTimeout(async () => {
+        try {
+          const data = await apiClient.whoAmI();
+          if (data.mac && data.mac !== 'unknown') {
+            saveCurrentMAC(sessionToken, data.mac);
+          }
+        } catch (e) {
+          console.log('[LandingPage] Failed to save initial MAC:', e);
+        }
+      }, 500);
+    }
     }
   }, []);
 
@@ -591,7 +634,15 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
           selectedSlot={selectedSlot}
           coinSlot={reservedSlot || selectedSlot}
           coinSlotLockId={coinSlotLockId || undefined}
-          onSuccess={(pesos, minutes) => {
+          onSuccess={async (pesos, minutes) => {
+            // Save current MAC address before navigating to success page
+            const sessionToken = getSessionToken();
+            if (sessionToken && myMac && myMac !== 'unknown') {
+              const { saveCurrentMAC } = require('../../lib/mac-roaming');
+              saveCurrentMAC(sessionToken, myMac);
+              console.log(`[LandingPage] Saved current MAC ${myMac} before session start`);
+            }
+            
             onSessionStart({
               mac: myMac,
               remainingSeconds: minutes * 60,

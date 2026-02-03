@@ -156,7 +156,7 @@ const App: React.FC = () => {
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAdmin, isAuthenticated]);
 
   const handleToggleAdmin = () => {
     const nextState = !isAdmin;

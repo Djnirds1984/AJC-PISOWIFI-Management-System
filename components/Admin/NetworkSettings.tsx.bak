@@ -53,19 +53,7 @@ const NetworkSettings: React.FC = () => {
         apiClient.getVlans().catch(() => []),
         apiClient.getBridges().catch(() => [])
       ]);
-      const filteredInterfaces = ifaces.filter(i => !i.isLoopback);
-      setInterfaces(filteredInterfaces);
-      
-      // Auto-detect primary ethernet interface for VLAN configuration
-      const ethernetInterfaces = filteredInterfaces.filter(i => i.type === 'ethernet');
-      if (ethernetInterfaces.length > 0 && vlan.parentInterface === 'eth0') {
-        const primaryEth = ethernetInterfaces[0];
-        setVlan(prev => ({
-          ...prev,
-          parentInterface: primaryEth.name,
-          name: `{primaryEth.name}.{prev.id}`
-        }));
-      }
+      setInterfaces(ifaces.filter(i => !i.isLoopback));
       setHotspots(Array.isArray(hs) ? hs : []);
       setWirelessArr(Array.isArray(wifi) ? wifi : []);
       setVlans(Array.isArray(v) ? v : []);

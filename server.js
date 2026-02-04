@@ -1051,6 +1051,19 @@ async function getMacFromIp(ip) {
   return null;
 }
 
+// Device tracking to prevent re-scanning processed devices
+const processedDevices = new Map(); // MAC -> { processed: true, timestamp: Date.now(), hasSession: boolean }
+
+// Clean up old processed device entries every 5 minutes
+setInterval(() => {
+  const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+  for (const [mac, data] of processedDevices.entries()) {
+    if (data.timestamp < fiveMinutesAgo) {
+      processedDevices.delete(mac);
+    }
+  }
+}, 5 * 60 * 1000);
+
 // Background scanner for new client connections and automatic session restoration
 async function scanForNewClients() {
   try {
@@ -1110,6 +1123,12 @@ async function scanForNewClients() {
         continue;
       }
       
+      // Skip if device was already processed recently
+      const processed = processedDevices.get(mac);
+      if (processed) {
+        continue; // Device already processed, skip to save CPU
+      }
+      
       console.log(`[CLIENT-SCAN] New device detected: ${mac} (${ip}) - checking for session tokens...`);
       
       // Find the most recent transferable session (prioritize sessions from similar IP range)
@@ -1160,12 +1179,19 @@ async function scanForNewClients() {
           console.log(`[AUTO-SYNC] Device ${mac} now has internet access with session ${availableSession.token}`);
           console.log(`[AUTO-SYNC] Old MAC ${availableSession.original_mac} remains whitelisted for seamless switching back`);
           
+          // Mark device as processed with session
+          processedDevices.set(mac, { processed: true, timestamp: Date.now(), hasSession: true });
+          
         } catch (transferError) {
           console.error(`[CLIENT-SCAN] Failed to transfer session for ${mac}:`, transferError.message);
+          // Mark as processed even if transfer failed to avoid retrying
+          processedDevices.set(mac, { processed: true, timestamp: Date.now(), hasSession: false });
         }
         
       } else {
         console.log(`[CLIENT-SCAN] No transferable sessions found for new device ${mac} - will redirect to portal for coin insertion`);
+        // Mark device as processed without session
+        processedDevices.set(mac, { processed: true, timestamp: Date.now(), hasSession: false });
       }
       
       // Add device to tracking (for admin panel visibility)

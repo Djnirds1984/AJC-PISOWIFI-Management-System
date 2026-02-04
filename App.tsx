@@ -3,6 +3,7 @@ import { AdminTab, UserSession, Rate, WifiDevice } from './types';
 import LandingPage from './components/Portal/LandingPage';
 import Analytics from './components/Admin/Analytics';
 import RatesManager from './components/Admin/RatesManager';
+import VoucherManager from './components/Admin/VoucherManager';
 import NetworkSettings from './components/Admin/NetworkSettings';
 import HardwareManager from './components/Admin/HardwareManager';
 import SystemUpdater from './components/Admin/SystemUpdater';
@@ -326,6 +327,7 @@ const App: React.FC = () => {
               <nav className={`flex-1 ${sidebarOpen ? 'p-3' : 'p-2'} space-y-1 overflow-y-auto scrollbar-hide`}>
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Analytics} onClick={() => setActiveTab(AdminTab.Analytics)} icon="📊" label="Dashboard" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Rates} onClick={() => setActiveTab(AdminTab.Rates)} icon="💰" label="Pricing" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Vouchers} onClick={() => setActiveTab(AdminTab.Vouchers)} icon="🎫" label="Vouchers" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Network} onClick={() => setActiveTab(AdminTab.Network)} icon="🌐" label="Network" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Devices} onClick={() => setActiveTab(AdminTab.Devices)} icon="📱" label="Devices" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Hardware} onClick={() => setActiveTab(AdminTab.Hardware)} icon="🔌" label="Hardware" collapsed={!sidebarOpen} />
@@ -395,6 +397,7 @@ const App: React.FC = () => {
                 <div className="max-w-7xl mx-auto space-y-6">
                   {activeTab === AdminTab.Analytics && <Analytics sessions={activeSessions} />}
                   {activeTab === AdminTab.Rates && <RatesManager rates={rates} setRates={updateRates} />}
+                  {activeTab === AdminTab.Vouchers && <VoucherManager />}
                   {activeTab === AdminTab.Network && <NetworkSettings />}
                   {activeTab === AdminTab.Devices && <DeviceManager sessions={activeSessions} refreshSessions={loadData} refreshDevices={loadData} />}
                   {activeTab === AdminTab.Hardware && <HardwareManager />}

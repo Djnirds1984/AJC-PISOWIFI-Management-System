@@ -2051,8 +2051,9 @@ app.post('/api/admin/vouchers/create', requireAdmin, async (req, res) => {
       });
     }
     
-    console.log(`[Vouchers] Created ${quantity} voucher(s): ${minutes}min, ₱${price}`);
+    // Send response first, then log
     res.json({ success: true, created: quantity, vouchers });
+    console.log(`[Vouchers] Created ${quantity} voucher(s): ${minutes}min, ₱${price}`);
   } catch (err) {
     console.error('[Vouchers] Create error:', err);
     res.status(500).json({ error: 'Failed to create vouchers' });

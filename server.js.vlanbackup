@@ -3952,13 +3952,6 @@ async function bootupRestore(isRestricted = false) {
   // 0. Restore VLANs
   try {
     const vlans = await db.all('SELECT * FROM vlans');
-    
-    // Skip VLAN restoration on Windows (no ip command available)
-    if (process.platform === 'win32') {
-      console.log('[AJC] Skipping VLAN restoration on Windows platform');
-      return;
-    }
-    
     for (const v of vlans) {
       console.log(`[AJC] Restoring VLAN ${v.name} on ${v.parent} ID ${v.id}...`);
       await network.createVlan(v).catch(e => console.error(`[AJC] VLAN Restore Failed: ${e.message}`));

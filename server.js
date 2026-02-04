@@ -1186,8 +1186,8 @@ async function scanForNewClients() {
 }
 
 // Start background client scanner with automatic session transfer
-setInterval(scanForNewClients, 2000); // Scan every 2 seconds for fast transfer
-console.log('[CLIENT-SCAN] Background client scanner with auto-transfer started (2s interval)');
+setInterval(scanForNewClients, 10000); // Scan every 10 seconds for balanced performance
+console.log('[CLIENT-SCAN] Background client scanner with auto-transfer started (10s interval)');
 app.get('/api/zerotier/status', requireAdmin, async (req, res) => {
   try {
     const installed = await zerotier.isInstalled();

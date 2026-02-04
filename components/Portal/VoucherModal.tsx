@@ -142,7 +142,7 @@ const VoucherModal: React.FC<VoucherModalProps> = ({ isOpen, onClose, onVoucherA
 
         <div className="mt-6 pt-4 border-t border-gray-200">
           <div className="text-center">
-            <p className="text-xs text-gray-500 mb-2">How to use vouchers:</p>
+            <p className="text-xs text-gray-500 mb-2">How vouchers work with MAC sync:</p>
             <div className="text-xs text-gray-600 space-y-1">
               <div className="flex items-center justify-center gap-2">
                 <span className="w-4 h-4 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 text-xs">1</span>
@@ -150,11 +150,15 @@ const VoucherModal: React.FC<VoucherModalProps> = ({ isOpen, onClose, onVoucherA
               </div>
               <div className="flex items-center justify-center gap-2">
                 <span className="w-4 h-4 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 text-xs">2</span>
-                <span>Get instant internet time</span>
+                <span>Get internet time for this session</span>
               </div>
               <div className="flex items-center justify-center gap-2">
                 <span className="w-4 h-4 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 text-xs">3</span>
-                <span>Works on any device (MAC sync)</span>
+                <span>MAC sync shares time with same MAC devices</span>
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                <span className="w-4 h-4 bg-green-100 rounded-full flex items-center justify-center text-green-600 text-xs">✓</span>
+                <span className="text-green-600 font-medium">Session-bound voucher prevents conflicts</span>
               </div>
             </div>
           </div>

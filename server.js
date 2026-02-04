@@ -2014,7 +2014,7 @@ app.get('/api/admin/vouchers', requireAdmin, async (req, res) => {
         id, code, minutes, price, status, 
         download_limit, upload_limit, 
         created_at, expires_at, used_at, 
-        used_by_mac, used_by_ip
+        used_by_mac, used_by_ip, session_id
       FROM vouchers 
       ORDER BY created_at DESC
     `);
@@ -2125,6 +2125,22 @@ app.post('/api/vouchers/activate', async (req, res) => {
     
     console.log(`[Voucher] Device identified: ${mac} (${clientIp})`);
     
+    // Generate unique session ID for this voucher activation
+    const sessionId = `voucher_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Check if this specific session already has an active voucher
+    const existingVoucherSession = await db.get(`
+      SELECT * FROM sessions 
+      WHERE mac = ? AND ip = ? AND remaining_seconds > 0 AND voucher_code IS NOT NULL
+    `, [mac, clientIp]);
+    
+    if (existingVoucherSession) {
+      console.log(`[Voucher] Session ${mac}@${clientIp} already has active voucher: ${existingVoucherSession.voucher_code}`);
+      return res.status(400).json({ 
+        error: `This session already has an active voucher (${existingVoucherSession.voucher_code}). Please wait for it to expire before using another voucher.` 
+      });
+    }
+    
     // Find voucher - check both active status and expiration
     const voucher = await db.get(`
       SELECT * FROM vouchers 
@@ -2148,52 +2164,66 @@ app.post('/api/vouchers/activate', async (req, res) => {
     
     console.log(`[Voucher] Valid voucher found: ${voucher.code} (${voucher.minutes} minutes, ₱${voucher.price})`);
     
-    // Generate session token (compatible with MAC sync)
+    // Generate session token (MAC sync compatible with session ID binding)
     const token = crypto.randomBytes(16).toString('hex');
     const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
     const seconds = voucher.minutes * 60;
     
-    // Create/update session (COMPATIBLE WITH MAC SYNC)
+    // Create/update session with SESSION ID binding (MAC sync enabled but session-specific)
     await db.run(`
       INSERT INTO sessions (
-        mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, 
-        token, token_expires_at, voucher_code
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, 
+        token, token_expires_at, voucher_code, session_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'voucher')
       ON CONFLICT(mac) DO UPDATE SET 
         remaining_seconds = remaining_seconds + ?, 
         total_paid = total_paid + ?, 
         ip = ?, 
-        download_limit = ?, 
-        upload_limit = ?, 
+        download_limit = CASE 
+          WHEN excluded.download_limit > 0 THEN excluded.download_limit 
+          ELSE download_limit 
+        END,
+        upload_limit = CASE 
+          WHEN excluded.upload_limit > 0 THEN excluded.upload_limit 
+          ELSE upload_limit 
+        END,
         token = ?, 
         token_expires_at = ?,
-        voucher_code = ?
+        voucher_code = CASE 
+          WHEN voucher_code IS NULL THEN excluded.voucher_code 
+          ELSE voucher_code || ',' || excluded.voucher_code 
+        END,
+        session_type = CASE 
+          WHEN session_type = 'coin' AND excluded.session_type = 'voucher' THEN 'mixed'
+          WHEN session_type = 'voucher' AND excluded.session_type = 'voucher' THEN 'voucher'
+          ELSE excluded.session_type
+        END
     `, [
-      mac, clientIp, seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
+      sessionId, mac, clientIp, seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
       token, tokenExpiresAt, voucher.code,
-      seconds, voucher.price, clientIp, voucher.download_limit, voucher.upload_limit,
-      token, tokenExpiresAt, voucher.code
+      seconds, voucher.price, clientIp, token, tokenExpiresAt
     ]);
     
-    // Mark voucher as used
+    // Mark voucher as used with session ID binding
     await db.run(`
       UPDATE vouchers 
-      SET status = 'used', used_at = datetime('now'), used_by_mac = ?, used_by_ip = ?, session_token = ?
+      SET status = 'used', used_at = datetime('now'), used_by_mac = ?, used_by_ip = ?, 
+          session_token = ?, session_id = ?
       WHERE id = ?
-    `, [mac, clientIp, token, voucher.id]);
+    `, [mac, clientIp, token, sessionId, voucher.id]);
     
-    // Log voucher usage
+    // Log voucher usage with session ID
     await db.run(`
       INSERT INTO voucher_usage_logs (
         voucher_id, voucher_code, mac_address, ip_address, 
-        minutes_granted, price, session_token
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [voucher.id, voucher.code, mac, clientIp, voucher.minutes, voucher.price, token]);
+        minutes_granted, price, session_token, session_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [voucher.id, voucher.code, mac, clientIp, voucher.minutes, voucher.price, token, sessionId]);
     
-    // Whitelist device (same as coin system)
+    // Whitelist device (MAC sync enabled - all devices with same MAC get access)
     await network.whitelistMAC(mac, clientIp);
     
-    console.log(`[Voucher] Successfully activated voucher ${voucher.code} for ${mac} (${clientIp}) - ${seconds}s, ₱${voucher.price}`);
+    console.log(`[Voucher] Successfully activated voucher ${voucher.code} for MAC ${mac} (${clientIp}) with session ID ${sessionId} - ${seconds}s, ₱${voucher.price} - MAC SYNC ENABLED`);
     
     res.json({
       success: true,

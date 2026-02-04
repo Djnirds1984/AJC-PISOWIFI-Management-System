@@ -13,6 +13,7 @@ interface Voucher {
   used_at?: string;
   used_by_mac?: string;
   used_by_ip?: string;
+  session_id?: string;
 }
 
 const VoucherManager: React.FC = () => {
@@ -310,6 +311,10 @@ const VoucherManager: React.FC = () => {
                       {voucher.used_by_mac ? (
                         <div>
                           <div className="font-mono text-xs">{voucher.used_by_mac}</div>
+                          <div className="text-xs text-gray-600">{voucher.used_by_ip}</div>
+                          {voucher.session_id && (
+                            <div className="text-xs text-blue-600 font-medium">Session: {voucher.session_id.substring(0, 12)}...</div>
+                          )}
                           <div className="text-xs">{voucher.used_at ? formatDate(voucher.used_at) : ''}</div>
                         </div>
                       ) : (

@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS vouchers (
     used_at DATETIME,
     used_by_mac TEXT,
     used_by_ip TEXT,
-    session_token TEXT
+    session_token TEXT,
+    session_id TEXT
 );
 
 -- Create voucher usage logs table
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS voucher_usage_logs (
     minutes_granted INTEGER NOT NULL,
     price INTEGER NOT NULL,
     session_token TEXT,
+    session_id TEXT,
     used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (voucher_id) REFERENCES vouchers(id)
 );
@@ -35,13 +37,23 @@ CREATE TABLE IF NOT EXISTS voucher_usage_logs (
 -- Add voucher_code column to sessions table if it doesn't exist
 ALTER TABLE sessions ADD COLUMN voucher_code TEXT;
 
+-- Add session_type column to sessions table to distinguish voucher vs coin sessions
+ALTER TABLE sessions ADD COLUMN session_type TEXT DEFAULT 'coin' CHECK (session_type IN ('coin', 'voucher', 'mixed'));
+
+-- Add id column to sessions table if it doesn't exist (for session ID binding)
+ALTER TABLE sessions ADD COLUMN id TEXT;
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_vouchers_code ON vouchers(code);
 CREATE INDEX IF NOT EXISTS idx_vouchers_status ON vouchers(status);
 CREATE INDEX IF NOT EXISTS idx_vouchers_expires_at ON vouchers(expires_at);
+CREATE INDEX IF NOT EXISTS idx_vouchers_session_id ON vouchers(session_id);
 CREATE INDEX IF NOT EXISTS idx_voucher_usage_logs_voucher_id ON voucher_usage_logs(voucher_id);
 CREATE INDEX IF NOT EXISTS idx_voucher_usage_logs_mac ON voucher_usage_logs(mac_address);
+CREATE INDEX IF NOT EXISTS idx_voucher_usage_logs_session_id ON voucher_usage_logs(session_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_voucher_code ON sessions(voucher_code);
+CREATE INDEX IF NOT EXISTS idx_sessions_session_type ON sessions(session_type);
+CREATE INDEX IF NOT EXISTS idx_sessions_id ON sessions(id);
 
 -- Insert some sample vouchers for testing
 INSERT OR IGNORE INTO vouchers (id, code, minutes, price, expires_at) VALUES 

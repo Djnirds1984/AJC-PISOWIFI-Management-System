@@ -1051,7 +1051,7 @@ async function getMacFromIp(ip) {
   return null;
 }
 
-// Background scanner for new client connections and session restoration
+// Background scanner for new client connections and automatic session restoration
 async function scanForNewClients() {
   try {
     // Get all current active sessions
@@ -1101,7 +1101,7 @@ async function scanForNewClients() {
       }
     }
     
-    // Check each connected device for session restoration
+    // Check each connected device for automatic session restoration
     for (const device of connectedDevices) {
       const { ip, mac } = device;
       
@@ -1112,23 +1112,51 @@ async function scanForNewClients() {
       
       console.log(`[CLIENT-SCAN] New device detected: ${mac} (${ip}) - checking for session tokens...`);
       
-      // Check if this device has any stored session tokens that can be restored
-      // We'll trigger a session scan by checking if there are any sessions that could be transferred
-      const availableSessions = await db.all(
-        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND mac != ? AND token_expires_at > datetime("now")',
+      // Find the most recent transferable session (same as what frontend would find)
+      const availableSession = await db.get(
+        'SELECT token, mac as original_mac, remaining_seconds, ip as original_ip FROM sessions WHERE remaining_seconds > 0 AND mac != ? AND token_expires_at > datetime("now") ORDER BY connected_at DESC LIMIT 1',
         [mac]
       );
       
-      if (availableSessions.length > 0) {
-        console.log(`[CLIENT-SCAN] Found ${availableSessions.length} transferable sessions for new device ${mac}`);
-        console.log(`[CLIENT-SCAN] Device ${mac} should visit portal to restore session automatically`);
+      if (availableSession) {
+        console.log(`[CLIENT-SCAN] Found transferable session for ${mac}:`);
+        console.log(`[CLIENT-SCAN] - Session ${availableSession.token} from ${availableSession.original_mac} (${availableSession.remaining_seconds}s remaining)`);
+        console.log(`[CLIENT-SCAN] Attempting automatic session transfer...`);
         
-        // Log the potential session transfers
-        for (const session of availableSessions) {
-          console.log(`[CLIENT-SCAN] - Available session: ${session.token} from ${session.original_mac} (${session.remaining_seconds}s remaining)`);
+        try {
+          // Check if the target MAC already has a different session
+          const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ? AND token != ?', [mac, availableSession.token]);
+          let extraTime = 0;
+          let extraPaid = 0;
+          
+          if (targetSession) {
+            // Merge existing time from the target MAC if any
+            extraTime = targetSession.remaining_seconds;
+            extraPaid = targetSession.total_paid;
+            console.log(`[CLIENT-SCAN] Merging existing session on ${mac}: +${extraTime}s, +₱${extraPaid}`);
+            await db.run('DELETE FROM sessions WHERE mac = ? AND token != ?', [mac, availableSession.token]);
+          }
+
+          // Update session with new MAC and IP (session ID stays the same)
+          await db.run(
+            'UPDATE sessions SET mac = ?, ip = ?, remaining_seconds = ?, total_paid = ? WHERE token = ?',
+            [mac, ip, availableSession.remaining_seconds + extraTime, availableSession.total_paid + extraPaid, availableSession.token]
+          );
+          
+          // Switch network access
+          await network.blockMAC(availableSession.original_mac, availableSession.original_ip); // Block old MAC
+          await network.whitelistMAC(mac, ip); // Allow new MAC
+          
+          // Log successful transfer
+          console.log(`[AUTO-SYNC] Session automatically transferred: ${availableSession.original_mac} -> ${mac} (${availableSession.remaining_seconds + extraTime}s remaining)`);
+          console.log(`[AUTO-SYNC] Device ${mac} now has internet access with session ${availableSession.token}`);
+          
+        } catch (transferError) {
+          console.error(`[CLIENT-SCAN] Failed to transfer session for ${mac}:`, transferError.message);
         }
+        
       } else {
-        console.log(`[CLIENT-SCAN] No transferable sessions found for new device ${mac} - will redirect to portal`);
+        console.log(`[CLIENT-SCAN] No transferable sessions found for new device ${mac} - will redirect to portal for coin insertion`);
       }
       
       // Add device to tracking (for admin panel visibility)
@@ -1148,9 +1176,9 @@ async function scanForNewClients() {
   }
 }
 
-// Start background client scanner
+// Start background client scanner with automatic session transfer
 setInterval(scanForNewClients, 30000); // Scan every 30 seconds
-console.log('[CLIENT-SCAN] Background client scanner started (30s interval)');
+console.log('[CLIENT-SCAN] Background client scanner with auto-transfer started (30s interval)');
 app.get('/api/zerotier/status', requireAdmin, async (req, res) => {
   try {
     const installed = await zerotier.isInstalled();

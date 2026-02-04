@@ -931,7 +931,7 @@ const { checkTrialStatus, activateLicense: storeLocalLicense } = require('./lib/
 const { getUniqueHardwareId } = require('./lib/hardware');
 
 // Edge Sync (Cloud Data Sync)
-const { syncSaleToCloud, getSyncStats } = require('./lib/edge-sync');
+const { getSyncStats } = require('./lib/edge-sync');
 
 // Initialize license manager (will use env variables if available)
 const licenseManager = initializeLicenseManager();
@@ -1597,16 +1597,6 @@ app.post('/api/sessions/start', async (req, res) => {
     await network.whitelistMAC(mac, clientIp);
     
     console.log(`[AUTH] Session started for ${mac} (${clientIp}) - ${seconds}s, ₱${pesos}, Limits: ${downloadLimit}/${uploadLimit} Mbps`);
-    
-    // Sync sale to cloud (non-blocking)
-    syncSaleToCloud({
-      amount: pesos,
-      session_duration: seconds,
-      customer_mac: mac,
-      transaction_type: 'coin_insert'
-    }).catch(err => {
-      console.error('[Sync] Failed to sync sale to cloud:', err);
-    });
     
     coinSlotLocks.delete(slot);
     res.json({ success: true, mac, token, message: 'Internet access granted. Please refresh your browser or wait a moment for connection to activate.' });

@@ -963,6 +963,35 @@ let systemHardwareId = null;
 async function getMacFromIp(ip) {
   if (ip === '::1' || ip === '127.0.0.1' || !ip) return null;
   
+  // Windows-specific MAC resolution
+  if (process.platform === 'win32') {
+    try {
+      // Use Windows arp command
+      const { stdout } = await execPromise(`arp -a ${ip}`);
+      // Output format: "  10.0.0.50            aa-bb-cc-dd-ee-ff     dynamic"
+      const match = stdout.match(/([a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2})/);
+      if (match && match[1]) {
+        // Convert Windows format (aa-bb-cc-dd-ee-ff) to standard format (AA:BB:CC:DD:EE:FF)
+        return match[1].replace(/-/g, ':').toUpperCase();
+      }
+    } catch (e) {
+      console.log(`[MAC-Resolve] Windows ARP failed for ${ip}:`, e.message);
+    }
+    
+    // Fallback: Check Active Sessions in DB for Windows
+    try {
+      const session = await db.get('SELECT mac FROM sessions WHERE ip = ? AND remaining_seconds > 0', [ip]);
+      if (session && session.mac) {
+        return session.mac.toUpperCase();
+      }
+    } catch (e) {
+      console.error(`[MAC-Resolve] DB Fallback error for ${ip}:`, e.message);
+    }
+    
+    return null;
+  }
+  
+  // Linux-specific MAC resolution (original code)
   // 1. Try to ping the IP to ensure it's in the ARP table (fast check)
   try { await execPromise(`ping -c 1 -W 1 ${ip}`); } catch (e) {}
 
@@ -1609,15 +1638,22 @@ app.post('/api/sessions/start', async (req, res) => {
 app.post('/api/sessions/restore', async (req, res) => {
   const { token } = req.body;
   const clientIp = req.ip.replace('::ffff:', '');
-  const mac = await getMacFromIp(clientIp);
+  let mac = await getMacFromIp(clientIp);
   
-  if (!token || !mac) return res.status(400).json({ error: 'Invalid request' });
+  // Fallback: Generate temporary MAC if detection fails (Windows compatibility)
+  if (!mac) {
+    mac = `TEMP-${clientIp.replace(/\./g, '-')}-${Date.now().toString(36).slice(-4)}`;
+    console.log(`[MAC-SYNC] MAC detection failed for ${clientIp}, using temporary MAC: ${mac}`);
+  }
+  
+  if (!token) return res.status(400).json({ error: 'Session token required' });
 
   try {
     // Check if MAC sync is enabled
     const macSyncConfig = await db.get('SELECT value FROM config WHERE key = ?', ['mac_sync_enabled']);
     const isMacSyncEnabled = macSyncConfig ? macSyncConfig.value === '1' : true; // Default enabled
     
+    // Find session by token (session ID-based approach)
     const session = await db.get('SELECT * FROM sessions WHERE token = ?', [token]);
     if (!session) return res.status(404).json({ error: 'Session not found' });
     
@@ -1630,8 +1666,8 @@ app.post('/api/sessions/restore', async (req, res) => {
       }
     }
     
+    // If same MAC, just update IP if needed
     if (session.mac === mac) {
-       // Same device, just update IP if changed and ensure whitelisted
        if (session.ip !== clientIp) {
          await db.run('UPDATE sessions SET ip = ? WHERE mac = ?', [clientIp, mac]);
          await network.whitelistMAC(mac, clientIp);
@@ -1644,10 +1680,10 @@ app.post('/api/sessions/restore', async (req, res) => {
       return res.status(403).json({ error: 'MAC sync is disabled. Session can only be used on the original device.' });
     }
 
-    console.log(`[AUTH] Restoring session ${token} from ${session.mac} to ${mac}`);
+    console.log(`[MAC-SYNC] Session token ${token} - transferring from ${session.mac} to ${mac}`);
 
-    // Check if the target MAC already has a session
-    const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ?', [mac]);
+    // Check if the target MAC already has a different session
+    const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
     let extraTime = 0;
     let extraPaid = 0;
     
@@ -1655,28 +1691,26 @@ app.post('/api/sessions/restore', async (req, res) => {
       // Merge existing time from the target MAC if any
       extraTime = targetSession.remaining_seconds;
       extraPaid = targetSession.total_paid;
-      await db.run('DELETE FROM sessions WHERE mac = ?', [mac]);
+      console.log(`[MAC-SYNC] Merging existing session on ${mac}: +${extraTime}s, +₱${extraPaid}`);
+      await db.run('DELETE FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
     }
 
-    // Delete the old session record
-    await db.run('DELETE FROM sessions WHERE mac = ?', [session.mac]);
-    
-    // Insert new record with merged data
+    // Update session with new MAC and IP (session ID stays the same)
     await db.run(
-      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, download_limit, upload_limit, token, token_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [mac, clientIp, session.remaining_seconds + extraTime, session.total_paid + extraPaid, session.connected_at, session.download_limit, session.upload_limit, token, session.token_expires_at]
+      'UPDATE sessions SET mac = ?, ip = ?, remaining_seconds = ?, total_paid = ? WHERE token = ?',
+      [mac, clientIp, session.remaining_seconds + extraTime, session.total_paid + extraPaid, token]
     );
     
-    // Switch whitelist
-    await network.blockMAC(session.mac, session.ip); // Block old
-    await network.whitelistMAC(mac, clientIp); // Allow new
+    // Switch network access
+    await network.blockMAC(session.mac, session.ip); // Block old MAC
+    await network.whitelistMAC(mac, clientIp); // Allow new MAC
     
-    // Log session transfer for audit (MAC Sync enhancement)
+    // Log session transfer for audit
     console.log(`[MAC-SYNC] Session transferred: ${session.mac} -> ${mac} (${session.remaining_seconds + extraTime}s remaining)`);
     
     res.json({ success: true, migrated: true, remainingSeconds: session.remaining_seconds + extraTime, isPaused: session.is_paused === 1 });
   } catch (err) { 
-    console.error('[AUTH] Restore error:', err);
+    console.error('[MAC-SYNC] Restore error:', err);
     res.status(500).json({ error: err.message }); 
   }
 });

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Rate, UserSession } from '../../types';
 import CoinModal from './CoinModal';
+import VoucherModal from './VoucherModal';
 import ChatWidget from './ChatWidget';
 import { apiClient } from '../../lib/api';
 import { getPortalConfig, fetchPortalConfig, PortalConfig, DEFAULT_PORTAL_CONFIG } from '../../lib/theme';
@@ -16,6 +17,7 @@ interface Props {
 
 const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refreshSessions, onRestoreSession }) => {
   const [showModal, setShowModal] = useState(false);
+  const [showVoucherModal, setShowVoucherModal] = useState(false);
   const [myMac, setMyMac] = useState('');
   const [isMacLoading, setIsMacLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);

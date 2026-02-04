@@ -1051,7 +1051,106 @@ async function getMacFromIp(ip) {
   return null;
 }
 
-// ZeroTier Management API
+// Background scanner for new client connections and session restoration
+async function scanForNewClients() {
+  try {
+    // Get all current active sessions
+    const activeSessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds > 0');
+    const activeMACs = new Set(activeSessions.map(s => s.mac));
+    
+    // Scan network for connected devices
+    let connectedDevices = [];
+    
+    if (process.platform === 'win32') {
+      // Windows: Use arp -a to find connected devices
+      try {
+        const { stdout } = await execPromise('arp -a');
+        const lines = stdout.split('\n');
+        
+        for (const line of lines) {
+          // Match format: "  192.168.1.100    aa-bb-cc-dd-ee-ff     dynamic"
+          const match = line.match(/\s+(\d+\.\d+\.\d+\.\d+)\s+([a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2})\s+dynamic/);
+          if (match) {
+            const ip = match[1];
+            const mac = match[2].replace(/-/g, ':').toUpperCase();
+            
+            // Filter for local network IPs (10.x.x.x, 192.168.x.x)
+            if (ip.startsWith('10.') || ip.startsWith('192.168.')) {
+              connectedDevices.push({ ip, mac });
+            }
+          }
+        }
+      } catch (e) {
+        console.log('[CLIENT-SCAN] Windows ARP scan failed:', e.message);
+      }
+    } else {
+      // Linux: Use ip neigh and ARP table
+      try {
+        const { stdout } = await execPromise('ip neigh show');
+        const lines = stdout.split('\n');
+        
+        for (const line of lines) {
+          // Format: "10.0.0.5 dev wlan0 lladdr aa:bb:cc:dd:ee:ff REACHABLE"
+          const match = line.match(/(\d+\.\d+\.\d+\.\d+).*lladdr\s+([a-fA-F0-9:]+)/);
+          if (match) {
+            connectedDevices.push({ ip: match[1], mac: match[2].toUpperCase() });
+          }
+        }
+      } catch (e) {
+        console.log('[CLIENT-SCAN] Linux neigh scan failed:', e.message);
+      }
+    }
+    
+    // Check each connected device for session restoration
+    for (const device of connectedDevices) {
+      const { ip, mac } = device;
+      
+      // Skip if device already has active session
+      if (activeMACs.has(mac)) {
+        continue;
+      }
+      
+      console.log(`[CLIENT-SCAN] New device detected: ${mac} (${ip}) - checking for session tokens...`);
+      
+      // Check if this device has any stored session tokens that can be restored
+      // We'll trigger a session scan by checking if there are any sessions that could be transferred
+      const availableSessions = await db.all(
+        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND mac != ? AND token_expires_at > datetime("now")',
+        [mac]
+      );
+      
+      if (availableSessions.length > 0) {
+        console.log(`[CLIENT-SCAN] Found ${availableSessions.length} transferable sessions for new device ${mac}`);
+        console.log(`[CLIENT-SCAN] Device ${mac} should visit portal to restore session automatically`);
+        
+        // Log the potential session transfers
+        for (const session of availableSessions) {
+          console.log(`[CLIENT-SCAN] - Available session: ${session.token} from ${session.original_mac} (${session.remaining_seconds}s remaining)`);
+        }
+      } else {
+        console.log(`[CLIENT-SCAN] No transferable sessions found for new device ${mac} - will redirect to portal`);
+      }
+      
+      // Add device to tracking (for admin panel visibility)
+      try {
+        const deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        await db.run(
+          'INSERT OR IGNORE INTO wifi_devices (id, mac, ip, interface, download_limit, upload_limit, connected_at, last_seen, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [deviceId, mac, ip, 'auto-detected', 0, 0, Date.now(), Date.now(), 1]
+        );
+      } catch (e) {
+        // Ignore duplicate device errors
+      }
+    }
+    
+  } catch (e) {
+    console.error('[CLIENT-SCAN] Error scanning for new clients:', e.message);
+  }
+}
+
+// Start background client scanner
+setInterval(scanForNewClients, 30000); // Scan every 30 seconds
+console.log('[CLIENT-SCAN] Background client scanner started (30s interval)');
 app.get('/api/zerotier/status', requireAdmin, async (req, res) => {
   try {
     const installed = await zerotier.isInstalled();
@@ -1314,7 +1413,13 @@ app.use(async (req, res, next) => {
   ];
   const isProbe = portalProbes.some(p => url.includes(p));
 
-  const mac = await getMacFromIp(clientIp);
+  let mac = await getMacFromIp(clientIp);
+  
+  // Fallback: Generate temporary MAC if detection fails (Windows compatibility)
+  if (!mac) {
+    mac = `TEMP-${clientIp.replace(/\./g, '-')}-${Date.now().toString(36).slice(-4)}`;
+  }
+  
   if (mac) {
     const session = await db.get('SELECT mac, ip, remaining_seconds FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
     if (session) {
@@ -1349,6 +1454,32 @@ app.use(async (req, res, next) => {
       }
       
       return next();
+    } else {
+      // No active session found - log new client detection
+      if (!isProbe && url === '/') {
+        console.log(`[PORTAL-REDIRECT] New client detected: ${mac} (${clientIp}) - no active session found`);
+        console.log(`[PORTAL-REDIRECT] Checking for transferable sessions...`);
+        
+        // Check if there are any sessions that could be transferred to this device
+        const availableSessions = await db.all(
+          'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") LIMIT 5'
+        );
+        
+        if (availableSessions.length > 0) {
+          console.log(`[PORTAL-REDIRECT] Found ${availableSessions.length} transferable sessions for ${mac}:`);
+          for (const session of availableSessions) {
+            console.log(`[PORTAL-REDIRECT] - Session ${session.token} from ${session.original_mac} (${session.remaining_seconds}s remaining)`);
+          }
+          console.log(`[PORTAL-REDIRECT] Client ${mac} will be redirected to portal for automatic session restoration`);
+        } else {
+          console.log(`[PORTAL-REDIRECT] No transferable sessions found for ${mac} - redirecting to portal for coin insertion`);
+        }
+      }
+    }
+  } else {
+    // MAC detection failed completely
+    if (!isProbe && url === '/') {
+      console.log(`[PORTAL-REDIRECT] Client ${clientIp} - MAC detection failed, redirecting to portal`);
     }
   }
 

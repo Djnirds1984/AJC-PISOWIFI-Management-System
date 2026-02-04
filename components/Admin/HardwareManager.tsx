@@ -95,7 +95,7 @@ const HardwareManager: React.FC = () => {
       const cfg = await apiClient.getConfig();
       setBoard(cfg.boardType);
       
-      // Convert stored GPIO number to physical pin number for Orange Pi
+      // Handle pin assignment based on board type
       if (cfg.boardType === 'orange_pi' && cfg.boardModel && cfg.coinPin) {
         const modelMapping = mappings[cfg.boardModel];
         if (modelMapping) {
@@ -104,13 +104,27 @@ const HardwareManager: React.FC = () => {
           if (entry) {
             setPin(parseInt(entry[0])); // Set physical pin number
           } else {
-            setPin(cfg.coinPin); // Fallback to GPIO if no mapping found
+            // If GPIO doesn't match any physical pin, default to pin 3 (GPIO 2)
+            console.warn(`GPIO ${cfg.coinPin} not found in ${cfg.boardModel} mapping, defaulting to pin 3`);
+            setPin(3);
           }
         } else {
-          setPin(cfg.coinPin);
+          // If no model mapping found, default to pin 3
+          console.warn(`No mapping found for ${cfg.boardModel}, defaulting to pin 3`);
+          setPin(3);
+        }
+      } else if (cfg.boardType === 'raspberry_pi') {
+        // For Raspberry Pi, use GPIO number directly as physical pin
+        const rpPin = raspberryPiPins.find(p => p.gpio === cfg.coinPin);
+        if (rpPin) {
+          setPin(rpPin.physical);
+        } else {
+          // Default to pin 3 (GPIO 2) for Raspberry Pi
+          setPin(3);
         }
       } else {
-        setPin(cfg.coinPin);
+        // For other board types or fallback
+        setPin(cfg.coinPin || 3);
       }
       
       if (cfg.boardModel) setBoardModel(cfg.boardModel);
@@ -138,9 +152,25 @@ const HardwareManager: React.FC = () => {
     setSaving(true);
     setSuccess(false);
     try {
+      let gpioPin = pin;
+      
+      // Convert physical pin to GPIO for Orange Pi
+      if (board === 'orange_pi') {
+        const modelMapping = mappings[boardModel];
+        if (modelMapping && modelMapping.pins[pin]) {
+          gpioPin = modelMapping.pins[pin];
+        }
+      } else if (board === 'raspberry_pi') {
+        // Convert physical pin to GPIO for Raspberry Pi
+        const rpPin = raspberryPiPins.find(p => p.physical === pin);
+        if (rpPin) {
+          gpioPin = rpPin.gpio;
+        }
+      }
+      
       await apiClient.saveConfig({ 
         boardType: board, 
-        coinPin: pin,
+        coinPin: gpioPin, // Save as GPIO number
         boardModel: board === 'orange_pi' ? boardModel : null,
         coinSlots: coinSlots
       });
@@ -175,7 +205,11 @@ const HardwareManager: React.FC = () => {
           <div className="p-4 space-y-4">
              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <button 
-                  onClick={() => setBoard('raspberry_pi')}
+                  onClick={() => {
+                    setBoard('raspberry_pi');
+                    // Reset to default pin 3 (GPIO 2) when switching to Raspberry Pi
+                    setPin(3);
+                  }}
                   className={`p-3 rounded-lg border-2 text-left transition-all ${board === 'raspberry_pi' ? 'border-blue-600 bg-blue-50' : 'border-slate-100 hover:border-slate-300'}`}
                 >
                   <div className="text-[10px] font-black uppercase tracking-wide mb-0.5">Raspberry Pi</div>
@@ -184,7 +218,8 @@ const HardwareManager: React.FC = () => {
                 <button 
                   onClick={() => {
                     setBoard('orange_pi');
-                    if (pin === 2) setPin(3);
+                    // Reset to default pin 3 (GPIO 2) when switching to Orange Pi
+                    setPin(3);
                   }}
                   className={`p-3 rounded-lg border-2 text-left transition-all ${board === 'orange_pi' ? 'border-orange-500 bg-orange-50' : 'border-slate-100 hover:border-slate-300'}`}
                 >

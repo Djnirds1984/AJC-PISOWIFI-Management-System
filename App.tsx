@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AdminTab, UserSession, Rate, WifiDevice } from './types';
 import LandingPage from './components/Portal/LandingPage';
-import Analytics from './components/Admin/Analytics';
 import SystemDashboard from './components/Admin/SystemDashboard';
+import InterfacesList from './components/Admin/InterfacesList';
 import RatesManager from './components/Admin/RatesManager';
 import VoucherManager from './components/Admin/VoucherManager';
 import NetworkSettings from './components/Admin/NetworkSettings';
@@ -327,7 +327,7 @@ const App: React.FC = () => {
               
               <nav className={`flex-1 ${sidebarOpen ? 'p-3' : 'p-2'} space-y-1 overflow-y-auto scrollbar-hide`}>
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Dashboard} onClick={() => setActiveTab(AdminTab.Dashboard)} icon="📊" label="Dashboard" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Analytics} onClick={() => setActiveTab(AdminTab.Analytics)} icon="�" label="Analytics" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Interfaces} onClick={() => setActiveTab(AdminTab.Interfaces)} icon="�" label="Interfaces" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Rates} onClick={() => setActiveTab(AdminTab.Rates)} icon="💰" label="Pricing" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Vouchers} onClick={() => setActiveTab(AdminTab.Vouchers)} icon="�" label="Vouchers" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Network} onClick={() => setActiveTab(AdminTab.Network)} icon="🌐" label="Network" collapsed={!sidebarOpen} />
@@ -398,7 +398,7 @@ const App: React.FC = () => {
               <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 scroll-smooth">
                 <div className="max-w-7xl mx-auto space-y-6">
                   {activeTab === AdminTab.Dashboard && <SystemDashboard />}
-                  {activeTab === AdminTab.Analytics && <Analytics sessions={activeSessions} />}
+                  {activeTab === AdminTab.Interfaces && <InterfacesList />}
                   {activeTab === AdminTab.Rates && <RatesManager rates={rates} setRates={updateRates} />}
                   {activeTab === AdminTab.Vouchers && <VoucherManager />}
                   {activeTab === AdminTab.Network && <NetworkSettings />}

@@ -191,6 +191,7 @@ export interface AnalyticsData {
 }
 
 export enum AdminTab {
+  Dashboard = 'dashboard',
   Analytics = 'analytics',
   Rates = 'rates',
   Vouchers = 'vouchers',

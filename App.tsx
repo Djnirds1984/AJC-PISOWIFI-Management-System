@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AdminTab, UserSession, Rate, WifiDevice } from './types';
 import LandingPage from './components/Portal/LandingPage';
 import Analytics from './components/Admin/Analytics';
+import SystemDashboard from './components/Admin/SystemDashboard';
 import RatesManager from './components/Admin/RatesManager';
 import VoucherManager from './components/Admin/VoucherManager';
 import NetworkSettings from './components/Admin/NetworkSettings';
@@ -31,7 +32,7 @@ const App: React.FC = () => {
 
   const [isAdmin, setIsAdmin] = useState(isCurrentlyAdminPath());
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [activeTab, setActiveTab] = useState<AdminTab>(AdminTab.Analytics);
+  const [activeTab, setActiveTab] = useState<AdminTab>(AdminTab.Dashboard);
   const [licenseStatus, setLicenseStatus] = useState<{ isLicensed: boolean, isRevoked: boolean, canOperate: boolean }>({ isLicensed: true, isRevoked: false, canOperate: true });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rates, setRates] = useState<Rate[]>([]);
@@ -325,18 +326,19 @@ const App: React.FC = () => {
               </div>
               
               <nav className={`flex-1 ${sidebarOpen ? 'p-3' : 'p-2'} space-y-1 overflow-y-auto scrollbar-hide`}>
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Analytics} onClick={() => setActiveTab(AdminTab.Analytics)} icon="📊" label="Dashboard" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Dashboard} onClick={() => setActiveTab(AdminTab.Dashboard)} icon="📊" label="Dashboard" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Analytics} onClick={() => setActiveTab(AdminTab.Analytics)} icon="�" label="Analytics" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Rates} onClick={() => setActiveTab(AdminTab.Rates)} icon="💰" label="Pricing" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Vouchers} onClick={() => setActiveTab(AdminTab.Vouchers)} icon="🎫" label="Vouchers" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Vouchers} onClick={() => setActiveTab(AdminTab.Vouchers)} icon="�" label="Vouchers" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Network} onClick={() => setActiveTab(AdminTab.Network)} icon="🌐" label="Network" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Devices} onClick={() => setActiveTab(AdminTab.Devices)} icon="📱" label="Devices" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Devices} onClick={() => setActiveTab(AdminTab.Devices)} icon="�" label="Devices" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Hardware} onClick={() => setActiveTab(AdminTab.Hardware)} icon="🔌" label="Hardware" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Themes} onClick={() => setActiveTab(AdminTab.Themes)} icon="🎨" label="Themes" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.PortalEditor} onClick={() => setActiveTab(AdminTab.PortalEditor)} icon="🖥️" label="Portal" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.PPPoE} onClick={() => setActiveTab(AdminTab.PPPoE)} icon="📞" label="PPPoE" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Bandwidth} onClick={() => setActiveTab(AdminTab.Bandwidth)} icon="📶" label="QoS" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.MultiWan} onClick={() => setActiveTab(AdminTab.MultiWan)} icon="🔀" label="Multi-WAN" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Chat} onClick={() => setActiveTab(AdminTab.Chat)} icon="💬" label="Chat" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.PortalEditor} onClick={() => setActiveTab(AdminTab.PortalEditor)} icon="�️" label="Portal" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.PPPoE} onClick={() => setActiveTab(AdminTab.PPPoE)} icon="�" label="PPPoE" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Bandwidth} onClick={() => setActiveTab(AdminTab.Bandwidth)} icon="�" label="QoS" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.MultiWan} onClick={() => setActiveTab(AdminTab.MultiWan)} icon="�" label="Multi-WAN" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Chat} onClick={() => setActiveTab(AdminTab.Chat)} icon="�" label="Chat" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.ZeroTier} onClick={() => setActiveTab(AdminTab.ZeroTier)} icon="🕸️" label="ZeroTier" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Machines} onClick={() => setActiveTab(AdminTab.Machines)} icon="🤖" label="Machines" collapsed={!sidebarOpen} />
                 <SidebarItem active={activeTab === AdminTab.System} onClick={() => setActiveTab(AdminTab.System)} icon="⚙️" label="System" collapsed={!sidebarOpen} />
@@ -395,6 +397,7 @@ const App: React.FC = () => {
               {/* Scrollable Content Area */}
               <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 scroll-smooth">
                 <div className="max-w-7xl mx-auto space-y-6">
+                  {activeTab === AdminTab.Dashboard && <SystemDashboard />}
                   {activeTab === AdminTab.Analytics && <Analytics sessions={activeSessions} />}
                   {activeTab === AdminTab.Rates && <RatesManager rates={rates} setRates={updateRates} />}
                   {activeTab === AdminTab.Vouchers && <VoucherManager />}

@@ -18,15 +18,32 @@ interface ClientsStatus {
   activeCoin: number;
 }
 
+interface NetworkInterface {
+  name: string;
+  rxBytes: number;
+  txBytes: number;
+  rxSpeed: number;
+  txSpeed: number;
+}
+
+interface TrafficData {
+  interfaces: NetworkInterface[];
+  timestamp: number;
+}
+
 const SystemDashboard: React.FC = () => {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [clientsStatus, setClientsStatus] = useState<ClientsStatus | null>(null);
+  const [trafficData, setTrafficData] = useState<TrafficData[]>([]);
+  const [availableInterfaces, setAvailableInterfaces] = useState<string[]>([]);
+  const [selectedInterface, setSelectedInterface] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
     loadSystemInfo();
     loadClientsStatus();
+    loadTrafficData();
     
     // Update time every second
     const timeInterval = setInterval(() => {
@@ -39,11 +56,17 @@ const SystemDashboard: React.FC = () => {
       loadClientsStatus();
     }, 5000);
 
+    // Refresh traffic data every 2 seconds
+    const trafficInterval = setInterval(() => {
+      loadTrafficData();
+    }, 2000);
+
     return () => {
       clearInterval(timeInterval);
       clearInterval(systemInterval);
+      clearInterval(trafficInterval);
     };
-  }, []);
+  }, [selectedInterface]);
 
   const loadSystemInfo = async () => {
     try {
@@ -64,6 +87,48 @@ const SystemDashboard: React.FC = () => {
     }
   };
 
+  const loadTrafficData = async () => {
+    try {
+      const response = await fetch('/api/admin/network-traffic', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Set available interfaces on first load
+        if (availableInterfaces.length === 0 && data.interfaces.length > 0) {
+          const interfaceNames = data.interfaces.map((iface: NetworkInterface) => iface.name);
+          setAvailableInterfaces(interfaceNames);
+          
+          // Auto-select first non-loopback interface
+          const defaultInterface = interfaceNames.find((name: string) => 
+            !name.includes('lo') && !name.includes('127.0.0.1')
+          ) || interfaceNames[0];
+          setSelectedInterface(defaultInterface);
+        }
+        
+        // Keep last 30 data points (1 minute of history at 2-second intervals)
+        setTrafficData(prev => {
+          const newData = [...prev, { interfaces: data.interfaces, timestamp: Date.now() }];
+          return newData.slice(-30);
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load traffic data:', err);
+    }
+  };
+
+  const formatUptime = (hours: number) => {
+    if (hours < 1) return `${Math.round(hours * 60)} min`;
+    if (hours < 24) return `${hours.toFixed(1)} hrs`;
+    const days = Math.floor(hours / 24);
+    const remainingHours = Math.round(hours % 24);
+    return `${days}d ${remainingHours}h`;
+  };
+
   const loadClientsStatus = async () => {
     try {
       const response = await fetch('/api/admin/clients-status', {
@@ -81,20 +146,108 @@ const SystemDashboard: React.FC = () => {
     }
   };
 
-  const formatUptime = (hours: number) => {
-    if (hours < 1) return `${Math.round(hours * 60)} min`;
-    if (hours < 24) return `${hours.toFixed(1)} hrs`;
-    const days = Math.floor(hours / 24);
-    const remainingHours = Math.round(hours % 24);
-    return `${days}d ${remainingHours}h`;
-  };
-
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const formatSpeed = (bytesPerSecond: number) => {
+    return formatBytes(bytesPerSecond) + '/s';
+  };
+
+  const getTrafficForInterface = (interfaceName: string) => {
+    return trafficData.map(data => {
+      const iface = data.interfaces.find(i => i.name === interfaceName);
+      return {
+        timestamp: data.timestamp,
+        rxSpeed: iface?.rxSpeed || 0,
+        txSpeed: iface?.txSpeed || 0
+      };
+    });
+  };
+
+  const renderTrafficGraph = () => {
+    if (!selectedInterface || trafficData.length < 2) {
+      return (
+        <div className="h-32 flex items-center justify-center text-gray-500 text-sm">
+          Loading traffic data...
+        </div>
+      );
+    }
+
+    const interfaceData = getTrafficForInterface(selectedInterface);
+    const maxSpeed = Math.max(
+      ...interfaceData.map(d => Math.max(d.rxSpeed, d.txSpeed)),
+      1024 // Minimum 1KB scale
+    );
+
+    return (
+      <div className="h-32 relative">
+        <svg width="100%" height="100%" className="absolute inset-0">
+          {/* Grid lines */}
+          <defs>
+            <pattern id="grid" width="20" height="16" patternUnits="userSpaceOnUse">
+              <path d="M 20 0 L 0 0 0 16" fill="none" stroke="#f1f5f9" strokeWidth="1"/>
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#grid)" />
+          
+          {/* Traffic lines */}
+          {interfaceData.length > 1 && (
+            <>
+              {/* RX (Download) line - Blue */}
+              <polyline
+                fill="none"
+                stroke="#3b82f6"
+                strokeWidth="2"
+                points={interfaceData.map((point, index) => {
+                  const x = (index / (interfaceData.length - 1)) * 100;
+                  const y = 100 - (point.rxSpeed / maxSpeed) * 90;
+                  return `${x}%,${y}%`;
+                }).join(' ')}
+              />
+              
+              {/* TX (Upload) line - Green */}
+              <polyline
+                fill="none"
+                stroke="#10b981"
+                strokeWidth="2"
+                points={interfaceData.map((point, index) => {
+                  const x = (index / (interfaceData.length - 1)) * 100;
+                  const y = 100 - (point.txSpeed / maxSpeed) * 90;
+                  return `${x}%,${y}%`;
+                }).join(' ')}
+              />
+            </>
+          )}
+        </svg>
+        
+        {/* Legend */}
+        <div className="absolute top-2 right-2 text-xs space-y-1">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-0.5 bg-blue-500"></div>
+            <span className="text-gray-600">RX</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-0.5 bg-green-500"></div>
+            <span className="text-gray-600">TX</span>
+          </div>
+        </div>
+        
+        {/* Current speeds */}
+        <div className="absolute bottom-2 left-2 text-xs space-y-1">
+          <div className="text-blue-600">
+            ↓ {formatSpeed(interfaceData[interfaceData.length - 1]?.rxSpeed || 0)}
+          </div>
+          <div className="text-green-600">
+            ↑ {formatSpeed(interfaceData[interfaceData.length - 1]?.txSpeed || 0)}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const getCpuColor = (usage: number) => {
@@ -208,53 +361,68 @@ const SystemDashboard: React.FC = () => {
           )}
         </div>
 
-        {/* CPU Usage Card */}
+        {/* CPU Usage Card - Made Smaller */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 mb-3">
             <span className="text-lg">⚙️</span>
             <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">CPU Usage</h2>
           </div>
           
           {systemInfo && (
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-xs font-medium text-gray-600">AVG</span>
                   <span className="text-xs font-medium text-gray-900">{systemInfo.cpuLoad.toFixed(1)}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-gray-200 rounded-full h-1.5">
                   <div 
-                    className={`h-2 rounded-full transition-all duration-300 ${getCpuColor(systemInfo.cpuLoad)}`}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${getCpuColor(systemInfo.cpuLoad)}`}
                     style={{ width: `${Math.min(systemInfo.cpuLoad, 100)}%` }}
                   ></div>
                 </div>
               </div>
               
-              {systemInfo.cpuCores.map((usage, index) => (
+              {/* Show only first 4 cores to save space */}
+              {systemInfo.cpuCores.slice(0, 4).map((usage, index) => (
                 <div key={index}>
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-xs font-medium text-gray-600">CPU {index + 1}</span>
                     <span className="text-xs font-medium text-gray-900">{usage.toFixed(1)}%</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-gray-200 rounded-full h-1">
                     <div 
-                      className={`h-2 rounded-full transition-all duration-300 ${getCpuColor(usage)}`}
+                      className={`h-1 rounded-full transition-all duration-300 ${getCpuColor(usage)}`}
                       style={{ width: `${Math.min(usage, 100)}%` }}
                     ></div>
                   </div>
                 </div>
               ))}
-              
-              <div className="flex justify-between text-xs text-gray-500 mt-2">
-                <span>0%</span>
-                <span>20%</span>
-                <span>40%</span>
-                <span>60%</span>
-                <span>80%</span>
-                <span>100%</span>
-              </div>
             </div>
           )}
+        </div>
+
+        {/* Network Traffic Card */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📊</span>
+              <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Network Traffic</h2>
+            </div>
+            
+            {/* Interface Dropdown */}
+            <select 
+              value={selectedInterface} 
+              onChange={(e) => setSelectedInterface(e.target.value)}
+              className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+            >
+              {availableInterfaces.map(iface => (
+                <option key={iface} value={iface}>{iface}</option>
+              ))}
+            </select>
+          </div>
+          
+          {renderTrafficGraph()}
         </div>
 
         {/* Clients Status Card */}

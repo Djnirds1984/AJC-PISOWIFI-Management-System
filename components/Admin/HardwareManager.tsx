@@ -154,19 +154,29 @@ const HardwareManager: React.FC = () => {
     try {
       let gpioPin = pin;
       
+      console.log(`Saving config: Board=${board}, Physical Pin=${pin}`);
+      
       // Convert physical pin to GPIO for Orange Pi
       if (board === 'orange_pi') {
         const modelMapping = mappings[boardModel];
         if (modelMapping && modelMapping.pins[pin]) {
           gpioPin = modelMapping.pins[pin];
+          console.log(`Orange Pi: Physical pin ${pin} -> GPIO ${gpioPin}`);
+        } else {
+          console.warn(`Orange Pi: No mapping found for physical pin ${pin}`);
         }
       } else if (board === 'raspberry_pi') {
         // Convert physical pin to GPIO for Raspberry Pi
         const rpPin = raspberryPiPins.find(p => p.physical === pin);
         if (rpPin) {
           gpioPin = rpPin.gpio;
+          console.log(`Raspberry Pi: Physical pin ${pin} -> GPIO ${gpioPin}`);
+        } else {
+          console.warn(`Raspberry Pi: No mapping found for physical pin ${pin}`);
         }
       }
+      
+      console.log(`Final GPIO to save: ${gpioPin}`);
       
       await apiClient.saveConfig({ 
         boardType: board, 
@@ -293,6 +303,7 @@ const HardwareManager: React.FC = () => {
                          <button
                            key={pinOption.physical}
                            onClick={() => {
+                             console.log(`Selected pin: Physical ${pinOption.physical}, GPIO ${pinOption.gpio}`);
                              setPin(pinOption.physical);
                              setShowPinDropdown(false);
                            }}
@@ -328,9 +339,9 @@ const HardwareManager: React.FC = () => {
                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1 max-h-32 overflow-y-auto">
                    {getAvailablePins().slice(0, 16).map(pinOption => (
                      <div 
-                       key={pinOption.gpio}
+                       key={pinOption.physical}
                        className={`text-[8px] font-bold px-2 py-1 rounded border ${
-                         pin === pinOption.gpio 
+                         pin === pinOption.physical 
                            ? 'bg-slate-900 text-white border-slate-900' 
                            : 'bg-white text-slate-700 border-slate-200'
                        }`}

@@ -1324,19 +1324,22 @@ app.use(async (req, res, next) => {
   }
 
   // FORCE REDIRECT to common domain for session sharing (localStorage)
-  const PORTAL_DOMAIN = 'portal.ajcpisowifi.com';
+  // DISABLED: Using local IP instead of external domain
+  // const PORTAL_DOMAIN = 'portal.ajcpisowifi.com';
+  const PORTAL_DOMAIN = null; // Disable domain redirect
 
   if (isProbe) {
       // Probes get the file directly to satisfy the CNA
       return res.sendFile(path.join(__dirname, 'index.html'));
   }
 
-  // If we are NOT on the portal domain (and not localhost), redirect.
-  // This catches IP address access (10.0.0.1) and forces it to the domain.
-  // However, exclude admin routes to allow local IP access to admin panel
+  // Domain redirect disabled - allow access via IP address
+  // This allows MAC sync to work on local network without external DNS
+  /*
   if (host !== PORTAL_DOMAIN && !host.includes('localhost') && !host.includes('127.0.0.1') && !url.startsWith('/admin')) {
       return res.redirect(`http://${PORTAL_DOMAIN}/`);
   }
+  */
   
   next();
 });

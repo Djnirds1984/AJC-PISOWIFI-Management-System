@@ -1496,7 +1496,7 @@ app.post('/api/coinslot/release', async (req, res) => {
 
 app.get('/api/sessions', async (req, res) => {
   try {
-    const rows = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt, is_paused as isPaused, token FROM sessions');
+    const rows = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt, is_paused as isPaused, token, token_expires_at as tokenExpiresAt FROM sessions');
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1566,12 +1566,31 @@ app.post('/api/sessions/start', async (req, res) => {
     const seconds = minutes * 60;
 
     // Get existing token or generate new one
-    const existingSession = await db.get('SELECT token FROM sessions WHERE mac = ?', [mac]);
-    const token = existingSession && existingSession.token ? existingSession.token : crypto.randomBytes(16).toString('hex');
+    const existingSession = await db.get('SELECT token, token_expires_at FROM sessions WHERE mac = ?', [mac]);
+    let token;
+    let tokenExpiresAt;
+    
+    // Check if existing token is still valid (not expired)
+    if (existingSession && existingSession.token && existingSession.token_expires_at) {
+      const now = new Date();
+      const expiresAt = new Date(existingSession.token_expires_at);
+      if (expiresAt > now) {
+        // Token is still valid, reuse it
+        token = existingSession.token;
+        tokenExpiresAt = existingSession.token_expires_at;
+      }
+    }
+    
+    // Generate new token if no valid existing token
+    if (!token) {
+      token = crypto.randomBytes(16).toString('hex');
+      // Set token expiration to 3 days from now
+      tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+    }
 
     await db.run(
-      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?, token = ?',
-      [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, token, seconds, pesos, clientIp, downloadLimit, uploadLimit, token]
+      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token, token_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?, token = ?, token_expires_at = ?',
+      [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, token, tokenExpiresAt, seconds, pesos, clientIp, downloadLimit, uploadLimit, token, tokenExpiresAt]
     );
     
     // Whitelist the device in firewall
@@ -1602,8 +1621,21 @@ app.post('/api/sessions/restore', async (req, res) => {
   if (!token || !mac) return res.status(400).json({ error: 'Invalid request' });
 
   try {
+    // Check if MAC sync is enabled
+    const macSyncConfig = await db.get('SELECT value FROM config WHERE key = ?', ['mac_sync_enabled']);
+    const isMacSyncEnabled = macSyncConfig ? macSyncConfig.value === '1' : true; // Default enabled
+    
     const session = await db.get('SELECT * FROM sessions WHERE token = ?', [token]);
     if (!session) return res.status(404).json({ error: 'Session not found' });
+    
+    // Check if token has expired (3-day expiration)
+    if (session.token_expires_at) {
+      const now = new Date();
+      const tokenExpiresAt = new Date(session.token_expires_at);
+      if (now > tokenExpiresAt) {
+        return res.status(401).json({ error: 'Session token has expired. Please insert coins to get a new session.' });
+      }
+    }
     
     if (session.mac === mac) {
        // Same device, just update IP if changed and ensure whitelisted
@@ -1612,6 +1644,11 @@ app.post('/api/sessions/restore', async (req, res) => {
          await network.whitelistMAC(mac, clientIp);
        }
        return res.json({ success: true, remainingSeconds: session.remaining_seconds, isPaused: session.is_paused === 1 });
+    }
+
+    // Different MAC - check if MAC sync is enabled
+    if (!isMacSyncEnabled) {
+      return res.status(403).json({ error: 'MAC sync is disabled. Session can only be used on the original device.' });
     }
 
     console.log(`[AUTH] Restoring session ${token} from ${session.mac} to ${mac}`);
@@ -1633,13 +1670,16 @@ app.post('/api/sessions/restore', async (req, res) => {
     
     // Insert new record with merged data
     await db.run(
-      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, download_limit, upload_limit, token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [mac, clientIp, session.remaining_seconds + extraTime, session.total_paid + extraPaid, session.connected_at, session.download_limit, session.upload_limit, token]
+      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, download_limit, upload_limit, token, token_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [mac, clientIp, session.remaining_seconds + extraTime, session.total_paid + extraPaid, session.connected_at, session.download_limit, session.upload_limit, token, session.token_expires_at]
     );
     
     // Switch whitelist
     await network.blockMAC(session.mac, session.ip); // Block old
     await network.whitelistMAC(mac, clientIp); // Allow new
+    
+    // Log session transfer for audit (MAC Sync enhancement)
+    console.log(`[MAC-SYNC] Session transferred: ${session.mac} -> ${mac} (${session.remaining_seconds + extraTime}s remaining)`);
     
     res.json({ success: true, migrated: true, remainingSeconds: session.remaining_seconds + extraTime, isPaused: session.is_paused === 1 });
   } catch (err) { 
@@ -1680,6 +1720,54 @@ app.post('/api/sessions/resume', async (req, res) => {
     console.log(`[AUTH] Session resumed for ${session.mac}`);
     res.json({ success: true, message: 'Time resumed. Internet access restored.' });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// MAC Sync Status API - Check if MAC sync is enabled and available
+app.get('/api/sessions/mac-sync-status', async (req, res) => {
+  try {
+    // Check if MAC sync is enabled in config
+    const macSyncConfig = await db.get('SELECT value FROM config WHERE key = ?', ['mac_sync_enabled']);
+    const isEnabled = macSyncConfig ? macSyncConfig.value === '1' : true; // Default enabled
+    
+    res.json({ 
+      enabled: isEnabled,
+      available: true,
+      message: isEnabled ? 'MAC sync is available - use your session token to restore time on any device' : 'MAC sync is disabled'
+    });
+  } catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  }
+});
+
+// Token Status API - Check token expiration
+app.get('/api/sessions/token-status/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const session = await db.get('SELECT token_expires_at, remaining_seconds FROM sessions WHERE token = ?', [token]);
+    
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    const now = new Date();
+    let tokenValid = true;
+    let daysRemaining = null;
+    
+    if (session.token_expires_at) {
+      const expiresAt = new Date(session.token_expires_at);
+      tokenValid = expiresAt > now;
+      daysRemaining = Math.max(0, Math.ceil((expiresAt - now) / (24 * 60 * 60 * 1000)));
+    }
+    
+    res.json({
+      tokenValid,
+      daysRemaining,
+      sessionTimeRemaining: session.remaining_seconds,
+      message: tokenValid ? `Token valid for ${daysRemaining} more days` : 'Token has expired'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // RATES API
@@ -1959,6 +2047,7 @@ app.get('/api/config', requireAdmin, async (req, res) => {
     const espPort = await db.get('SELECT value FROM config WHERE key = ?', ['espPort']);
     const nodemcuDevices = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
     const registrationKey = await db.get('SELECT value FROM config WHERE key = ?', ['registrationKey']);
+    const macSyncEnabled = await db.get('SELECT value FROM config WHERE key = ?', ['mac_sync_enabled']);
     
     res.json({ 
       boardType: board?.value || 'none', 
@@ -1968,7 +2057,8 @@ app.get('/api/config', requireAdmin, async (req, res) => {
       espPort: parseInt(espPort?.value || '80'),
       coinSlots: coinSlots?.value ? JSON.parse(coinSlots.value) : [],
       nodemcuDevices: nodemcuDevices?.value ? JSON.parse(nodemcuDevices.value) : [],
-      registrationKey: registrationKey?.value || '7B3F1A9'
+      registrationKey: registrationKey?.value || '7B3F1A9',
+      macSyncEnabled: macSyncEnabled?.value === '1'
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1996,6 +2086,12 @@ app.post('/api/config', requireAdmin, async (req, res) => {
     // Handle multi-NodeMCU devices
     if (req.body.nodemcuDevices !== undefined) {
       await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(req.body.nodemcuDevices)]);
+    }
+    
+    // Handle MAC Sync configuration
+    if (req.body.macSyncEnabled !== undefined) {
+      await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['mac_sync_enabled', req.body.macSyncEnabled ? '1' : '0']);
+      console.log(`[CONFIG] MAC Sync ${req.body.macSyncEnabled ? 'enabled' : 'disabled'}`);
     }
     
     res.json({ success: true });
@@ -4193,11 +4289,22 @@ server.listen(80, '0.0.0.0', async () => {
   // Start Background Timers only after DB is initialized
   setInterval(async () => {
     try {
+      // Clean up sessions with no remaining time
       const expired = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds <= 0');
       for (const s of expired) {
         await network.blockMAC(s.mac, s.ip);
         await db.run('DELETE FROM sessions WHERE mac = ?', [s.mac]);
       }
+      
+      // Clean up sessions with expired tokens (3-day expiration)
+      const expiredTokens = await db.all('SELECT mac, ip FROM sessions WHERE token_expires_at IS NOT NULL AND token_expires_at < datetime("now")');
+      for (const s of expiredTokens) {
+        console.log(`[AUTH] Removing session with expired token: ${s.mac}`);
+        await network.blockMAC(s.mac, s.ip);
+        await db.run('DELETE FROM sessions WHERE mac = ?', [s.mac]);
+      }
+      
+      // Decrement remaining seconds for active sessions
       await db.run('UPDATE sessions SET remaining_seconds = remaining_seconds - 1 WHERE remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)');
     } catch (e) { console.error(e); }
   }, 1000);

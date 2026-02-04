@@ -2032,6 +2032,8 @@ app.post('/api/admin/vouchers/create', requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Invalid minutes or price' });
     }
     
+    console.log(`[Vouchers] Starting creation: ${quantity} voucher(s), ${minutes}min, ₱${price}`);
+    
     const vouchers = [];
     const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
     
@@ -2039,21 +2041,40 @@ app.post('/api/admin/vouchers/create', requireAdmin, async (req, res) => {
       const code = generateVoucherCode();
       const id = `voucher_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      await db.run(`
-        INSERT INTO vouchers (id, code, minutes, price, download_limit, upload_limit, expires_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [id, code, minutes, price, downloadLimit, uploadLimit, expiresAt]);
+      console.log(`[Vouchers] Inserting voucher ${i + 1}: ${code} (${id})`);
       
-      vouchers.push({
-        id, code, minutes, price, 
-        downloadLimit, uploadLimit, 
-        expiresAt, status: 'active'
-      });
+      try {
+        const result = await db.run(`
+          INSERT INTO vouchers (id, code, minutes, price, download_limit, upload_limit, expires_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [id, code, minutes, price, downloadLimit, uploadLimit, expiresAt]);
+        
+        console.log(`[Vouchers] Database insert result:`, result);
+        
+        vouchers.push({
+          id, code, minutes, price, 
+          downloadLimit, uploadLimit, 
+          expiresAt, status: 'active'
+        });
+        
+        console.log(`[Vouchers] Added to array: ${code}`);
+        
+      } catch (dbErr) {
+        console.error(`[Vouchers] Database insert failed for ${code}:`, dbErr.message);
+        throw dbErr;
+      }
     }
+    
+    console.log(`[Vouchers] All vouchers created, sending response...`);
     
     // Send response first, then log
     res.json({ success: true, created: quantity, vouchers });
     console.log(`[Vouchers] Created ${quantity} voucher(s): ${minutes}min, ₱${price}`);
+    
+    // Verify in database
+    const dbCount = await db.get('SELECT COUNT(*) as count FROM vouchers');
+    console.log(`[Vouchers] Total vouchers in DB after creation: ${dbCount.count}`);
+    
   } catch (err) {
     console.error('[Vouchers] Create error:', err);
     res.status(500).json({ error: 'Failed to create vouchers' });

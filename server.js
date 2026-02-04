@@ -2007,6 +2007,8 @@ app.get('/api/sessions/token-status/:token', async (req, res) => {
 // Admin: Get all vouchers
 app.get('/api/admin/vouchers', requireAdmin, async (req, res) => {
   try {
+    console.log('[Vouchers] Loading vouchers list...');
+    
     const vouchers = await db.all(`
       SELECT 
         id, code, minutes, price, status, 
@@ -2016,7 +2018,14 @@ app.get('/api/admin/vouchers', requireAdmin, async (req, res) => {
       FROM vouchers 
       ORDER BY created_at DESC
     `);
+    
+    console.log(`[Vouchers] Found ${vouchers.length} vouchers in database`);
+    if (vouchers.length > 0) {
+      console.log('[Vouchers] Sample vouchers:', vouchers.slice(0, 3).map(v => `${v.code} (${v.status})`));
+    }
+    
     res.json(vouchers);
+    console.log('[Vouchers] Sent vouchers list to client');
   } catch (err) {
     console.error('[Vouchers] Get error:', err);
     res.status(500).json({ error: 'Failed to fetch vouchers' });

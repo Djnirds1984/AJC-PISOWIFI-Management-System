@@ -3,6 +3,8 @@ import { apiClient } from '../../lib/api';
 import { NetworkInterface, HotspotInstance, VlanConfig, WirelessConfig, PPPoEServerConfig, PPPoEUser, PPPoESession } from '../../types';
 
 const NetworkSettings: React.FC = () => {
+  console.log('[NetworkSettings] Component mounting/re-rendering...');
+  
   const [interfaces, setInterfaces] = useState<NetworkInterface[]>([]);
   const [hotspots, setHotspots] = useState<HotspotInstance[]>([]);
   const [wirelessArr, setWirelessArr] = useState<WirelessConfig[]>([]);
@@ -81,6 +83,7 @@ const NetworkSettings: React.FC = () => {
 
   // Update DHCP range when IP or bitmask changes
   const updateHotspotConfig = (field: string, value: any) => {
+    console.log('[NetworkSettings] Updating hotspot config:', { field, value });
     const updated = { ...newHS, [field]: value };
     
     if (field === 'ip_address' || field === 'bitmask') {
@@ -88,9 +91,15 @@ const NetworkSettings: React.FC = () => {
         updated.ip_address || '10.0.10.1',
         updated.bitmask || 24
       );
+      console.log('[NetworkSettings] Auto-calculated DHCP range:', {
+        ip: updated.ip_address,
+        bitmask: updated.bitmask,
+        dhcp_range: dhcpRange
+      });
       updated.dhcp_range = dhcpRange;
     }
     
+    console.log('[NetworkSettings] Updated hotspot config:', updated);
     setNewHS(updated);
   };
 
@@ -105,13 +114,22 @@ const NetworkSettings: React.FC = () => {
 
 
   useEffect(() => { 
+    console.log('[NetworkSettings] useEffect triggered - loading initial data and QoS config');
     loadData();
-    apiClient.getQoSConfig().then(config => setQoSDiscipline(config.discipline));
+    apiClient.getQoSConfig().then(config => {
+      console.log('[NetworkSettings] QoS config loaded:', config.discipline);
+      setQoSDiscipline(config.discipline);
+    }).catch(err => {
+      console.error('[NetworkSettings] Failed to load QoS config:', err);
+    });
   }, []);
 
   const loadData = async () => {
+    console.log('[NetworkSettings] Starting to load network data...');
     try {
       setLoading(true);
+      console.log('[NetworkSettings] Fetching interfaces, hotspots, wireless configs, VLANs, and bridges...');
+      
       const [ifaces, hs, wifi, v, b] = await Promise.all([
         apiClient.getInterfaces(),
         apiClient.getHotspots().catch(() => []),
@@ -119,118 +137,250 @@ const NetworkSettings: React.FC = () => {
         apiClient.getVlans().catch(() => []),
         apiClient.getBridges().catch(() => [])
       ]);
+      
+      console.log('[NetworkSettings] Raw data received:', {
+        interfaces: ifaces?.length || 0,
+        hotspots: hs?.length || 0,
+        wireless: wifi?.length || 0,
+        vlans: v?.length || 0,
+        bridges: b?.length || 0
+      });
+      
       const filteredInterfaces = ifaces.filter(i => !i.isLoopback);
+      console.log('[NetworkSettings] Filtered interfaces (no loopback):', filteredInterfaces.length);
       setInterfaces(filteredInterfaces);
       
       // Auto-detect primary ethernet interface for VLAN configuration
       const ethernetInterfaces = filteredInterfaces.filter(i => i.type === 'ethernet');
+      console.log('[NetworkSettings] Ethernet interfaces found:', ethernetInterfaces.map(i => i.name));
+      
       if (ethernetInterfaces.length > 0 && vlan.parentInterface === 'eth0') {
         const primaryEth = ethernetInterfaces[0];
+        console.log('[NetworkSettings] Auto-selecting primary ethernet interface:', primaryEth.name);
         setVlan(prev => ({
           ...prev,
           parentInterface: primaryEth.name,
           name: `{primaryEth.name}.{prev.id}`
         }));
       }
+      
       setHotspots(Array.isArray(hs) ? hs : []);
       setWirelessArr(Array.isArray(wifi) ? wifi : []);
       setVlans(Array.isArray(v) ? v : []);
       setBridges(Array.isArray(b) ? b : []);
+      
+      console.log('[NetworkSettings] Data loaded successfully:', {
+        interfaces: filteredInterfaces.length,
+        hotspots: Array.isArray(hs) ? hs.length : 0,
+        wireless: Array.isArray(wifi) ? wifi.length : 0,
+        vlans: Array.isArray(v) ? v.length : 0,
+        bridges: Array.isArray(b) ? b.length : 0
+      });
     } catch (err) { 
-      console.error('[UI] Data Load Error:', err); 
+      console.error('[NetworkSettings] Data Load Error:', err); 
     }
-    finally { setLoading(false); }
+    finally { 
+      setLoading(false);
+      console.log('[NetworkSettings] Loading finished');
+    }
   };
 
   const deployWireless = async (ifaceName?: string) => {
     const targetInterface = ifaceName || newWifi.interface;
-    if (!targetInterface || !newWifi.ssid) return alert('Select interface and SSID!');
+    console.log('[NetworkSettings] Deploying wireless AP...', {
+      interface: targetInterface,
+      ssid: newWifi.ssid,
+      password: newWifi.password ? '***' : 'Open',
+      channel: newWifi.channel,
+      hw_mode: newWifi.hw_mode,
+      bridge: newWifi.bridge
+    });
+    
+    if (!targetInterface || !newWifi.ssid) {
+      console.error('[NetworkSettings] Wireless deployment failed: Missing interface or SSID');
+      return alert('Select interface and SSID!');
+    }
     
     try {
       setLoading(true);
+      console.log('[NetworkSettings] Sending wireless config to API...');
       await apiClient.saveWirelessConfig({ ...newWifi, interface: targetInterface });
+      console.log('[NetworkSettings] Wireless AP deployed successfully');
       await loadData();
       alert('Wi-Fi AP Broadcast Started!');
-    } catch (e) { alert('Failed to deploy Wireless AP.'); }
+    } catch (e) { 
+      console.error('[NetworkSettings] Wireless deployment error:', e);
+      alert('Failed to deploy Wireless AP.'); 
+    }
     finally { setLoading(false); }
   };
 
   const createHotspot = async () => {
-    if (!newHS.interface || !newHS.ip_address) return alert('Select interface and IP!');
+    console.log('[NetworkSettings] Creating hotspot portal segment...', {
+      interface: newHS.interface,
+      ip_address: newHS.ip_address,
+      dhcp_range: newHS.dhcp_range,
+      bandwidth_limit: newHS.bandwidth_limit,
+      bitmask: newHS.bitmask
+    });
+    
+    if (!newHS.interface || !newHS.ip_address) {
+      console.error('[NetworkSettings] Hotspot creation failed: Missing interface or IP');
+      return alert('Select interface and IP!');
+    }
+    
     try {
       setLoading(true);
+      console.log('[NetworkSettings] Sending hotspot config to API...');
       await apiClient.createHotspot(newHS);
+      console.log('[NetworkSettings] Hotspot portal segment created successfully');
       await loadData();
       alert('Hotspot Portal Segment Deployed!');
-    } catch (e) { alert('Failed to deploy Hotspot.'); }
+    } catch (e) { 
+      console.error('[NetworkSettings] Hotspot creation error:', e);
+      alert('Failed to deploy Hotspot.'); 
+    }
     finally { setLoading(false); }
   };
 
   const deleteHotspot = async (iface: string) => {
-    if (!confirm(`Stop and remove portal segment on ${iface}?`)) return;
+    console.log('[NetworkSettings] Deleting hotspot portal segment:', iface);
+    if (!confirm(`Stop and remove portal segment on ${iface}?`)) {
+      console.log('[NetworkSettings] Hotspot deletion cancelled by user');
+      return;
+    }
+    
     try {
       setLoading(true);
+      console.log('[NetworkSettings] Sending delete request to API...');
       await apiClient.deleteHotspot(iface);
+      console.log('[NetworkSettings] Hotspot deleted successfully:', iface);
       await loadData();
-    } catch (e) { alert('Failed to remove portal.'); }
+    } catch (e) { 
+      console.error('[NetworkSettings] Hotspot deletion error:', e);
+      alert('Failed to remove portal.'); 
+    }
     finally { setLoading(false); }
   };
 
   const generateVlan = async () => {
+    console.log('[NetworkSettings] Creating VLAN...', {
+      id: vlan.id,
+      parentInterface: vlan.parentInterface,
+      name: vlan.name
+    });
+    
     try {
       setLoading(true);
+      console.log('[NetworkSettings] Sending VLAN config to API...');
       await apiClient.createVlan(vlan);
+      console.log('[NetworkSettings] VLAN created successfully:', vlan.name);
       await loadData();
       alert(`VLAN ${vlan.name} created!`);
-    } catch (e) { alert('Failed to create VLAN.'); }
+    } catch (e) { 
+      console.error('[NetworkSettings] VLAN creation error:', e);
+      alert('Failed to create VLAN.'); 
+    }
     finally { setLoading(false); }
   };
 
   const deployBridge = async () => {
-    if (!bridge.name || bridge.members.length === 0) return alert('Bridge name and members required!');
+    console.log('[NetworkSettings] Creating bridge...', {
+      name: bridge.name,
+      members: bridge.members,
+      stp: bridge.stp
+    });
+    
+    if (!bridge.name || bridge.members.length === 0) {
+      console.error('[NetworkSettings] Bridge creation failed: Missing name or members');
+      return alert('Bridge name and members required!');
+    }
+    
     try {
       setLoading(true);
+      console.log('[NetworkSettings] Sending bridge config to API...');
       await apiClient.createBridge(bridge.name, bridge.members, bridge.stp);
+      console.log('[NetworkSettings] Bridge created successfully:', bridge.name);
       await loadData();
       alert(`Bridge ${bridge.name} created! Members have been flushed to prevent IP conflicts.`);
-    } catch (e) { alert('Failed to create Bridge.'); }
+    } catch (e) { 
+      console.error('[NetworkSettings] Bridge creation error:', e);
+      alert('Failed to create Bridge.'); 
+    }
     finally { setLoading(false); }
   };
 
   const deleteVlan = async (name: string) => {
-    if (!confirm(`Delete VLAN ${name}? This may disrupt connectivity.`)) return;
+    console.log('[NetworkSettings] Deleting VLAN:', name);
+    if (!confirm(`Delete VLAN ${name}? This may disrupt connectivity.`)) {
+      console.log('[NetworkSettings] VLAN deletion cancelled by user');
+      return;
+    }
+    
     try {
       setLoading(true);
+      console.log('[NetworkSettings] Sending VLAN delete request to API...');
       await apiClient.deleteVlan(name);
+      console.log('[NetworkSettings] VLAN deleted successfully:', name);
       await loadData();
-    } catch (e) { alert('Failed to delete VLAN.'); }
+    } catch (e) { 
+      console.error('[NetworkSettings] VLAN deletion error:', e);
+      alert('Failed to delete VLAN.'); 
+    }
     finally { setLoading(false); }
   };
 
   const deleteBridge = async (name: string) => {
-    if (!confirm(`Delete Bridge ${name}? This may disrupt connectivity.`)) return;
+    console.log('[NetworkSettings] Deleting bridge:', name);
+    if (!confirm(`Delete Bridge ${name}? This may disrupt connectivity.`)) {
+      console.log('[NetworkSettings] Bridge deletion cancelled by user');
+      return;
+    }
+    
     try {
       setLoading(true);
+      console.log('[NetworkSettings] Sending bridge delete request to API...');
       await apiClient.deleteBridge(name);
+      console.log('[NetworkSettings] Bridge deleted successfully:', name);
       await loadData();
-    } catch (e) { alert('Failed to delete Bridge.'); }
+    } catch (e) { 
+      console.error('[NetworkSettings] Bridge deletion error:', e);
+      alert('Failed to delete Bridge.'); 
+    }
     finally { setLoading(false); }
   };
 
   const toggleBridgeMember = (iface: string) => {
-    setBridge(prev => ({
-      ...prev,
-      members: prev.members.includes(iface) 
+    console.log('[NetworkSettings] Toggling bridge member:', iface);
+    setBridge(prev => {
+      const isCurrentlyMember = prev.members.includes(iface);
+      const newMembers = isCurrentlyMember 
         ? prev.members.filter(m => m !== iface) 
-        : [...prev.members, iface]
-    }));
+        : [...prev.members, iface];
+      
+      console.log('[NetworkSettings] Bridge members updated:', {
+        interface: iface,
+        action: isCurrentlyMember ? 'removed' : 'added',
+        newMembers
+      });
+      
+      return {
+        ...prev,
+        members: newMembers
+      };
+    });
   };
 
   const saveQoS = async (discipline: 'cake' | 'fq_codel') => {
+    console.log('[NetworkSettings] Saving QoS configuration:', discipline);
     setSavingQoS(true);
     try {
+      console.log('[NetworkSettings] Sending QoS config to API...');
       await apiClient.saveQoSConfig(discipline);
+      console.log('[NetworkSettings] QoS configuration saved successfully');
       setQoSDiscipline(discipline);
+    } catch (e) {
+      console.error('[NetworkSettings] QoS save error:', e);
     } finally {
       setSavingQoS(false);
     }

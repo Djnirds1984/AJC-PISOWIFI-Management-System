@@ -27,17 +27,16 @@ const NetworkSettings: React.FC = () => {
     interface: '',
     ip_address: '10.0.10.1',
     dhcp_range: '10.0.10.50,10.0.10.250',
-    bandwidth_limit: 10,
-    bitmask: 24
+    bitmask: 20
   });
 
-  // Bitmask options for different network sizes
+  // Bitmask options for different network sizes (default to /20)
   const bitmaskOptions = [
+    { value: 20, label: '/20 (4094 hosts) - RECOMMENDED', range: '4094 IPs', example: '192.168.0.0/20' },
     { value: 24, label: '/24 (254 hosts)', range: '254 IPs', example: '192.168.1.0/24' },
     { value: 23, label: '/23 (510 hosts)', range: '510 IPs', example: '192.168.0.0/23' },
     { value: 22, label: '/22 (1022 hosts)', range: '1022 IPs', example: '192.168.0.0/22' },
     { value: 21, label: '/21 (2046 hosts)', range: '2046 IPs', example: '192.168.0.0/21' },
-    { value: 20, label: '/20 (4094 hosts)', range: '4094 IPs', example: '192.168.0.0/20' },
     { value: 19, label: '/19 (8190 hosts)', range: '8190 IPs', example: '192.168.0.0/19' },
     { value: 18, label: '/18 (16382 hosts)', range: '16382 IPs', example: '192.168.0.0/18' },
     { value: 16, label: '/16 (65534 hosts)', range: '65534 IPs', example: '192.168.0.0/16' }
@@ -579,19 +578,8 @@ const NetworkSettings: React.FC = () => {
                 readOnly
               />
               <div className="mt-1 text-[7px] text-blue-200 font-medium">
-                {bitmaskOptions.find(opt => opt.value === (newHS.bitmask || 24))?.range} available
+                {bitmaskOptions.find(opt => opt.value === (newHS.bitmask || 20))?.range} available
               </div>
-            </div>
-            
-            <div>
-              <label className="text-[8px] font-medium text-blue-100 uppercase tracking-wide mb-1 block">Bandwidth Limit (Mbps)</label>
-              <input 
-                type="number" 
-                value={newHS.bandwidth_limit} 
-                onChange={e => updateHotspotConfig('bandwidth_limit', parseInt(e.target.value))}
-                className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono text-main placeholder:text-blue-200" 
-                placeholder="10" 
-              />
             </div>
             
             <button onClick={createHotspot} disabled={loading} className="w-full bg-white text-blue-600 py-2 rounded-lg font-medium text-[9px] uppercase tracking-wide shadow-md hover:bg-gray-50 transition-all disabled:opacity-50">
@@ -599,11 +587,11 @@ const NetworkSettings: React.FC = () => {
             </button>
             
             <div className="mt-3 p-2 bg-white/10 rounded-lg border border-white/20">
-              <div className="text-[7px] font-bold text-blue-100 uppercase tracking-wide mb-1">Network Preview</div>
+              <div className="text-[7px] font-bold text-blue-100 uppercase tracking-wide mb-1">Network Preview (/20 Default)</div>
               <div className="text-[8px] font-mono text-white">
-                Network: {newHS.ip_address || '10.0.10.1'}/{newHS.bitmask || 24}<br/>
+                Network: {newHS.ip_address || '10.0.10.1'}/{newHS.bitmask || 20}<br/>
                 Pool: {newHS.dhcp_range || 'Auto-calculated'}<br/>
-                Capacity: {bitmaskOptions.find(opt => opt.value === (newHS.bitmask || 24))?.range}
+                Capacity: {bitmaskOptions.find(opt => opt.value === (newHS.bitmask || 20))?.range}
               </div>
             </div>
           </div>
@@ -626,7 +614,7 @@ const NetworkSettings: React.FC = () => {
                      {hs.ip_address} • Pool: {hs.dhcp_range}
                    </p>
                    <p className="text-[8px] text-green-600 font-medium">
-                     Bandwidth: {hs.bandwidth_limit}Mbps • High Capacity Pool
+                     High Capacity Network • No Bandwidth Limits
                    </p>
                  </div>
                </div>

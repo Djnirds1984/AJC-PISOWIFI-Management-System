@@ -3034,7 +3034,17 @@ app.post('/api/network/vlan', requireAdmin, async (req, res) => {
 
 app.delete('/api/network/vlan/:name', requireAdmin, async (req, res) => {
   try {
-    await network.deleteVlan(req.params.name);
+    // Get the full VLAN record from database
+    const vlan = await db.get('SELECT * FROM vlans WHERE name = ?', [req.params.name]);
+    
+    if (vlan) {
+      // Pass the full VLAN record for proper interface name generation
+      await network.deleteVlan(vlan);
+    } else {
+      // Fallback to legacy format if not found in database
+      await network.deleteVlan(req.params.name);
+    }
+    
     await db.run('DELETE FROM vlans WHERE name = ?', [req.params.name]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -4037,17 +4047,32 @@ async function bootupRestore(isRestricted = false) {
   
   // 0. Restore VLANs
   try {
-    const vlans = await db.all('SELECT * FROM vlans');
-    
     // Skip VLAN restoration on Windows (no ip command available)
     if (process.platform === 'win32') {
       console.log('[AJC] Skipping VLAN restoration on Windows platform');
-      return;
-    }
-    
-    for (const v of vlans) {
-      console.log(`[AJC] Restoring VLAN ${v.name} on ${v.parent} ID ${v.id}...`);
-      await network.createVlan(v).catch(e => console.error(`[AJC] VLAN Restore Failed: ${e.message}`));
+    } else {
+      const vlans = await db.all('SELECT * FROM vlans');
+      
+      if (vlans.length > 0) {
+        console.log(`[AJC] Restoring ${vlans.length} VLANs...`);
+        
+        for (const v of vlans) {
+          // Check if parent interface exists before creating VLAN
+          try {
+            await execPromise(`ip link show ${v.parent}`);
+            console.log(`[AJC] Restoring VLAN ${v.name} (${v.parent}.${v.id})`);
+            await network.createVlan(v);
+          } catch (checkError) {
+            if (checkError.message.includes('does not exist')) {
+              console.warn(`[AJC] Skipping VLAN ${v.name} - parent interface ${v.parent} does not exist`);
+            } else {
+              console.error(`[AJC] VLAN Restore Failed for ${v.name}: ${checkError.message}`);
+            }
+          }
+        }
+      } else {
+        console.log('[AJC] No VLANs to restore');
+      }
     }
   } catch (e) { console.error('[AJC] Failed to load VLANs from DB', e); }
 

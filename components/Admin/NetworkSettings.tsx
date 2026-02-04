@@ -219,7 +219,6 @@ const NetworkSettings: React.FC = () => {
       interface: newHS.interface,
       ip_address: newHS.ip_address,
       dhcp_range: newHS.dhcp_range,
-      bandwidth_limit: newHS.bandwidth_limit,
       bitmask: newHS.bitmask
     });
     

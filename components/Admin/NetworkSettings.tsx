@@ -21,12 +21,78 @@ const NetworkSettings: React.FC = () => {
   });
 
   // State for Hotspot Portal Setup
-  const [newHS, setNewHS] = useState<Partial<HotspotInstance>>({
+  const [newHS, setNewHS] = useState<Partial<HotspotInstance & { bitmask?: number }>>({
     interface: '',
     ip_address: '10.0.10.1',
     dhcp_range: '10.0.10.50,10.0.10.250',
-    bandwidth_limit: 10
+    bandwidth_limit: 10,
+    bitmask: 24
   });
+
+  // Bitmask options for different network sizes
+  const bitmaskOptions = [
+    { value: 24, label: '/24 (254 hosts)', range: '254 IPs', example: '192.168.1.0/24' },
+    { value: 23, label: '/23 (510 hosts)', range: '510 IPs', example: '192.168.0.0/23' },
+    { value: 22, label: '/22 (1022 hosts)', range: '1022 IPs', example: '192.168.0.0/22' },
+    { value: 21, label: '/21 (2046 hosts)', range: '2046 IPs', example: '192.168.0.0/21' },
+    { value: 20, label: '/20 (4094 hosts)', range: '4094 IPs', example: '192.168.0.0/20' },
+    { value: 19, label: '/19 (8190 hosts)', range: '8190 IPs', example: '192.168.0.0/19' },
+    { value: 18, label: '/18 (16382 hosts)', range: '16382 IPs', example: '192.168.0.0/18' },
+    { value: 16, label: '/16 (65534 hosts)', range: '65534 IPs', example: '192.168.0.0/16' }
+  ];
+
+  // Function to calculate DHCP range based on IP and bitmask
+  const calculateDHCPRange = (ipAddress: string, bitmask: number) => {
+    try {
+      const ip = ipAddress.split('.').map(Number);
+      const hostBits = 32 - bitmask;
+      const maxHosts = Math.pow(2, hostBits) - 2; // -2 for network and broadcast
+      
+      // Calculate network address
+      const mask = 0xFFFFFFFF << hostBits;
+      const networkInt = (ip[0] << 24 | ip[1] << 16 | ip[2] << 8 | ip[3]) & mask;
+      
+      // Start range from .10 or 10% of available range, whichever is higher
+      const startOffset = Math.max(10, Math.floor(maxHosts * 0.1));
+      const endOffset = Math.floor(maxHosts * 0.9); // Use 90% of available range
+      
+      const startInt = networkInt + startOffset;
+      const endInt = networkInt + endOffset;
+      
+      const startIP = [
+        (startInt >>> 24) & 0xFF,
+        (startInt >>> 16) & 0xFF,
+        (startInt >>> 8) & 0xFF,
+        startInt & 0xFF
+      ].join('.');
+      
+      const endIP = [
+        (endInt >>> 24) & 0xFF,
+        (endInt >>> 16) & 0xFF,
+        (endInt >>> 8) & 0xFF,
+        endInt & 0xFF
+      ].join('.');
+      
+      return `${startIP},${endIP}`;
+    } catch (e) {
+      return '10.0.10.50,10.0.10.250'; // Fallback
+    }
+  };
+
+  // Update DHCP range when IP or bitmask changes
+  const updateHotspotConfig = (field: string, value: any) => {
+    const updated = { ...newHS, [field]: value };
+    
+    if (field === 'ip_address' || field === 'bitmask') {
+      const dhcpRange = calculateDHCPRange(
+        updated.ip_address || '10.0.10.1',
+        updated.bitmask || 24
+      );
+      updated.dhcp_range = dhcpRange;
+    }
+    
+    setNewHS(updated);
+  };
 
   // VLAN State
   const [vlan, setVlan] = useState<VlanConfig>({ id: 10, parentInterface: 'eth0', name: 'eth0.10' });
@@ -299,26 +365,93 @@ const NetworkSettings: React.FC = () => {
           <h3 className="text-[10px] font-bold text-blue-100 uppercase tracking-wide mb-4">Portal Segment</h3>
           <div className="space-y-3">
             <div>
-              <label className="text-[8px] font-medium text-blue-100 uppercase tracking-wide mb-1 block">Bind</label>
+              <label className="text-[8px] font-medium text-blue-100 uppercase tracking-wide mb-1 block">Bind Interface</label>
               <select 
                 value={newHS.interface}
-                onChange={e => setNewHS({...newHS, interface: e.target.value})}
+                onChange={e => updateHotspotConfig('interface', e.target.value)}
                 className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-medium text-main outline-none"
               >
                 <option value="" className="bg-blue-500 text-main">Select Link...</option>
                 {interfaces.map(i => <option key={i.name} value={i.name} className="bg-blue-500 text-main">{i.name}</option>)}
               </select>
             </div>
-            <div>
-              <label className="text-[8px] font-medium text-blue-100 uppercase tracking-wide mb-1 block">Gateway</label>
-              <input type="text" value={newHS.ip_address} onChange={e => setNewHS({...newHS, ip_address: e.target.value})} className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono text-main placeholder:text-muted" placeholder="10.0.10.1" />
+            
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[8px] font-medium text-blue-100 uppercase tracking-wide mb-1 block">Gateway IP</label>
+                <input 
+                  type="text" 
+                  value={newHS.ip_address} 
+                  onChange={e => updateHotspotConfig('ip_address', e.target.value)}
+                  className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono text-main placeholder:text-blue-200" 
+                  placeholder="10.0.10.1" 
+                />
+              </div>
+              
+              <div>
+                <label className="text-[8px] font-medium text-blue-100 uppercase tracking-wide mb-1 block">Network Size</label>
+                <select 
+                  value={newHS.bitmask || 24}
+                  onChange={e => updateHotspotConfig('bitmask', parseInt(e.target.value))}
+                  className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono text-main outline-none"
+                >
+                  {bitmaskOptions.map(option => (
+                    <option key={option.value} value={option.value} className="bg-blue-500 text-main">
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <button onClick={createHotspot} disabled={loading} className="w-full bg-white text-blue-600 py-2 rounded-lg font-medium text-[9px] uppercase tracking-wide shadow-md hover:bg-gray-50 transition-all disabled:opacity-50">Commit Portal</button>
+            
+            <div>
+              <label className="text-[8px] font-medium text-blue-100 uppercase tracking-wide mb-1 block">DHCP Pool</label>
+              <input 
+                type="text" 
+                value={newHS.dhcp_range} 
+                onChange={e => updateHotspotConfig('dhcp_range', e.target.value)}
+                className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono text-main placeholder:text-blue-200" 
+                placeholder="Auto-calculated"
+                readOnly
+              />
+              <div className="mt-1 text-[7px] text-blue-200 font-medium">
+                {bitmaskOptions.find(opt => opt.value === (newHS.bitmask || 24))?.range} available
+              </div>
+            </div>
+            
+            <div>
+              <label className="text-[8px] font-medium text-blue-100 uppercase tracking-wide mb-1 block">Bandwidth Limit (Mbps)</label>
+              <input 
+                type="number" 
+                value={newHS.bandwidth_limit} 
+                onChange={e => updateHotspotConfig('bandwidth_limit', parseInt(e.target.value))}
+                className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono text-main placeholder:text-blue-200" 
+                placeholder="10" 
+              />
+            </div>
+            
+            <button onClick={createHotspot} disabled={loading} className="w-full bg-white text-blue-600 py-2 rounded-lg font-medium text-[9px] uppercase tracking-wide shadow-md hover:bg-gray-50 transition-all disabled:opacity-50">
+              Deploy Portal Segment
+            </button>
+            
+            <div className="mt-3 p-2 bg-white/10 rounded-lg border border-white/20">
+              <div className="text-[7px] font-bold text-blue-100 uppercase tracking-wide mb-1">Network Preview</div>
+              <div className="text-[8px] font-mono text-white">
+                Network: {newHS.ip_address || '10.0.10.1'}/{newHS.bitmask || 24}<br/>
+                Pool: {newHS.dhcp_range || 'Auto-calculated'}<br/>
+                Capacity: {bitmaskOptions.find(opt => opt.value === (newHS.bitmask || 24))?.range}
+              </div>
+            </div>
           </div>
         </div>
 
         <div className="lg:col-span-2 space-y-3">
-          <h4 className="text-[10px] font-bold text-muted uppercase tracking-wide">Active Portal Segments</h4>
+          <div className="flex items-center justify-between">
+            <h4 className="text-[10px] font-bold text-muted uppercase tracking-wide">Active Portal Segments</h4>
+            <div className="text-[8px] font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
+              No DHCP Server Limit
+            </div>
+          </div>
           {hotspots.length > 0 ? hotspots.map(hs => (
              <div key={hs.interface} className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between group">
                <div className="flex items-center gap-3">
@@ -326,14 +459,23 @@ const NetworkSettings: React.FC = () => {
                  <div>
                    <h5 className="font-bold text-main text-[11px] uppercase">{hs.interface}</h5>
                    <p className="text-[9px] text-muted font-mono">
-                     {hs.ip_address} • {hs.dhcp_range}
+                     {hs.ip_address} • Pool: {hs.dhcp_range}
+                   </p>
+                   <p className="text-[8px] text-green-600 font-medium">
+                     Bandwidth: {hs.bandwidth_limit}Mbps • High Capacity Pool
                    </p>
                  </div>
                </div>
                <button onClick={() => deleteHotspot(hs.interface)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg font-medium text-[8px] uppercase hover:bg-red-100 transition-opacity opacity-0 group-hover:opacity-100">Terminate</button>
              </div>
           )) : (
-            <div className="py-10 text-center border-2 border-dashed border-gray-300 rounded-xl text-muted text-[10px] font-medium uppercase">No Active Segments</div>
+            <div className="py-10 text-center border-2 border-dashed border-gray-300 rounded-xl">
+              <div className="text-4xl mb-2">🏛️</div>
+              <div className="text-muted text-[10px] font-medium uppercase mb-2">No Active Segments</div>
+              <div className="text-[8px] text-green-600 font-medium">
+                Create unlimited portal segments with custom IP ranges
+              </div>
+            </div>
           )}
         </div>
       </section>

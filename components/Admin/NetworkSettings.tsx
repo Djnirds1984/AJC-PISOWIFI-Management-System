@@ -705,9 +705,6 @@ const NetworkSettings: React.FC = () => {
               return null;
             })()}
             
-            <button onClick={generateVlan} disabled={loading} className="w-full bg-blue-500 text-white py-2 rounded-lg font-medium text-[9px] uppercase tracking-wide text-main">Create: {vlan.name}</button>t-xs font-mono text-main" />
-              </div>
-            </div>
             <button onClick={generateVlan} disabled={loading} className="w-full bg-blue-500 text-white py-2 rounded-lg font-medium text-[9px] uppercase tracking-wide text-main">Create: {vlan.name}</button>
             
             <div className="space-y-1.5">

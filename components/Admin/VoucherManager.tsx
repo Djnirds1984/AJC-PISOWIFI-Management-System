@@ -34,54 +34,85 @@ const VoucherManager: React.FC = () => {
   }, []);
 
   const loadVouchers = async () => {
+    console.log('[VoucherManager] Starting to load vouchers...');
     try {
       setError(null);
+      const token = localStorage.getItem('ajc_admin_token');
+      console.log('[VoucherManager] Admin token:', token ? `${token.substring(0, 20)}...` : 'NOT FOUND');
+      
       const response = await fetch('/api/admin/vouchers', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
+          'Authorization': `Bearer ${token}`
         }
       });
       
+      console.log('[VoucherManager] API response status:', response.status);
+      console.log('[VoucherManager] API response ok:', response.ok);
+      
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[VoucherManager] API error response:', errorText);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
+      console.log('[VoucherManager] Received vouchers data:', data);
+      console.log('[VoucherManager] Number of vouchers:', data.length);
+      
+      if (data.length > 0) {
+        console.log('[VoucherManager] Sample vouchers:', data.slice(0, 3).map(v => `${v.code}: ${v.minutes}min, ₱${v.price} (${v.status})`));
+      }
+      
       setVouchers(data);
+      console.log('[VoucherManager] Vouchers state updated successfully');
     } catch (err) {
-      console.error('Failed to load vouchers:', err);
+      console.error('[VoucherManager] Load vouchers error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load vouchers');
     } finally {
       setLoading(false);
+      console.log('[VoucherManager] Loading finished');
     }
   };
 
   const createVouchers = async () => {
+    console.log('[VoucherManager] Starting voucher creation...', createForm);
     try {
       setError(null);
+      const token = localStorage.getItem('ajc_admin_token');
+      console.log('[VoucherManager] Using admin token:', token ? `${token.substring(0, 20)}...` : 'NOT FOUND');
+      
       const response = await fetch('/api/admin/vouchers/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('ajc_admin_token')}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(createForm)
       });
 
+      console.log('[VoucherManager] Create response status:', response.status);
+      console.log('[VoucherManager] Create response ok:', response.ok);
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[VoucherManager] Create error response:', errorText);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
+      console.log('[VoucherManager] Create response data:', data);
+      
       if (data.success) {
+        console.log('[VoucherManager] Vouchers created successfully:', data.vouchers?.map(v => v.code));
         setShowCreateModal(false);
+        console.log('[VoucherManager] Reloading vouchers list...');
         loadVouchers();
         alert(`✅ Successfully created ${data.created} voucher(s)!`);
       } else {
         throw new Error(data.error || 'Failed to create vouchers');
       }
     } catch (err) {
-      console.error('Failed to create vouchers:', err);
+      console.error('[VoucherManager] Create vouchers error:', err);
       setError(err instanceof Error ? err.message : 'Failed to create vouchers');
     }
   };

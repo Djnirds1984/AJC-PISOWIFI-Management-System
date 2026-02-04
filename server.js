@@ -1112,17 +1112,26 @@ async function scanForNewClients() {
       
       console.log(`[CLIENT-SCAN] New device detected: ${mac} (${ip}) - checking for session tokens...`);
       
-      // Find the most recent transferable session (same as what frontend would find)
+      // Find the most recent transferable session (prioritize sessions from similar IP range)
       const availableSession = await db.get(
-        'SELECT token, mac as original_mac, remaining_seconds, ip as original_ip FROM sessions WHERE remaining_seconds > 0 AND mac != ? AND token_expires_at > datetime("now") ORDER BY connected_at DESC LIMIT 1',
-        [mac]
+        `SELECT token, mac as original_mac, remaining_seconds, ip as original_ip, total_paid, connected_at 
+         FROM sessions 
+         WHERE remaining_seconds > 0 AND mac != ? AND token_expires_at > datetime("now") 
+         ORDER BY 
+           CASE WHEN SUBSTR(ip, 1, INSTR(ip || '.', '.') + INSTR(SUBSTR(ip, INSTR(ip, '.') + 1) || '.', '.')) = 
+                     SUBSTR(?, 1, INSTR(? || '.', '.') + INSTR(SUBSTR(?, INSTR(?, '.') + 1) || '.', '.')) 
+                THEN 0 ELSE 1 END,
+           connected_at DESC 
+         LIMIT 1`,
+        [mac, ip, ip, ip, ip]
       );
       
       if (availableSession) {
-        console.log(`[CLIENT-SCAN] Found transferable session for ${mac}:`);
-        console.log(`[CLIENT-SCAN] - Session ${availableSession.token} from ${availableSession.original_mac} (${availableSession.remaining_seconds}s remaining)`);
-        console.log(`[CLIENT-SCAN] Attempting automatic session transfer...`);
+        console.log(`[CLIENT-SCAN] Found ${availableSession.remaining_seconds > 0 ? 1 : 0} transferable sessions for new device ${mac}`);
+        console.log(`[CLIENT-SCAN] Device ${mac} should visit portal to restore session automatically`);
+        console.log(`[CLIENT-SCAN] - Available session: ${availableSession.token} from ${availableSession.original_mac} (${availableSession.remaining_seconds}s remaining)`);
         
+        // Perform automatic session transfer
         try {
           // Check if the target MAC already has a different session
           const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ? AND token != ?', [mac, availableSession.token]);
@@ -1137,19 +1146,19 @@ async function scanForNewClients() {
             await db.run('DELETE FROM sessions WHERE mac = ? AND token != ?', [mac, availableSession.token]);
           }
 
-          // Update session with new MAC and IP (session ID stays the same)
+          // Update session with new MAC and IP (session token stays the same)
           await db.run(
             'UPDATE sessions SET mac = ?, ip = ?, remaining_seconds = ?, total_paid = ? WHERE token = ?',
             [mac, ip, availableSession.remaining_seconds + extraTime, availableSession.total_paid + extraPaid, availableSession.token]
           );
           
-          // Switch network access
-          await network.blockMAC(availableSession.original_mac, availableSession.original_ip); // Block old MAC
+          // Only whitelist new MAC - DO NOT block old MAC to allow switching back
           await network.whitelistMAC(mac, ip); // Allow new MAC
           
           // Log successful transfer
           console.log(`[AUTO-SYNC] Session automatically transferred: ${availableSession.original_mac} -> ${mac} (${availableSession.remaining_seconds + extraTime}s remaining)`);
           console.log(`[AUTO-SYNC] Device ${mac} now has internet access with session ${availableSession.token}`);
+          console.log(`[AUTO-SYNC] Old MAC ${availableSession.original_mac} remains whitelisted for seamless switching back`);
           
         } catch (transferError) {
           console.error(`[CLIENT-SCAN] Failed to transfer session for ${mac}:`, transferError.message);

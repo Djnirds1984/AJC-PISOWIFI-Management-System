@@ -270,13 +270,27 @@ const NetworkSettings: React.FC = () => {
       name: vlan.name
     });
     
+    // Check if this is a WAN interface for user feedback
+    const isWanInterface = interfaces.some(i => {
+      const ethernet = interfaces.filter(iface => iface.type === 'ethernet' && !iface.isLoopback);
+      const withExternalIp = ethernet.find(iface => iface.ip && !iface.ip.startsWith('10.0.0.'));
+      const wanName = withExternalIp ? withExternalIp.name : 
+        (ethernet.find(iface => iface.status === 'up' && (iface.name.startsWith('en') || iface.name.startsWith('eth0'))) || ethernet[0])?.name || 'eth0';
+      return i.name === vlan.parentInterface && i.name === wanName;
+    });
+    
     try {
       setLoading(true);
       console.log('[NetworkSettings] Sending VLAN config to API...');
       await apiClient.createVlan(vlan);
       console.log('[NetworkSettings] VLAN created successfully:', vlan.name);
       await loadData();
-      alert(`VLAN ${vlan.name} created!`);
+      
+      if (isWanInterface) {
+        alert(`VLAN ${vlan.name} created with automatic /20 network configuration!\n\nNetwork: 10.${vlan.id}.0.0/20 (4,094 hosts)\nGateway: 10.${vlan.id}.0.1\nDHCP Pool: 10.${vlan.id}.0.100 - 10.${vlan.id}.15.254\n\nHotspot portal segment has been auto-configured.`);
+      } else {
+        alert(`VLAN ${vlan.name} created!`);
+      }
     } catch (e) { 
       console.error('[NetworkSettings] VLAN creation error:', e);
       alert('Failed to create VLAN.'); 
@@ -643,12 +657,55 @@ const NetworkSettings: React.FC = () => {
                   onChange={e => setVlan({...vlan, parentInterface: e.target.value, name: `${e.target.value}.${vlan.id}`})}
                   className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-medium text-main"
                 >
-                  {interfaces.filter(i => i.type === 'ethernet' || i.name.startsWith('wlan')).map(i => <option key={i.name} value={i.name}>{i.name}</option>)}
+                  {interfaces.filter(i => i.type === 'ethernet' || i.name.startsWith('wlan')).map(i => {
+                    // Detect if this is the WAN interface
+                    const ethernet = interfaces.filter(iface => iface.type === 'ethernet' && !iface.isLoopback);
+                    const withExternalIp = ethernet.find(iface => iface.ip && !iface.ip.startsWith('10.0.0.'));
+                    const wanName = withExternalIp ? withExternalIp.name : 
+                      (ethernet.find(iface => iface.status === 'up' && (iface.name.startsWith('en') || iface.name.startsWith('eth0'))) || ethernet[0])?.name || 'eth0';
+                    const isWan = i.name === wanName;
+                    
+                    return (
+                      <option key={i.name} value={i.name}>
+                        {i.name} {isWan ? '(WAN - Auto /20)' : '(LAN)'}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
               <div>
                 <label className="text-[8px] font-medium text-muted uppercase tracking-wide mb-1 block">VLAN ID</label>
-                <input type="number" value={vlan.id} onChange={e => setVlan({...vlan, id: parseInt(e.target.value), name: `${vlan.parentInterface}.${e.target.value}`})} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono text-main" />
+                <input type="number" value={vlan.id} onChange={e => setVlan({...vlan, id: parseInt(e.target.value), name: `${vlan.parentInterface}.${e.target.value}`})} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-medium text-main" />
+              </div>
+            </div>
+            
+            {/* WAN VLAN Auto-Configuration Preview */}
+            {(() => {
+              const ethernet = interfaces.filter(i => i.type === 'ethernet' && !i.isLoopback);
+              const withExternalIp = ethernet.find(i => i.ip && !i.ip.startsWith('10.0.0.'));
+              const wanName = withExternalIp ? withExternalIp.name : 
+                (ethernet.find(i => i.status === 'up' && (i.name.startsWith('en') || i.name.startsWith('eth0'))) || ethernet[0])?.name || 'eth0';
+              const isWanVlan = vlan.parentInterface === wanName;
+              
+              if (isWanVlan) {
+                return (
+                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="text-[7px] font-bold text-blue-700 uppercase tracking-wide mb-2">WAN VLAN Auto-Configuration</div>
+                    <div className="text-[8px] font-mono text-blue-800 space-y-1">
+                      <div>Network: 10.{vlan.id}.0.0/20 (4,094 hosts)</div>
+                      <div>Gateway: 10.{vlan.id}.0.1</div>
+                      <div>DHCP Pool: 10.{vlan.id}.0.100 - 10.{vlan.id}.15.254</div>
+                      <div className="text-[7px] text-blue-600 font-medium mt-2">
+                        ✓ Portal segment will be auto-created
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+            
+            <button onClick={generateVlan} disabled={loading} className="w-full bg-blue-500 text-white py-2 rounded-lg font-medium text-[9px] uppercase tracking-wide text-main">Create: {vlan.name}</button>t-xs font-mono text-main" />
               </div>
             </div>
             <button onClick={generateVlan} disabled={loading} className="w-full bg-blue-500 text-white py-2 rounded-lg font-medium text-[9px] uppercase tracking-wide text-main">Create: {vlan.name}</button>

@@ -1722,7 +1722,16 @@ app.post('/api/coinslot/release', async (req, res) => {
 
 app.get('/api/sessions', async (req, res) => {
   try {
-    const rows = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt, is_paused as isPaused, token, token_expires_at as tokenExpiresAt FROM sessions');
+    const rows = await db.all(`
+      SELECT 
+        mac, ip, remaining_seconds as remainingSeconds, 
+        total_paid as totalPaid, connected_at as connectedAt, 
+        is_paused as isPaused, token, token_expires_at as tokenExpiresAt,
+        voucher_code as voucherCode, download_limit as downloadLimit, 
+        upload_limit as uploadLimit
+      FROM sessions 
+      WHERE remaining_seconds > 0
+    `);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1990,6 +1999,204 @@ app.get('/api/sessions/token-status/:token', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ==========================================
+// VOUCHER SYSTEM API ENDPOINTS
+// ==========================================
+
+// Admin: Get all vouchers
+app.get('/api/admin/vouchers', requireAdmin, async (req, res) => {
+  try {
+    const vouchers = await db.all(`
+      SELECT 
+        id, code, minutes, price, status, 
+        download_limit, upload_limit, 
+        created_at, expires_at, used_at, 
+        used_by_mac, used_by_ip
+      FROM vouchers 
+      ORDER BY created_at DESC
+    `);
+    res.json(vouchers);
+  } catch (err) {
+    console.error('[Vouchers] Get error:', err);
+    res.status(500).json({ error: 'Failed to fetch vouchers' });
+  }
+});
+
+// Admin: Create vouchers
+app.post('/api/admin/vouchers/create', requireAdmin, async (req, res) => {
+  try {
+    const { minutes, price, quantity = 1, downloadLimit = 0, uploadLimit = 0, expiryDays = 30 } = req.body;
+    
+    if (!minutes || !price || minutes <= 0 || price <= 0) {
+      return res.status(400).json({ error: 'Invalid minutes or price' });
+    }
+    
+    const vouchers = [];
+    const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
+    
+    for (let i = 0; i < quantity; i++) {
+      const code = generateVoucherCode();
+      const id = `voucher_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      await db.run(`
+        INSERT INTO vouchers (id, code, minutes, price, download_limit, upload_limit, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [id, code, minutes, price, downloadLimit, uploadLimit, expiresAt]);
+      
+      vouchers.push({
+        id, code, minutes, price, 
+        downloadLimit, uploadLimit, 
+        expiresAt, status: 'active'
+      });
+    }
+    
+    console.log(`[Vouchers] Created ${quantity} voucher(s): ${minutes}min, ₱${price}`);
+    res.json({ success: true, created: quantity, vouchers });
+  } catch (err) {
+    console.error('[Vouchers] Create error:', err);
+    res.status(500).json({ error: 'Failed to create vouchers' });
+  }
+});
+
+// Admin: Delete voucher
+app.delete('/api/admin/vouchers/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.run('DELETE FROM vouchers WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Vouchers] Delete error:', err);
+    res.status(500).json({ error: 'Failed to delete voucher' });
+  }
+});
+
+// Public: Activate voucher (no auth required - for portal users)
+app.post('/api/vouchers/activate', async (req, res) => {
+  try {
+    const { code } = req.body;
+    const clientIp = req.ip.replace('::ffff:', '');
+    
+    if (!code || !code.trim()) {
+      return res.status(400).json({ error: 'Voucher code is required' });
+    }
+    
+    console.log(`[Voucher] Activation attempt for code: ${code.trim().toUpperCase()}`);
+    
+    // Get MAC address (same logic as your existing session system)
+    let mac = await getMacFromIp(clientIp);
+    if (!mac && clientIp === '127.0.0.1') mac = 'DEV-LOCALHOST';
+    
+    if (!mac) {
+      console.log(`[Voucher] Could not resolve MAC for IP: ${clientIp}`);
+      return res.status(400).json({ error: 'Could not identify your device. Please try reconnecting.' });
+    }
+    
+    console.log(`[Voucher] Device identified: ${mac} (${clientIp})`);
+    
+    // Find voucher - check both active status and expiration
+    const voucher = await db.get(`
+      SELECT * FROM vouchers 
+      WHERE UPPER(code) = UPPER(?) AND status = 'active'
+    `, [code.trim()]);
+    
+    if (!voucher) {
+      console.log(`[Voucher] Voucher not found or not active: ${code.trim().toUpperCase()}`);
+      return res.status(404).json({ error: 'Invalid or already used voucher code' });
+    }
+    
+    // Check if voucher is expired
+    const now = new Date();
+    const expiresAt = new Date(voucher.expires_at);
+    
+    if (expiresAt <= now) {
+      console.log(`[Voucher] Voucher expired: ${voucher.code} (expired at ${expiresAt})`);
+      await db.run('UPDATE vouchers SET status = ? WHERE id = ?', ['expired', voucher.id]);
+      return res.status(404).json({ error: 'Voucher has expired' });
+    }
+    
+    console.log(`[Voucher] Valid voucher found: ${voucher.code} (${voucher.minutes} minutes, ₱${voucher.price})`);
+    
+    // Generate session token (compatible with MAC sync)
+    const token = crypto.randomBytes(16).toString('hex');
+    const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+    const seconds = voucher.minutes * 60;
+    
+    // Create/update session (COMPATIBLE WITH MAC SYNC)
+    await db.run(`
+      INSERT INTO sessions (
+        mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, 
+        token, token_expires_at, voucher_code
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(mac) DO UPDATE SET 
+        remaining_seconds = remaining_seconds + ?, 
+        total_paid = total_paid + ?, 
+        ip = ?, 
+        download_limit = ?, 
+        upload_limit = ?, 
+        token = ?, 
+        token_expires_at = ?,
+        voucher_code = ?
+    `, [
+      mac, clientIp, seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
+      token, tokenExpiresAt, voucher.code,
+      seconds, voucher.price, clientIp, voucher.download_limit, voucher.upload_limit,
+      token, tokenExpiresAt, voucher.code
+    ]);
+    
+    // Mark voucher as used
+    await db.run(`
+      UPDATE vouchers 
+      SET status = 'used', used_at = datetime('now'), used_by_mac = ?, used_by_ip = ?, session_token = ?
+      WHERE id = ?
+    `, [mac, clientIp, token, voucher.id]);
+    
+    // Log voucher usage
+    await db.run(`
+      INSERT INTO voucher_usage_logs (
+        voucher_id, voucher_code, mac_address, ip_address, 
+        minutes_granted, price, session_token
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [voucher.id, voucher.code, mac, clientIp, voucher.minutes, voucher.price, token]);
+    
+    // Whitelist device (same as coin system)
+    await network.whitelistMAC(mac, clientIp);
+    
+    console.log(`[Voucher] Successfully activated voucher ${voucher.code} for ${mac} (${clientIp}) - ${seconds}s, ₱${voucher.price}`);
+    
+    res.json({
+      success: true,
+      mac,
+      token,
+      remainingSeconds: seconds,
+      totalPaid: voucher.price,
+      downloadLimit: voucher.download_limit,
+      uploadLimit: voucher.upload_limit,
+      message: 'Voucher activated successfully! Internet access granted.'
+    });
+    
+  } catch (err) {
+    console.error('[Voucher] Activation error:', err);
+    res.status(500).json({ error: 'Server error during voucher activation. Please try again.' });
+  }
+});
+
+// Helper function to generate voucher codes
+function generateVoucherCode() {
+  const prefix = 'AJC';
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = prefix;
+  
+  for (let i = 0; i < 5; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  
+  return code;
+}
+
+// ==========================================
+// END VOUCHER SYSTEM
+// ==========================================
 
 // RATES API
 app.get('/api/rates', async (req, res) => {

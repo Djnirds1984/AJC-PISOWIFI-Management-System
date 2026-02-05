@@ -10,6 +10,8 @@ interface Props {
 
 const DeviceManager: React.FC<Props> = ({ sessions = [], refreshSessions, refreshDevices }) => {
   const [devices, setDevices] = useState<WifiDevice[]>([]);
+  const [deletedDevices, setDeletedDevices] = useState<WifiDevice[]>([]);
+  const [showDeletedDevices, setShowDeletedDevices] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddDevice, setShowAddDevice] = useState(false);
@@ -36,14 +38,18 @@ const DeviceManager: React.FC<Props> = ({ sessions = [], refreshSessions, refres
 
   useEffect(() => {
     fetchDevices();
+    fetchDeletedDevices();
     
     // Auto-refresh every 30 seconds
     const interval = setInterval(() => {
       fetchDevices();
+      if (showDeletedDevices) {
+        fetchDeletedDevices();
+      }
     }, 30000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [showDeletedDevices]);
 
   const fetchDevices = async () => {
     try {
@@ -55,6 +61,21 @@ const DeviceManager: React.FC<Props> = ({ sessions = [], refreshSessions, refres
       setError(err instanceof Error ? err.message : 'Failed to fetch devices');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDeletedDevices = async () => {
+    try {
+      const response = await fetch('/api/devices/deleted', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+        }
+      });
+      if (!response.ok) throw new Error('Failed to fetch deleted devices');
+      const data = await response.json();
+      setDeletedDevices(data);
+    } catch (err) {
+      console.error('Failed to fetch deleted devices:', err);
     }
   };
 
@@ -151,13 +172,31 @@ const DeviceManager: React.FC<Props> = ({ sessions = [], refreshSessions, refres
   };
 
   const handleDelete = async (deviceId: string) => {
-    if (!confirm('Are you sure you want to delete this device?')) return;
+    if (!confirm('Are you sure you want to delete this device? It will be permanently removed and will not reappear in scans.')) return;
     
     try {
       await apiClient.deleteWifiDevice(deviceId);
       fetchDevices();
+      fetchDeletedDevices(); // Refresh deleted devices list
     } catch (err) {
       alert(`Failed to delete device: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleRestore = async (deviceId: string) => {
+    try {
+      const response = await fetch(`/api/devices/${deviceId}/restore`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+        }
+      });
+      if (!response.ok) throw new Error('Failed to restore device');
+      
+      fetchDevices();
+      fetchDeletedDevices();
+    } catch (err) {
+      alert(`Failed to restore device: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -244,6 +283,19 @@ const DeviceManager: React.FC<Props> = ({ sessions = [], refreshSessions, refres
             className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] font-bold hover:bg-blue-700"
           >
             Add Device
+          </button>
+          <button
+            onClick={() => {
+              setShowDeletedDevices(!showDeletedDevices);
+              if (!showDeletedDevices) fetchDeletedDevices();
+            }}
+            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold ${
+              showDeletedDevices 
+                ? 'bg-red-600 text-white hover:bg-red-700' 
+                : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+            }`}
+          >
+            {showDeletedDevices ? 'Hide Deleted' : `Deleted (${deletedDevices.length})`}
           </button>
         </div>
       </div>
@@ -490,6 +542,67 @@ const DeviceManager: React.FC<Props> = ({ sessions = [], refreshSessions, refres
           )}
         </div>
       </div>
+
+      {showDeletedDevices && (
+        <div className="bg-white rounded-xl border border-red-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-red-100 bg-red-50 flex justify-between items-center">
+            <h3 className="text-xs font-bold text-red-800">Deleted Devices ({deletedDevices.length})</h3>
+            <button onClick={fetchDeletedDevices} className="text-[10px] font-bold text-red-600 uppercase">Refresh</button>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-red-50 text-red-500 text-[9px] uppercase font-bold tracking-wider border-b border-red-100">
+                <tr>
+                  <th className="px-4 py-2">Device</th>
+                  <th className="px-4 py-2">Network</th>
+                  <th className="px-4 py-2">Last Seen</th>
+                  <th className="px-4 py-2 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-red-100">
+                {deletedDevices.map((device) => (
+                  <tr key={device.id} className="hover:bg-red-50 transition-colors opacity-60">
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-red-400"></div>
+                        <div>
+                          <div className="text-[11px] font-bold text-slate-900">
+                            {device.customName || device.hostname || 'Unknown'}
+                          </div>
+                          <div className="text-[9px] text-slate-500 uppercase">{device.mac}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <div className="text-[10px] font-bold text-slate-700">{device.ip || '-'}</div>
+                      <div className="text-[9px] text-slate-400 uppercase tracking-tighter">{device.interface || '-'}</div>
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <div className="text-[10px] text-slate-600">{formatDate(device.last_seen)}</div>
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap text-right">
+                      <button
+                        onClick={() => handleRestore(device.id)}
+                        className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-[10px] font-bold hover:bg-green-700"
+                        title="Restore Device"
+                      >
+                        Restore
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            
+            {deletedDevices.length === 0 && (
+              <div className="text-center py-10">
+                <p className="text-red-400 text-[10px] font-bold uppercase tracking-widest">No deleted devices</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

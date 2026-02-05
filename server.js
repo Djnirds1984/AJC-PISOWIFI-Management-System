@@ -1510,6 +1510,13 @@ async function scanForNewClients() {
       
       // Add device to tracking (for admin panel visibility)
       try {
+        // Check if device was previously deleted - if so, don't re-add it
+        const deletedDevice = await db.get('SELECT id FROM wifi_devices WHERE mac = ? AND is_deleted = 1', [mac]);
+        if (deletedDevice) {
+          console.log(`[CLIENT-SCAN] Skipping re-insertion of deleted device: ${mac}`);
+          return;
+        }
+        
         const deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         await db.run(
           'INSERT OR IGNORE INTO wifi_devices (id, mac, ip, interface, download_limit, upload_limit, connected_at, last_seen, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -2651,7 +2658,7 @@ app.post('/api/config/qos', requireAdmin, async (req, res) => {
         await network.initQoS(lan, discipline);
         
         // Restore limits for all active devices/sessions because initQoS wipes TC classes
-        const activeDevices = await db.all('SELECT mac, ip FROM wifi_devices WHERE is_active = 1');
+        const activeDevices = await db.all('SELECT mac, ip FROM wifi_devices WHERE is_active = 1 AND is_deleted = 0');
         const activeSessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds > 0');
         
         // Merge list to avoid duplicates
@@ -4255,8 +4262,8 @@ app.get('/api/devices', requireAdmin, async (req, res) => {
       }
     });
 
-    // Get all devices with their current session information
-    const devices = await db.all('SELECT * FROM wifi_devices ORDER BY connected_at DESC');
+    // Get all devices with their current session information (exclude deleted devices)
+    const devices = await db.all('SELECT * FROM wifi_devices WHERE is_deleted = 0 ORDER BY connected_at DESC');
     
     // Get all active sessions
     const sessions = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt, is_paused as isPaused FROM sessions WHERE remaining_seconds > 0');
@@ -4365,6 +4372,13 @@ app.post('/api/devices/scan', requireAdmin, async (req, res) => {
     
     // Update or insert scanned devices
     for (const device of scannedDevices) {
+      // Check if device was previously deleted - if so, skip it
+      const deletedDevice = await db.get('SELECT id FROM wifi_devices WHERE mac = ? AND is_deleted = 1', [device.mac]);
+      if (deletedDevice) {
+        console.log(`[DEVICE-SCAN] Skipping re-insertion of deleted device: ${device.mac}`);
+        continue;
+      }
+      
       const existingDevice = await db.get('SELECT * FROM wifi_devices WHERE mac = ?', [device.mac]);
       const session = sessionMap.get(device.mac.toUpperCase());
       
@@ -4392,8 +4406,8 @@ app.post('/api/devices/scan', requireAdmin, async (req, res) => {
       await db.run(`UPDATE wifi_devices SET is_active = 0 WHERE mac NOT IN (${placeholders}) AND mac NOT IN (SELECT mac FROM sessions WHERE remaining_seconds > 0)`, scannedMacs);
     }
     
-    // Return updated device list with session data merged
-    const devices = await db.all('SELECT * FROM wifi_devices ORDER BY connected_at DESC');
+    // Return updated device list with session data merged (exclude deleted devices)
+    const devices = await db.all('SELECT * FROM wifi_devices WHERE is_deleted = 0 ORDER BY connected_at DESC');
     
     // Merge with session data for accurate remaining time
     const formattedDevices = devices.map(device => {
@@ -4432,6 +4446,20 @@ app.get('/api/devices/:id', requireAdmin, async (req, res) => {
 app.post('/api/devices', requireAdmin, async (req, res) => {
   try {
     const { mac, ip, hostname, interface: iface, ssid, signal, customName } = req.body;
+    
+    // Check if device was previously deleted - if so, restore it instead of creating new
+    const deletedDevice = await db.get('SELECT * FROM wifi_devices WHERE mac = ? AND is_deleted = 1', [mac.toUpperCase()]);
+    if (deletedDevice) {
+      // Restore the deleted device with new information
+      await db.run(
+        'UPDATE wifi_devices SET ip = ?, hostname = ?, interface = ?, ssid = ?, signal = ?, last_seen = ?, is_active = 1, is_deleted = 0, custom_name = ? WHERE id = ?',
+        [ip, hostname || '', iface, ssid || '', signal || 0, Date.now(), customName || '', deletedDevice.id]
+      );
+      
+      const restoredDevice = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [deletedDevice.id]);
+      return res.json(restoredDevice);
+    }
+    
     const id = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const now = Date.now();
     
@@ -4513,9 +4541,42 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
 
 app.delete('/api/devices/:id', requireAdmin, async (req, res) => {
   try {
-    const result = await db.run('DELETE FROM wifi_devices WHERE id = ?', [req.params.id]);
+    // Mark device as deleted instead of actually deleting it
+    // This prevents it from being re-added by scanning processes
+    const result = await db.run('UPDATE wifi_devices SET is_deleted = 1, is_active = 0 WHERE id = ?', [req.params.id]);
     if (result.changes === 0) return res.status(404).json({ error: 'Device not found' });
+    
+    // Also disconnect the device if it's currently connected
+    const device = await db.get('SELECT mac, ip FROM wifi_devices WHERE id = ?', [req.params.id]);
+    if (device) {
+      try {
+        await network.blockMAC(device.mac, device.ip);
+        console.log(`[DEVICE] Disconnected deleted device: ${device.mac}`);
+      } catch (e) {
+        console.warn(`[DEVICE] Failed to disconnect deleted device ${device.mac}:`, e.message);
+      }
+    }
+    
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Get deleted devices
+app.get('/api/devices/deleted', requireAdmin, async (req, res) => {
+  try {
+    const deletedDevices = await db.all('SELECT * FROM wifi_devices WHERE is_deleted = 1 ORDER BY last_seen DESC');
+    res.json(deletedDevices);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Restore a deleted device
+app.post('/api/devices/:id/restore', requireAdmin, async (req, res) => {
+  try {
+    const result = await db.run('UPDATE wifi_devices SET is_deleted = 0 WHERE id = ? AND is_deleted = 1', [req.params.id]);
+    if (result.changes === 0) return res.status(404).json({ error: 'Deleted device not found' });
+    
+    const restoredDevice = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
+    res.json(restoredDevice);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

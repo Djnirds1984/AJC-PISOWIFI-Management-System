@@ -1734,21 +1734,46 @@ app.get('/generate_204', async (req, res) => {
       return res.status(204).send();
     } else {
       // Check for transferable sessions and FORCE transfer
-      // LEGITIMATE ROAMING: Allow same-device transfers (MAC randomization)
-      const transferableSessions = await db.all(
-        `SELECT s.token, s.mac as original_mac, s.remaining_seconds, s.session_type, s.voucher_code,
-                d.hardware_signature as owner_hardware
-         FROM sessions s
-         LEFT JOIN device_registry d ON s.mac = d.mac
-         WHERE s.remaining_seconds > 0 
-           AND s.token_expires_at > datetime("now") 
-           AND s.mac != ? 
-           AND s.session_type = ? 
-           AND s.voucher_code IS NULL
-           AND (d.hardware_signature IS NULL OR d.hardware_signature = ? OR ? = 'unknown')
-         LIMIT 1`,
-        [mac, 'coin', req.headers['x-hardware-id'] || 'unknown', req.headers['x-hardware-id'] || 'unknown']
-      );
+      // SIMPLE APPROACH: Only allow transfers when requesting device presents valid session token
+      const presentedToken = req.headers['x-session-token'];
+      
+      let transferableSessions = [];
+      
+      if (presentedToken) {
+        // Device claims to have a session token - verify it
+        const session = await db.get(
+          'SELECT token, mac as original_mac, remaining_seconds, session_type, voucher_code FROM sessions WHERE token = ? AND remaining_seconds > 0 AND token_expires_at > datetime("now")',
+          [presentedToken]
+        );
+        
+        if (session && session.original_mac !== mac) {
+          // Valid session token from different MAC - this is legitimate roaming!
+          transferableSessions = [session];
+          console.log(`[CAPTIVE-DETECT] Valid session token presented for roaming: ${presentedToken.substring(0,8)}...`);
+        }
+      }
+      
+      // Fallback: Check for orphaned sessions (no token presented)
+      if (transferableSessions.length === 0) {
+        const orphanedSessions = await db.all(
+          `SELECT token, mac as original_mac, remaining_seconds, session_type, voucher_code
+           FROM sessions 
+           WHERE remaining_seconds > 0 
+             AND token_expires_at > datetime("now") 
+             AND mac != ? 
+             AND session_type = ? 
+             AND voucher_code IS NULL
+           LIMIT 1`,
+          [mac, 'coin']
+        );
+        
+        // Only allow if no hardware registry exists (legitimate case)
+        const deviceRegistered = await db.get('SELECT mac FROM device_registry WHERE mac = ?', [mac]);
+        if (!deviceRegistered && orphanedSessions.length > 0) {
+          transferableSessions = [orphanedSessions[0]]; // Take first one
+          console.log(`[CAPTIVE-DETECT] Allowing transfer for unregistered device`);
+        }
+      }
       
       if (transferableSessions.length > 0) {
         console.log(`[CAPTIVE-DETECT] New MAC ${mac} with transferable sessions - FORCING session transfer`);
@@ -2616,21 +2641,46 @@ app.use(async (req, res, next) => {
       console.log(`[PORTAL-REDIRECT] New MAC detected: ${mac} (${clientIp}) - checking for transferable sessions...`);
       
       // Check if there are any sessions that could be transferred to this device
-      // LEGITIMATE ROAMING: Allow same-device transfers (MAC randomization)
-      const transferableSessions = await db.all(
-        `SELECT s.token, s.mac as original_mac, s.remaining_seconds, s.session_type, s.voucher_code,
-                d.hardware_signature as owner_hardware
-         FROM sessions s
-         LEFT JOIN device_registry d ON s.mac = d.mac
-         WHERE s.remaining_seconds > 0 
-           AND s.token_expires_at > datetime("now") 
-           AND s.mac != ? 
-           AND s.session_type = ? 
-           AND s.voucher_code IS NULL
-           AND (d.hardware_signature IS NULL OR d.hardware_signature = ? OR ? = 'unknown')
-         LIMIT 5`,
-        [mac, 'coin', req.headers['x-hardware-id'] || 'unknown', req.headers['x-hardware-id'] || 'unknown']
-      );
+      // SIMPLE APPROACH: Only allow transfers when requesting device presents valid session token
+      const presentedToken = req.headers['x-session-token'];
+      
+      let transferableSessions = [];
+      
+      if (presentedToken) {
+        // Device claims to have a session token - verify it
+        const session = await db.get(
+          'SELECT token, mac as original_mac, remaining_seconds, session_type, voucher_code FROM sessions WHERE token = ? AND remaining_seconds > 0 AND token_expires_at > datetime("now")',
+          [presentedToken]
+        );
+        
+        if (session && session.original_mac !== mac) {
+          // Valid session token from different MAC - this is legitimate roaming!
+          transferableSessions = [session];
+          console.log(`[PORTAL-REDIRECT] Valid session token presented for roaming: ${presentedToken.substring(0,8)}...`);
+        }
+      }
+      
+      // Fallback: Check for orphaned sessions (no token presented)
+      if (transferableSessions.length === 0) {
+        const orphanedSessions = await db.all(
+          `SELECT token, mac as original_mac, remaining_seconds, session_type, voucher_code
+           FROM sessions 
+           WHERE remaining_seconds > 0 
+             AND token_expires_at > datetime("now") 
+             AND mac != ? 
+             AND session_type = ? 
+             AND voucher_code IS NULL
+           LIMIT 5`,
+          [mac, 'coin']
+        );
+        
+        // Only allow if no hardware registry exists (legitimate case)
+        const deviceRegistered = await db.get('SELECT mac FROM device_registry WHERE mac = ?', [mac]);
+        if (!deviceRegistered && orphanedSessions.length > 0) {
+          transferableSessions = [orphanedSessions[0]]; // Take first one
+          console.log(`[PORTAL-REDIRECT] Allowing transfer for unregistered device`);
+        }
+      }
       
       if (transferableSessions.length > 0) {
         console.log(`[PORTAL-REDIRECT] Found ${transferableSessions.length} transferable sessions:`);

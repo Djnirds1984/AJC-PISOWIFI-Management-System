@@ -31,9 +31,11 @@ process.on('SIGHUP', () => {
   console.log('[SYSTEM] Received SIGHUP. Ignoring to prevent process termination on disconnect.');
 });
 
-// Session ID system: Hardware registration not needed
+// SESSION ID SYSTEM: Hardware registration completely disabled
+// All authentication is now based on Session ID + MAC address binding
 async function registerDeviceHardware(mac, hardwareSignature) {
-  // No-op in Session ID system
+  // No-op: Hardware registration not needed in Session ID system
+  console.log(`[SESSION-ID] Hardware registration bypassed for ${mac} - using Session ID authentication`);
   return;
 }
 
@@ -1755,7 +1757,8 @@ app.get('/generate_204', async (req, res) => {
           [mac, 'coin']
         );
         
-        // Session ID system: Allow transfer for coin sessions without device registry check
+        // SESSION ID SYSTEM: Allow transfer for coin sessions without device registry check
+        // Hardware validation is completely disabled - only Session ID + MAC binding matters
         if (orphanedSessions.length > 0) {
           transferableSessions = [orphanedSessions[0]]; // Take first one
           console.log(`[CAPTIVE-DETECT] Allowing session transfer for coin session`);
@@ -2300,11 +2303,10 @@ app.use(async (req, res, next) => {
           [mac, 'coin']
         );
         
-        // Only allow if no hardware registry exists (legitimate case)
-        const deviceRegistered = await db.get('SELECT mac FROM device_registry WHERE mac = ?', [mac]);
-        if (!deviceRegistered && orphanedSessions.length > 0) {
+        // Allow transfer for any device (Session ID system - no hardware registry needed)
+        if (orphanedSessions.length > 0) {
           transferableSessions = [orphanedSessions[0]]; // Take first one
-          console.log(`[PORTAL-REDIRECT] Allowing transfer for unregistered device`);
+          console.log(`[PORTAL-REDIRECT] Allowing transfer for device (Session ID system)`);
         }
       }
       
@@ -5403,8 +5405,8 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
           ]
         );
         
-        // Register device hardware for ownership tracking
-        await registerDeviceHardware(updatedDevice.mac, 'admin_created');
+        // Session ID system: No hardware registration needed
+        // await registerDeviceHardware(updatedDevice.mac, 'admin_created'); // REMOVED
         
         console.log(`[ADMIN] Created new session with Session ID for ${updatedDevice.mac}: ${sessionToken.substring(0,8)}... (${sessionTime}s, expires in 1 year)`);
       }
@@ -5501,8 +5503,8 @@ app.post('/api/devices/:id/connect', requireAdmin, async (req, res) => {
         [device.mac, device.ip, sessionTime, 0, Date.now(), sessionToken, tokenExpiresAt, sessionToken]
       );
       
-      // Register device hardware for ownership tracking
-      await registerDeviceHardware(device.mac, 'admin_created');
+      // Session ID system: No hardware registration needed
+      // await registerDeviceHardware(device.mac, 'admin_created'); // REMOVED
       
       console.log(`[ADMIN] Created new session with Session ID for ${device.mac}: ${sessionToken.substring(0,8)}... (${sessionTime}s, expires in 1 year)`);
     }

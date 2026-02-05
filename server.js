@@ -31,22 +31,10 @@ process.on('SIGHUP', () => {
   console.log('[SYSTEM] Received SIGHUP. Ignoring to prevent process termination on disconnect.');
 });
 
-// Helper function to register device hardware for session ownership
+// Session ID system: Hardware registration not needed
 async function registerDeviceHardware(mac, hardwareSignature) {
-  if (!hardwareSignature || hardwareSignature === 'unknown') return;
-  
-  try {
-    // Register or update device hardware signature
-    await db.run(`
-      INSERT OR REPLACE INTO device_registry (mac, hardware_signature, last_seen, session_count)
-      VALUES (?, ?, CURRENT_TIMESTAMP, 
-        COALESCE((SELECT session_count FROM device_registry WHERE mac = ?), 0))
-    `, [mac, hardwareSignature, mac]);
-    
-    console.log(`[HARDWARE] Registered device ${mac} with signature: ${hardwareSignature.substring(0, 16)}...`);
-  } catch (e) {
-    console.log(`[HARDWARE] Failed to register device ${mac}: ${e.message}`);
-  }
+  // No-op in Session ID system
+  return;
 }
 
 // GLOBAL ERROR HANDLERS TO PREVENT CRASHES
@@ -2008,7 +1996,7 @@ app.get('/ncsi.txt', async (req, res) => {
             }
           }
         } catch (e) {
-          console.error(`[CAPTIVE-DETECT] Error during hardware validation:`, e.message);
+          console.error(`[CAPTIVE-DETECT] Error during session transfer:`, e.message);
         }
         
         // Fallback: redirect to portal
@@ -2151,7 +2139,7 @@ app.get('/connecttest.txt', async (req, res) => {
             }
           }
         } catch (e) {
-          console.error(`[CAPTIVE-DETECT] Error during hardware validation:`, e.message);
+          console.error(`[CAPTIVE-DETECT] Error during session transfer:`, e.message);
         }
         
         // Fallback: redirect to portal
@@ -2295,7 +2283,7 @@ app.get('/success.txt', async (req, res) => {
             }
           }
         } catch (e) {
-          console.error(`[CAPTIVE-DETECT] Error during hardware validation:`, e.message);
+          console.error(`[CAPTIVE-DETECT] Error during session transfer:`, e.message);
         }
         
         // Fallback: redirect to portal
@@ -2440,7 +2428,7 @@ app.get('/library/test/success.html', async (req, res) => {
             }
           }
         } catch (e) {
-          console.error(`[CAPTIVE-DETECT] Error during hardware validation:`, e.message);
+          console.error(`[CAPTIVE-DETECT] Error during session transfer:`, e.message);
         }
         
         // Fallback: redirect to portal

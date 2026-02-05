@@ -4154,6 +4154,206 @@ app.delete('/api/network/bridge/:name', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// IP POOL MANAGEMENT API
+app.get('/api/ip-pools', requireAdmin, async (req, res) => {
+  try {
+    const pools = await db.all(`
+      SELECT *, 
+        (SELECT COUNT(*) FROM sessions s WHERE s.ip BETWEEN p.start_ip AND p.end_ip) as used_ips
+      FROM ip_pools p 
+      ORDER BY created_at DESC
+    `);
+    
+    // Calculate additional metrics
+    const enhancedPools = pools.map(pool => {
+      const totalIps = ipToInt(pool.end_ip) - ipToInt(pool.start_ip) + 1;
+      const availableIps = totalIps - (pool.used_ips || 0);
+      const utilization = totalIps > 0 ? Math.round((pool.used_ips || 0) / totalIps * 100) : 0;
+      
+      return {
+        ...pool,
+        total_ips: totalIps,
+        available_ips: availableIps,
+        utilization_percentage: utilization
+      };
+    });
+    
+    res.json(enhancedPools);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/ip-pools/:id', requireAdmin, async (req, res) => {
+  try {
+    const pool = await db.get('SELECT * FROM ip_pools WHERE id = ?', [req.params.id]);
+    if (!pool) {
+      return res.status(404).json({ error: 'IP Pool not found' });
+    }
+    
+    // Add usage statistics
+    const totalIps = ipToInt(pool.end_ip) - ipToInt(pool.start_ip) + 1;
+    const usedIps = await db.get(
+      'SELECT COUNT(*) as count FROM sessions WHERE ip BETWEEN ? AND ?', 
+      [pool.start_ip, pool.end_ip]
+    );
+    
+    const enhancedPool = {
+      ...pool,
+      total_ips: totalIps,
+      used_ips: usedIps.count,
+      available_ips: totalIps - usedIps.count,
+      utilization_percentage: totalIps > 0 ? Math.round(usedIps.count / totalIps * 100) : 0
+    };
+    
+    res.json(enhancedPool);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/ip-pools', requireAdmin, async (req, res) => {
+  try {
+    const { name, network, gateway, start_ip, end_ip, subnet_mask, description, status = 'active' } = req.body;
+    
+    // Validate required fields
+    if (!name || !network || !gateway || !start_ip || !end_ip || !subnet_mask) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    // Validate IP format
+    if (!isValidIp(start_ip) || !isValidIp(end_ip) || !isValidIp(gateway)) {
+      return res.status(400).json({ error: 'Invalid IP address format' });
+    }
+    
+    // Check for overlapping pools
+    const overlap = await db.get(`
+      SELECT id FROM ip_pools 
+      WHERE (start_ip BETWEEN ? AND ? OR end_ip BETWEEN ? AND ?)
+      AND status = 'active'
+      LIMIT 1
+    `, [start_ip, end_ip, start_ip, end_ip]);
+    
+    if (overlap) {
+      return res.status(400).json({ error: 'IP range overlaps with existing pool' });
+    }
+    
+    const result = await db.run(`
+      INSERT INTO ip_pools (name, network, gateway, start_ip, end_ip, subnet_mask, description, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [name, network, gateway, start_ip, end_ip, subnet_mask, description, status]);
+    
+    const newPool = await db.get('SELECT * FROM ip_pools WHERE id = ?', [result.lastID]);
+    res.status(201).json(newPool);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/ip-pools/:id', requireAdmin, async (req, res) => {
+  try {
+    const poolId = req.params.id;
+    const { name, network, gateway, start_ip, end_ip, subnet_mask, description, status } = req.body;
+    
+    // Check if pool exists
+    const existingPool = await db.get('SELECT * FROM ip_pools WHERE id = ?', [poolId]);
+    if (!existingPool) {
+      return res.status(404).json({ error: 'IP Pool not found' });
+    }
+    
+    // Validate IP format if provided
+    if ((start_ip && !isValidIp(start_ip)) || (end_ip && !isValidIp(end_ip)) || (gateway && !isValidIp(gateway))) {
+      return res.status(400).json({ error: 'Invalid IP address format' });
+    }
+    
+    // Check for overlapping pools (excluding current pool)
+    if (start_ip && end_ip) {
+      const overlap = await db.get(`
+        SELECT id FROM ip_pools 
+        WHERE id != ? AND (start_ip BETWEEN ? AND ? OR end_ip BETWEEN ? AND ?)
+        AND status = 'active'
+        LIMIT 1
+      `, [poolId, start_ip, end_ip, start_ip, end_ip]);
+      
+      if (overlap) {
+        return res.status(400).json({ error: 'IP range overlaps with existing pool' });
+      }
+    }
+    
+    await db.run(`
+      UPDATE ip_pools SET
+        name = COALESCE(?, name),
+        network = COALESCE(?, network),
+        gateway = COALESCE(?, gateway),
+        start_ip = COALESCE(?, start_ip),
+        end_ip = COALESCE(?, end_ip),
+        subnet_mask = COALESCE(?, subnet_mask),
+        description = COALESCE(?, description),
+        status = COALESCE(?, status),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [name, network, gateway, start_ip, end_ip, subnet_mask, description, status, poolId]);
+    
+    const updatedPool = await db.get('SELECT * FROM ip_pools WHERE id = ?', [poolId]);
+    res.json(updatedPool);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/ip-pools/:id', requireAdmin, async (req, res) => {
+  try {
+    const poolId = req.params.id;
+    
+    // Check if pool is assigned to any service
+    const assigned = await db.get(
+      'SELECT assigned_to, assigned_type FROM ip_pools WHERE id = ? AND assigned_to IS NOT NULL', 
+      [poolId]
+    );
+    
+    if (assigned) {
+      return res.status(400).json({ 
+        error: `Cannot delete IP pool: currently assigned to ${assigned.assigned_type} '${assigned.assigned_to}'` 
+      });
+    }
+    
+    await db.run('DELETE FROM ip_pools WHERE id = ?', [poolId]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/ip-pools/:id/assign', requireAdmin, async (req, res) => {
+  try {
+    const { assigned_to, assigned_type } = req.body;
+    
+    if (!assigned_to || !assigned_type) {
+      return res.status(400).json({ error: 'assigned_to and assigned_type are required' });
+    }
+    
+    // Validate assignment type
+    if (!['hotspot', 'pppoe', 'static'].includes(assigned_type)) {
+      return res.status(400).json({ error: 'Invalid assignment type' });
+    }
+    
+    await db.run(
+      'UPDATE ip_pools SET assigned_to = ?, assigned_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [assigned_to, assigned_type, req.params.id]
+    );
+    
+    const updatedPool = await db.get('SELECT * FROM ip_pools WHERE id = ?', [req.params.id]);
+    res.json(updatedPool);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/ip-pools/:id/unassign', requireAdmin, async (req, res) => {
+  try {
+    await db.run(
+      'UPDATE ip_pools SET assigned_to = NULL, assigned_type = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [req.params.id]
+    );
+    
+    const updatedPool = await db.get('SELECT * FROM ip_pools WHERE id = ?', [req.params.id]);
+    res.json(updatedPool);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Helper function to convert IP to integer for range calculations
+function ipToInt(ip) {
+  return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
+}
+
 // NODEMCU FLASHER API
 app.get('/api/system/usb-devices', requireAdmin, async (req, res) => {
   try {

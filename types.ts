@@ -83,6 +83,27 @@ export interface HotspotInstance {
   enabled: number;
 }
 
+export interface IPPool {
+  id: number;
+  name: string;
+  network: string;
+  gateway: string;
+  start_ip: string;
+  end_ip: string;
+  subnet_mask: string;
+  description?: string;
+  status: 'active' | 'reserved' | 'disabled';
+  assigned_to?: string;
+  assigned_type?: 'hotspot' | 'pppoe' | 'static';
+  created_at: string;
+  updated_at: string;
+  // Computed fields
+  total_ips?: number;
+  used_ips?: number;
+  available_ips?: number;
+  utilization_percentage?: number;
+}
+
 export interface WanConfig {
   proto: 'static' | 'dhcp';
   ipaddr: string;

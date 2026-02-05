@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../../lib/api';
-import { NetworkInterface, HotspotInstance, VlanConfig, WirelessConfig, PPPoEServerConfig, PPPoEUser, PPPoESession } from '../../types';
+import { NetworkInterface, HotspotInstance, VlanConfig, WirelessConfig, PPPoEServerConfig, PPPoEUser, PPPoESession, IPPool } from '../../types';
 
 const NetworkSettings: React.FC = () => {
   console.log('[NetworkSettings] Component mounting/re-rendering...');
@@ -11,6 +11,21 @@ const NetworkSettings: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [qosDiscipline, setQoSDiscipline] = useState<'cake' | 'fq_codel'>('cake');
   const [savingQoS, setSavingQoS] = useState(false);
+  
+  // IP Pool Management State
+  const [ipPools, setIpPools] = useState<IPPool[]>([]);
+  const [showIpPoolModal, setShowIpPoolModal] = useState(false);
+  const [editingPool, setEditingPool] = useState<IPPool | null>(null);
+  const [newPool, setNewPool] = useState<Partial<IPPool>>({
+    name: '',
+    network: '',
+    gateway: '',
+    start_ip: '',
+    end_ip: '',
+    subnet_mask: '255.255.255.0',
+    description: '',
+    status: 'active'
+  });
   
   // State for Wireless AP Setup
   const [newWifi, setNewWifi] = useState<Partial<WirelessConfig & { bridge?: string }>>({
@@ -115,6 +130,7 @@ const NetworkSettings: React.FC = () => {
   useEffect(() => { 
     console.log('[NetworkSettings] useEffect triggered - loading initial data and QoS config');
     loadData();
+    loadIPPools();
     apiClient.getQoSConfig().then(config => {
       console.log('[NetworkSettings] QoS config loaded:', config.discipline);
       setQoSDiscipline(config.discipline);
@@ -182,6 +198,163 @@ const NetworkSettings: React.FC = () => {
       setLoading(false);
       console.log('[NetworkSettings] Loading finished');
     }
+  };
+
+  // IP Pool Management Functions
+  const loadIPPools = async () => {
+    try {
+      console.log('[NetworkSettings] Loading IP pools...');
+      const pools = await apiClient.getIPPools();
+      console.log('[NetworkSettings] Loaded IP pools:', pools.length);
+      setIpPools(Array.isArray(pools) ? pools : []);
+    } catch (err) {
+      console.error('[NetworkSettings] Failed to load IP pools:', err);
+      setIpPools([]);
+    }
+  };
+
+  const createIPPool = async () => {
+    console.log('[NetworkSettings] Creating IP pool:', newPool);
+    
+    if (!newPool.name || !newPool.network || !newPool.gateway || !newPool.start_ip || !newPool.end_ip) {
+      alert('Please fill all required fields!');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      await apiClient.createIPPool(newPool);
+      await loadIPPools();
+      setShowIpPoolModal(false);
+      setNewPool({
+        name: '',
+        network: '',
+        gateway: '',
+        start_ip: '',
+        end_ip: '',
+        subnet_mask: '255.255.255.0',
+        description: '',
+        status: 'active'
+      });
+      alert('IP Pool created successfully!');
+    } catch (e: any) {
+      console.error('[NetworkSettings] Failed to create IP pool:', e);
+      alert(`Failed to create IP pool: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateIPPool = async () => {
+    if (!editingPool) return;
+    
+    console.log('[NetworkSettings] Updating IP pool:', editingPool.id, newPool);
+    
+    try {
+      setLoading(true);
+      await apiClient.updateIPPool(editingPool.id, newPool);
+      await loadIPPools();
+      setShowIpPoolModal(false);
+      setEditingPool(null);
+      setNewPool({
+        name: '',
+        network: '',
+        gateway: '',
+        start_ip: '',
+        end_ip: '',
+        subnet_mask: '255.255.255.0',
+        description: '',
+        status: 'active'
+      });
+      alert('IP Pool updated successfully!');
+    } catch (e: any) {
+      console.error('[NetworkSettings] Failed to update IP pool:', e);
+      alert(`Failed to update IP pool: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteIPPool = async (poolId: number) => {
+    console.log('[NetworkSettings] Deleting IP pool:', poolId);
+    
+    if (!confirm('Are you sure you want to delete this IP pool?')) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      await apiClient.deleteIPPool(poolId);
+      await loadIPPools();
+      alert('IP Pool deleted successfully!');
+    } catch (e: any) {
+      console.error('[NetworkSettings] Failed to delete IP pool:', e);
+      alert(`Failed to delete IP pool: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const assignIPPool = async (poolId: number, assigned_to: string, assigned_type: 'hotspot' | 'pppoe' | 'static') => {
+    console.log('[NetworkSettings] Assigning IP pool:', { poolId, assigned_to, assigned_type });
+    
+    try {
+      setLoading(true);
+      await apiClient.assignIPPool(poolId, assigned_to, assigned_type);
+      await loadIPPools();
+      alert('IP Pool assigned successfully!');
+    } catch (e: any) {
+      console.error('[NetworkSettings] Failed to assign IP pool:', e);
+      alert(`Failed to assign IP pool: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const unassignIPPool = async (poolId: number) => {
+    console.log('[NetworkSettings] Unassigning IP pool:', poolId);
+    
+    try {
+      setLoading(true);
+      await apiClient.unassignIPPool(poolId);
+      await loadIPPools();
+      alert('IP Pool unassigned successfully!');
+    } catch (e: any) {
+      console.error('[NetworkSettings] Failed to unassign IP pool:', e);
+      alert(`Failed to unassign IP pool: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openCreateModal = () => {
+    setEditingPool(null);
+    setNewPool({
+      name: '',
+      network: '',
+      gateway: '',
+      start_ip: '',
+      end_ip: '',
+      subnet_mask: '255.255.255.0',
+      description: '',
+      status: 'active'
+    });
+    setShowIpPoolModal(true);
+  };
+
+  const openEditModal = (pool: IPPool) => {
+    setEditingPool(pool);
+    setNewPool({
+      name: pool.name,
+      network: pool.network,
+      gateway: pool.gateway,
+      start_ip: pool.start_ip,
+      end_ip: pool.end_ip,
+      subnet_mask: pool.subnet_mask,
+      description: pool.description || '',
+      status: pool.status
+    });
+    setShowIpPoolModal(true);
   };
 
   const deployWireless = async (ifaceName?: string) => {
@@ -735,6 +908,256 @@ const NetworkSettings: React.FC = () => {
           </div>
         </section>
       </div>
+
+      {/* 5. IP Pool Management */}
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-[10px] font-black text-main uppercase tracking-widest">IP Pool Manager</h3>
+          <button 
+            onClick={openCreateModal}
+            disabled={loading}
+            className="bg-blue-500 text-white py-1.5 px-3 rounded-lg font-medium text-[8px] uppercase tracking-wider hover:bg-blue-600 transition-colors disabled:opacity-50"
+          >
+            + New Pool
+          </button>
+        </div>
+        
+        <div className="space-y-3">
+          {ipPools.length > 0 ? ipPools.map(pool => (
+            <div key={pool.id} className="border border-slate-200 rounded-lg p-3 bg-slate-50 group">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h4 className="font-bold text-main text-[11px] uppercase">{pool.name}</h4>
+                    <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase ${
+                      pool.status === 'active' ? 'bg-green-100 text-green-700' :
+                      pool.status === 'reserved' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {pool.status}
+                    </span>
+                    {pool.assigned_to && (
+                      <span className="text-[7px] font-medium bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                        {pool.assigned_type}: {pool.assigned_to}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2 text-[9px] text-muted mb-2">
+                    <div>
+                      <span className="font-medium text-main">Network:</span> {pool.network}
+                    </div>
+                    <div>
+                      <span className="font-medium text-main">Gateway:</span> {pool.gateway}
+                    </div>
+                    <div>
+                      <span className="font-medium text-main">Range:</span> {pool.start_ip} - {pool.end_ip}
+                    </div>
+                    <div>
+                      <span className="font-medium text-main">Subnet:</span> {pool.subnet_mask}
+                    </div>
+                  </div>
+                  
+                  {pool.description && (
+                    <p className="text-[8px] text-slate-600 mb-2">{pool.description}</p>
+                  )}
+                  
+                  <div className="flex items-center gap-4 text-[8px]">
+                    <div className="flex items-center gap-1">
+                      <span className="font-medium text-main">Total:</span>
+                      <span className="font-mono">{pool.total_ips || 0}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="font-medium text-main">Used:</span>
+                      <span className="font-mono">{pool.used_ips || 0}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="font-medium text-main">Available:</span>
+                      <span className="font-mono">{pool.available_ips || 0}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="font-medium text-main">Utilization:</span>
+                      <span className={`font-mono ${
+                        (pool.utilization_percentage || 0) > 80 ? 'text-red-600' :
+                        (pool.utilization_percentage || 0) > 50 ? 'text-yellow-600' :
+                        'text-green-600'
+                      }`}>
+                        {pool.utilization_percentage || 0}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex flex-col gap-1 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {!pool.assigned_to ? (
+                    <>
+                      <button 
+                        onClick={() => openEditModal(pool)}
+                        className="text-[7px] bg-white border border-slate-300 text-slate-700 px-2 py-1 rounded hover:bg-slate-50"
+                      >
+                        Edit
+                      </button>
+                      <button 
+                        onClick={() => deleteIPPool(pool.id)}
+                        className="text-[7px] bg-red-50 border border-red-200 text-red-700 px-2 py-1 rounded hover:bg-red-100"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  ) : (
+                    <button 
+                      onClick={() => unassignIPPool(pool.id)}
+                      className="text-[7px] bg-yellow-50 border border-yellow-200 text-yellow-700 px-2 py-1 rounded hover:bg-yellow-100"
+                    >
+                      Unassign
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )) : (
+            <div className="py-8 text-center text-slate-500 text-[10px] font-medium">
+              No IP pools configured. Create your first IP pool to manage address ranges.
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* IP Pool Modal */}
+      {showIpPoolModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b border-slate-200">
+              <h3 className="text-[12px] font-black text-main uppercase tracking-widest">
+                {editingPool ? 'Edit IP Pool' : 'Create IP Pool'}
+              </h3>
+            </div>
+            
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="text-[8px] font-medium text-muted uppercase tracking-wide mb-1 block">Pool Name *</label>
+                <input 
+                  type="text" 
+                  value={newPool.name || ''}
+                  onChange={e => setNewPool({...newPool, name: e.target.value})}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-medium text-main"
+                  placeholder="Office Network Pool"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[8px] font-medium text-muted uppercase tracking-wide mb-1 block">Network *</label>
+                  <input 
+                    type="text" 
+                    value={newPool.network || ''}
+                    onChange={e => setNewPool({...newPool, network: e.target.value})}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono text-main"
+                    placeholder="192.168.10.0"
+                  />
+                </div>
+                <div>
+                  <label className="text-[8px] font-medium text-muted uppercase tracking-wide mb-1 block">Gateway *</label>
+                  <input 
+                    type="text" 
+                    value={newPool.gateway || ''}
+                    onChange={e => setNewPool({...newPool, gateway: e.target.value})}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono text-main"
+                    placeholder="192.168.10.1"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[8px] font-medium text-muted uppercase tracking-wide mb-1 block">Start IP *</label>
+                  <input 
+                    type="text" 
+                    value={newPool.start_ip || ''}
+                    onChange={e => setNewPool({...newPool, start_ip: e.target.value})}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono text-main"
+                    placeholder="192.168.10.100"
+                  />
+                </div>
+                <div>
+                  <label className="text-[8px] font-medium text-muted uppercase tracking-wide mb-1 block">End IP *</label>
+                  <input 
+                    type="text" 
+                    value={newPool.end_ip || ''}
+                    onChange={e => setNewPool({...newPool, end_ip: e.target.value})}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono text-main"
+                    placeholder="192.168.10.200"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-[8px] font-medium text-muted uppercase tracking-wide mb-1 block">Subnet Mask</label>
+                <input 
+                  type="text" 
+                  value={newPool.subnet_mask || '255.255.255.0'}
+                  onChange={e => setNewPool({...newPool, subnet_mask: e.target.value})}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono text-main"
+                  placeholder="255.255.255.0"
+                />
+              </div>
+              
+              <div>
+                <label className="text-[8px] font-medium text-muted uppercase tracking-wide mb-1 block">Description</label>
+                <textarea 
+                  value={newPool.description || ''}
+                  onChange={e => setNewPool({...newPool, description: e.target.value})}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-main resize-none"
+                  rows={2}
+                  placeholder="Description of this IP pool..."
+                />
+              </div>
+              
+              <div>
+                <label className="text-[8px] font-medium text-muted uppercase tracking-wide mb-1 block">Status</label>
+                <select 
+                  value={newPool.status || 'active'}
+                  onChange={e => setNewPool({...newPool, status: e.target.value as any})}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-medium text-main"
+                >
+                  <option value="active">Active</option>
+                  <option value="reserved">Reserved</option>
+                  <option value="disabled">Disabled</option>
+                </select>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-slate-200 flex gap-2">
+              <button 
+                onClick={() => {
+                  setShowIpPoolModal(false);
+                  setEditingPool(null);
+                  setNewPool({
+                    name: '',
+                    network: '',
+                    gateway: '',
+                    start_ip: '',
+                    end_ip: '',
+                    subnet_mask: '255.255.255.0',
+                    description: '',
+                    status: 'active'
+                  });
+                }}
+                className="flex-1 py-2 border border-slate-300 text-slate-700 rounded-lg font-medium text-[9px] uppercase tracking-wider hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={editingPool ? updateIPPool : createIPPool}
+                disabled={loading}
+                className="flex-1 py-2 bg-blue-500 text-white rounded-lg font-medium text-[9px] uppercase tracking-wider hover:bg-blue-600 disabled:opacity-50"
+              >
+                {editingPool ? 'Update Pool' : 'Create Pool'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

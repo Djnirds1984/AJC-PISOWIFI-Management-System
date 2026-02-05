@@ -824,5 +824,59 @@ export const apiClient = {
       headers: getHeaders() 
     });
     return handleResponse(res);
+  },
+
+  // IP Pool Management APIs
+  async getIPPools(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/ip-pools`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async getIPPool(id: number): Promise<any> {
+    const res = await fetch(`${API_BASE}/ip-pools/${id}`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  async createIPPool(pool: any): Promise<any> {
+    const res = await fetch(`${API_BASE}/ip-pools`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(pool)
+    });
+    return handleResponse(res);
+  },
+
+  async updateIPPool(id: number, updates: any): Promise<any> {
+    const res = await fetch(`${API_BASE}/ip-pools/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(updates)
+    });
+    return handleResponse(res);
+  },
+
+  async deleteIPPool(id: number): Promise<void> {
+    const res = await fetch(`${API_BASE}/ip-pools/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    await handleResponse(res);
+  },
+
+  async assignIPPool(id: number, assigned_to: string, assigned_type: 'hotspot' | 'pppoe' | 'static'): Promise<any> {
+    const res = await fetch(`${API_BASE}/ip-pools/${id}/assign`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ assigned_to, assigned_type })
+    });
+    return handleResponse(res);
+  },
+
+  async unassignIPPool(id: number): Promise<any> {
+    const res = await fetch(`${API_BASE}/ip-pools/${id}/unassign`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
   }
 };

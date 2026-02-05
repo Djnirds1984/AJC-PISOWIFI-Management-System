@@ -100,14 +100,25 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
         const response = await fetch('/', { method: 'HEAD' });
         const hasRestorableSession = response.headers.get('X-AJC-Session-Restore-Available');
         const availableSessions = response.headers.get('X-AJC-Available-Sessions');
+        const serverToken = response.headers.get('X-AJC-Session-Token');
+        
+        console.log(`[Portal] Server hints - Restorable: ${hasRestorableSession}, Sessions: ${availableSessions}, Token: ${serverToken ? serverToken.slice(0,8) + '...' : 'none'}`);
         
         if (hasRestorableSession === 'true' && availableSessions && parseInt(availableSessions) > 0) {
-          console.log(`[Portal] Server indicates ${availableSessions} transferable sessions available - triggering immediate restoration`);
+          console.log(`[Portal] Server indicates ${availableSessions} transferable sessions available`);
+          
+          // If server provided a token, save it to localStorage
+          if (serverToken) {
+            console.log(`[Portal] Saving server-provided token to localStorage`);
+            localStorage.setItem('ajc_session_token', serverToken);
+          }
+          
           if (onRestoreSession) {
             // Immediate restoration attempt
+            console.log(`[Portal] Triggering immediate session restoration`);
             setTimeout(() => {
               onRestoreSession();
-            }, 1000);
+            }, 300); // Very fast trigger
           }
         }
       } catch (e) {
@@ -123,7 +134,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
         console.log('[Portal] Detected session token without active session - attempting automatic restoration');
         setTimeout(() => {
           onRestoreSession();
-        }, 2000); // Small delay to let other initialization complete
+        }, 500); // Fast trigger
       }
     };
     
@@ -131,7 +142,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     checkServerSessionHints();
     checkAndRestoreSession();
     
-    // PERIODIC SESSION RESTORATION: Keep trying every 10 seconds if we have a token but no session
+    // PERIODIC SESSION RESTORATION: Keep trying every 5 seconds if we have a token but no session
     const periodicRestoreCheck = setInterval(() => {
       const sessionToken = localStorage.getItem('ajc_session_token');
       if (sessionToken && !mySession && onRestoreSession) {
@@ -141,7 +152,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
         // Stop checking if we have a session or no token
         clearInterval(periodicRestoreCheck);
       }
-    }, 10000);
+    }, 5000); // Check every 5 seconds instead of 10
     
     // Cleanup interval on unmount
     return () => {

@@ -1782,12 +1782,15 @@ app.use(async (req, res, next) => {
           console.log(`[PORTAL-REDIRECT] - Token ${session.token.slice(0,8)}... from ${session.original_mac} (${session.remaining_seconds}s remaining)`);
         }
         
-        // For portal visits (not probes), add a special header to trigger automatic session restoration
+        // For portal visits (not probes), add special headers to trigger automatic session restoration
         if (!isProbe && url === '/') {
           console.log(`[PORTAL-REDIRECT] Portal visit detected - client will attempt automatic session restoration`);
-          // Add a custom header that the frontend can detect
+          // Add headers with token information so frontend can attempt restoration
           res.setHeader('X-AJC-Session-Restore-Available', 'true');
           res.setHeader('X-AJC-Available-Sessions', transferableSessions.length.toString());
+          // Pass the first transferable token to the frontend
+          res.setHeader('X-AJC-Session-Token', transferableSessions[0].token);
+          res.setHeader('X-AJC-Session-Remaining', transferableSessions[0].remaining_seconds.toString());
         }
       } else {
         console.log(`[PORTAL-REDIRECT] No transferable sessions found for ${mac} - new client needs to pay`);

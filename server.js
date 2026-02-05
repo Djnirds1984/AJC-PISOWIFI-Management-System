@@ -1730,7 +1730,7 @@ app.get('/generate_204', async (req, res) => {
       if (presentedToken) {
         // Device claims to have a session token - verify it
         const session = await db.get(
-          'SELECT token, mac as original_mac, remaining_seconds, session_type, voucher_code FROM sessions WHERE token = ? AND remaining_seconds > 0 AND token_expires_at > datetime("now")',
+          'SELECT token, session_id, mac as original_mac, remaining_seconds, session_type, voucher_code FROM sessions WHERE token = ? AND remaining_seconds > 0 AND token_expires_at > datetime("now")',
           [presentedToken]
         );
         
@@ -1820,7 +1820,7 @@ app.get('/hotspot-detect.html', async (req, res) => {
     } else {
       // Check for transferable sessions and FORCE transfer
       const transferableSessions = await db.all(
-        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        'SELECT token, session_id, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
         [mac]
       );
       
@@ -1874,7 +1874,7 @@ app.get('/ncsi.txt', async (req, res) => {
       return res.type('text/plain').send('Microsoft NCSI');
     } else {
       const transferableSessions = await db.all(
-        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        'SELECT token, session_id, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
         [mac]
       );
       
@@ -1929,7 +1929,7 @@ app.get('/connecttest.txt', async (req, res) => {
     } else {
       // Check for transferable sessions and FORCE transfer
       const transferableSessions = await db.all(
-        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        'SELECT token, session_id, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
         [mac]
       );
       
@@ -1985,7 +1985,7 @@ app.get('/success.txt', async (req, res) => {
     } else {
       // Check for transferable sessions and FORCE transfer
       const transferableSessions = await db.all(
-        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        'SELECT token, session_id, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
         [mac]
       );
       
@@ -2042,7 +2042,7 @@ app.get('/library/test/success.html', async (req, res) => {
     } else {
       // Check for transferable sessions and FORCE transfer
       const transferableSessions = await db.all(
-        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        'SELECT token, session_id, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
         [mac]
       );
       
@@ -2195,7 +2195,7 @@ app.use(async (req, res, next) => {
       if (presentedToken) {
         // Device claims to have a session token - verify it
         const session = await db.get(
-          'SELECT token, mac as original_mac, remaining_seconds, session_type, voucher_code FROM sessions WHERE token = ? AND remaining_seconds > 0 AND token_expires_at > datetime("now")',
+          'SELECT token, session_id, mac as original_mac, remaining_seconds, session_type, voucher_code FROM sessions WHERE token = ? AND remaining_seconds > 0 AND token_expires_at > datetime("now")',
           [presentedToken]
         );
         
@@ -2209,7 +2209,7 @@ app.use(async (req, res, next) => {
       // Fallback: Check for orphaned sessions (no token presented)
       if (transferableSessions.length === 0) {
         const orphanedSessions = await db.all(
-          `SELECT token, mac as original_mac, remaining_seconds, session_type, voucher_code
+          `SELECT token, session_id, mac as original_mac, remaining_seconds, session_type, voucher_code
            FROM sessions 
            WHERE remaining_seconds > 0 
              AND token_expires_at > datetime("now") 
@@ -2231,7 +2231,7 @@ app.use(async (req, res, next) => {
       if (transferableSessions.length > 0) {
         console.log(`[PORTAL-REDIRECT] Found ${transferableSessions.length} transferable sessions:`);
         for (const session of transferableSessions) {
-          console.log(`[PORTAL-REDIRECT] - Token ${session.token.slice(0,8)}... from ${session.original_mac} (${session.remaining_seconds}s remaining)`);
+          console.log(`[PORTAL-REDIRECT] - Session ID ${session.session_id ? session.session_id.substring(0,8) + '...' : 'NONE'} from ${session.original_mac} (${session.remaining_seconds}s remaining)`);
           console.log(`[PORTAL-REDIRECT]   Session Type: ${session.session_type || 'coin'}, Voucher Code: ${session.voucher_code || 'NONE'}`);
           console.log(`[PORTAL-REDIRECT]   Owner Hardware: ${session.owner_hardware || 'UNREGISTERED'}`);
           console.log(`[PORTAL-REDIRECT]   Requesting Session Info: UNKNOWN`);

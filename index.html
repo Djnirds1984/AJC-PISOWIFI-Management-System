@@ -4,10 +4,38 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>AJC PISOWIFI - Access Portal</title>
-    
-    <!-- Lightweight Custom CSS Framework -->
-    <link rel="stylesheet" href="/styles/lightweight.css">
-    
+    <!-- Local Tailwind CSS (Offline Support) -->
+    <script src="/dist/tailwind.js"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: { 
+              primary: 'var(--primary)',
+              slate: { 
+                50: 'var(--bg)', 
+                100: 'var(--slate-100)', 
+                200: 'var(--border)', 
+                400: 'var(--text-muted)', 
+                500: 'var(--text-muted)', 
+                600: 'var(--text-muted)', 
+                900: 'var(--text-main)', 
+                950: 'var(--text-main)' 
+              },
+              blue: {
+                100: 'rgba(var(--primary), 0.1)',
+                500: 'var(--primary)',
+                600: 'var(--primary)',
+                700: 'var(--primary-dark)'
+              },
+              white: 'var(--bg-card)',
+              black: 'var(--bg)' // Inverted for dark mode logic often
+            },
+            borderRadius: { '4xl': '2rem', '5xl': '3rem' }
+          }
+        }
+      }
+    </script>
     <script>
       // Instant Theme Restore
       (function() {
@@ -18,20 +46,26 @@
       })();
     </script>
     <style>
-      /* Lightweight Theme System */
+      /* PERFORMANCE OPTIMIZED THEME SYSTEM */
       :root, :root[data-theme="default"] {
-        --primary: #0066cc;
-        --primary-dark: #004499;
-        --bg: #f9fafb;
+        --primary: #2563eb;
+        --primary-dark: #1d4ed8;
+        --bg: #f8fafc;
         --bg-card: #ffffff;
-        --text-main: #111827;
-        --text-muted: #6b7280;
-        --border: #e5e7eb;
+        --text-main: #0f172a;
+        --text-muted: #64748b;
+        --border: #e2e8f0;
         --shadow-color: 0, 0, 0;
-        --radius-sm: 0.25rem;
-        --radius-md: 0.5rem;
-        --radius-lg: 0.75rem;
-        --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        --radius-sm: 0.5rem;
+        --radius-md: 1rem;
+        --radius-lg: 1.5rem;
+        --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        
+        /* Compatibility Aliases */
+        --white: var(--bg-card);
+        --slate-900: var(--text-main);
+        --slate-500: var(--text-muted);
+        --slate-100: var(--bg);
       }
 
       :root[data-theme="dark"] {
@@ -42,6 +76,28 @@
         --text-main: #f8fafc;
         --text-muted: #94a3b8;
         --border: #334155;
+        --shadow-color: 0, 0, 0;
+        
+        --white: var(--bg-card);
+        --slate-900: var(--text-main);
+        --slate-500: var(--text-muted);
+        --slate-100: var(--border);
+      }
+
+      :root[data-theme="eco"] {
+        --primary: #16a34a;
+        --primary-dark: #15803d;
+        --bg: #f0fdf4;
+        --bg-card: #ffffff;
+        --text-main: #14532d;
+        --text-muted: #65a30d;
+        --border: #dcfce7;
+        --shadow-color: 20, 83, 45;
+        
+        --white: var(--bg-card);
+        --slate-900: var(--text-main);
+        --slate-500: var(--text-muted);
+        --slate-100: var(--bg);
       }
 
       :root[data-theme="terminal"] {
@@ -52,7 +108,36 @@
         --text-main: #22c55e;
         --text-muted: #15803d;
         --border: #15803d;
+        --shadow-color: 0, 0, 0;
+        --radius-sm: 0;
+        --radius-md: 0;
+        --radius-lg: 0;
         --font-main: "Courier New", Courier, monospace;
+        
+        --white: var(--bg-card);
+        --slate-900: var(--text-main);
+        --slate-500: var(--text-muted);
+        --slate-100: var(--bg-card); /* High contrast */
+      }
+
+      :root[data-theme="light_minimal"] {
+        --primary: #3b82f6;
+        --primary-dark: #2563eb;
+        --bg: #ffffff;
+        --bg-card: #ffffff;
+        --text-main: #1e293b;
+        --text-muted: #64748b;
+        --border: #e5e7eb;
+        --shadow-color: 0, 0, 0;
+        --radius-sm: 0.5rem;
+        --radius-md: 0.75rem;
+        --radius-lg: 1rem;
+        --font-main: "Euclid Circular A", "Euclid Circular B", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        
+        --white: var(--bg-card);
+        --slate-900: var(--text-main);
+        --slate-500: var(--text-muted);
+        --slate-100: var(--bg);
       }
       
       * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -64,6 +149,7 @@
         line-height: 1.5;
         min-height: 100vh;
         transition: background-color 0.3s ease, color 0.3s ease;
+        font-feature-settings: "cv05" on, "cv08" on, "cv09" on;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
@@ -92,7 +178,123 @@
       @keyframes spin { to { transform: rotate(360deg); } }
       #splash p { color: var(--text-main); font-weight: 900; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; }
 
+      /* Core Layout Engine (Mimics Tailwind if CDN is missing) */
+      .flex { display: flex; }
+      .flex-col { flex-direction: column; }
+      .items-center { align-items: center; }
+      .justify-center { justify-content: center; }
+      .text-center { text-align: center; }
+      .w-full { width: 100%; }
+      .min-h-screen { min-height: 100vh; }
+      .p-8 { padding: 2rem; }
+      .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+      .mb-8 { margin-bottom: 2rem; }
+      .rounded-3xl { border-radius: var(--radius-lg); }
+      .shadow-xl { box-shadow: 0 20px 25px -5px rgba(var(--shadow-color), 0.1), 0 10px 10px -5px rgba(var(--shadow-color), 0.04); }
+      .uppercase { text-transform: uppercase; }
+      .font-black { font-weight: 900; }
+      
+      /* Theme-aware text colors */
+      .text-main { color: var(--text-main); }
+      .text-muted { color: var(--text-muted); }
+      .text-primary { color: var(--primary); }
+      .text-white { color: white; }
+      
+      /* Portal Specific Components */
+      .portal-container { min-height: 100vh; padding-bottom: 3rem; background: var(--bg); }
+      
+      .portal-header {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+        padding: 4rem 2rem 6rem 2rem;
+        text-align: center;
+        color: white;
+        border-bottom-left-radius: 50px;
+        border-bottom-right-radius: 50px;
+        box-shadow: 0 20px 40px rgba(var(--shadow-color), 0.25);
+        position: relative;
+      }
+      
+      /* Terminal Theme Overrides for Header */
+      :root[data-theme="terminal"] .portal-header {
+        background: var(--bg);
+        border-bottom: 2px solid var(--primary);
+        border-radius: 0;
+        box-shadow: none;
+        color: var(--primary);
+      }
+
+      .portal-card {
+        background: var(--bg-card);
+        margin: -3rem 1.5rem 2rem 1.5rem;
+        border: 1px solid var(--border);
+        padding: 2.5rem;
+        border-radius: 40px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08);
+        text-align: center;
+        border: 1px solid rgba(226, 232, 240, 0.6);
+        position: relative;
+        z-index: 50;
+      }
+
+      .portal-btn {
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        color: white;
+        padding: 1.5rem 2rem;
+        border-radius: 24px;
+        font-weight: 900;
+        text-transform: uppercase;
+        border: none;
+        width: 100%;
+        font-size: 1.25rem;
+        letter-spacing: 0.05em;
+        box-shadow: 0 15px 30px rgba(37, 99, 235, 0.35);
+        cursor: pointer;
+        display: block;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .portal-btn:active { transform: scale(0.96); box-shadow: 0 5px 15px rgba(37, 99, 235, 0.3); }
+
+      .rates-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1.25rem;
+        padding: 0 1.5rem;
+        margin-bottom: 2.5rem;
+      }
+
+      .rate-item {
+        background: white;
+        padding: 1.5rem 1rem;
+        border-radius: 30px;
+        text-align: center;
+        border: 1px solid #f1f5f9;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+      }
+
+      .rate-pesos { font-size: 1.875rem; font-weight: 900; color: var(--slate-900); display: block; }
+      .rate-time { font-size: 0.65rem; font-weight: 900; color: var(--primary); text-transform: uppercase; margin-top: 0.5rem; display: block; letter-spacing: 0.1em; }
+
       #root { min-height: 100vh; }
+
+      /* Modal Specifics */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(2, 6, 23, 0.95);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        z-index: 9999;
+      }
+      .modal-content {
+        background: white;
+        width: 100%;
+        max-width: 450px;
+        border-radius: 48px;
+        overflow: hidden;
+      }
     </style>
   <script type="importmap">
 {

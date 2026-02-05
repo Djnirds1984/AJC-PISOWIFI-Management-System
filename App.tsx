@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AdminTab, UserSession, Rate, WifiDevice } from './types';
 import LandingPage from './components/Portal/LandingPage';
-import SystemDashboard from './components/Admin/SystemDashboard-lightweight';
-import InterfacesList from './components/Admin/InterfacesList-lightweight';
+import SystemDashboard from './components/Admin/SystemDashboard';
+import InterfacesList from './components/Admin/InterfacesList';
 import RatesManager from './components/Admin/RatesManager';
 import VoucherManager from './components/Admin/VoucherManager';
 import NetworkSettings from './components/Admin/NetworkSettings';
@@ -20,6 +20,7 @@ import MultiWanSettings from './components/Admin/MultiWanSettings';
 import ChatManager from './components/Admin/ChatManager';
 import ZeroTierManager from './components/Admin/ZeroTierManager';
 import { apiClient } from './lib/api';
+import { initAdminTheme, setAdminTheme } from './lib/theme';
 
 const App: React.FC = () => {
 
@@ -72,10 +73,25 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    // Initialize theme based on current mode
+    if (isCurrentlyAdminPath()) {
+      // Set to light minimal theme for admin
+      setAdminTheme('light_minimal');
+    } else {
+      // Ensure portal always uses default theme (or specific portal theme logic)
+      setAdminTheme('default');
+    }
+
     loadData();
     const handleLocationChange = () => {
       const isNowAdmin = isCurrentlyAdminPath();
       setIsAdmin(isNowAdmin);
+      
+      if (isNowAdmin) {
+        setAdminTheme('light_minimal');
+      } else {
+        setAdminTheme('default');
+      }
     };
     window.addEventListener('popstate', handleLocationChange);
     
@@ -245,20 +261,10 @@ const App: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ 
-            width: '3rem', 
-            height: '3rem', 
-            border: '4px solid var(--border)', 
-            borderTop: '4px solid var(--primary)', 
-            borderRadius: '50%', 
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto 1rem'
-          }}></div>
-          <p style={{ color: 'var(--primary)', fontWeight: 600, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            AJC Core Initializing...
-          </p>
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-blue-600 font-bold tracking-widest uppercase text-xs">AJC Core Initializing...</p>
         </div>
       </div>
     );
@@ -266,63 +272,21 @@ const App: React.FC = () => {
 
   if (error) {
     return (
-      <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
-        <div style={{ 
-          maxWidth: '400px', 
-          width: '100%', 
-          background: 'var(--bg-card)', 
-          padding: '2rem', 
-          borderRadius: 'var(--radius-md)', 
-          border: '1px solid var(--border)',
-          textAlign: 'center'
-        }}>
-          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>⚠️</div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
-            System Offline
-          </h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '2rem' }}>{error}</p>
-          <button 
-            onClick={() => { setLoading(true); loadData(); }} 
-            style={{ 
-              width: '100%', 
-              background: 'var(--primary)', 
-              color: 'white', 
-              padding: '0.75rem', 
-              borderRadius: 'var(--radius)', 
-              border: 'none', 
-              fontWeight: 500,
-              cursor: 'pointer'
-            }}
-          >
-            Retry System Link
-          </button>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg border border-gray-200 text-center">
+          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">⚠️</div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2 uppercase tracking-tight">System Offline</h2>
+          <p className="text-gray-600 text-sm mb-8 leading-relaxed">{error}</p>
+          <button onClick={() => { setLoading(true); loadData(); }} className="w-full bg-blue-500 text-white py-3 rounded-lg font-medium hover:bg-blue-600 transition-colors">Retry System Link</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      <div style={{ position: 'fixed', bottom: '1rem', right: '1rem', zIndex: 999, display: window.innerWidth >= 768 ? 'block' : 'none' }}>
-        <button 
-          onClick={handleToggleAdmin} 
-          style={{ 
-            background: 'var(--primary)', 
-            color: 'white', 
-            padding: '0.75rem 1.25rem', 
-            borderRadius: '9999px', 
-            fontSize: '0.75rem', 
-            fontWeight: 500, 
-            textTransform: 'uppercase', 
-            letterSpacing: '0.05em',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
-          }}
-        >
+    <div className="min-h-screen bg-white font-['Euclid_Circular_A',_system-ui,_sans-serif]">
+      <div className="fixed bottom-4 right-4 z-[999] hidden md:block">
+        <button onClick={handleToggleAdmin} className="bg-blue-500 text-white px-5 py-3 rounded-full text-xs font-medium tracking-wide uppercase hover:bg-blue-600 shadow-lg transition-all flex items-center gap-2">
           <span>{isAdmin ? '🚪' : '🔐'}</span>
           {isAdmin ? 'Exit Admin' : 'Admin Login'}
         </button>
@@ -330,96 +294,38 @@ const App: React.FC = () => {
 
       {isAdmin ? (
         isAuthenticated ? (
-          <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)' }}>
+          <div className="flex h-screen overflow-hidden bg-gray-50 font-['Euclid_Circular_A',_system-ui,_sans-serif] selection:bg-blue-100">
             {/* Mobile Sidebar Overlay */}
             {sidebarOpen && (
               <div 
-                style={{ 
-                  position: 'fixed', 
-                  inset: 0, 
-                  background: 'rgba(0, 0, 0, 0.5)', 
-                  zIndex: 40,
-                  display: window.innerWidth < 768 ? 'block' : 'none'
-                }} 
+                className="fixed inset-0 bg-black/50 z-40 md:hidden animate-in fade-in duration-300" 
                 onClick={() => setSidebarOpen(false)}
               />
             )}
 
             {/* Sidebar */}
-            <aside style={{
-              position: 'fixed',
-              height: '100%',
-              width: sidebarOpen ? '240px' : '60px',
-              transform: sidebarOpen || window.innerWidth >= 768 ? 'translateX(0)' : 'translateX(-100%)',
-              background: 'var(--bg-card)',
-              color: 'var(--text-main)',
-              display: 'flex',
-              flexDirection: 'column',
-              transition: 'all 0.3s ease',
-              zIndex: 50,
-              borderRight: '1px solid var(--border)',
-              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)'
-            }}>
-              <div style={{ 
-                padding: '1rem', 
-                borderBottom: '1px solid var(--border)', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: sidebarOpen ? 'space-between' : 'center' 
-              }}>
+            <aside className={`
+              fixed md:relative h-full
+              ${sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64 md:translate-x-0 md:w-20'} 
+              bg-white text-gray-800 flex flex-col shrink-0 transition-all duration-300 ease-in-out z-50 border-r border-gray-200 shadow-sm
+            `}>
+              <div className={`p-4 border-b border-gray-200 flex items-center ${sidebarOpen ? 'justify-between' : 'justify-center'}`}>
                 {sidebarOpen ? (
                   <>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <div style={{ 
-                        width: '1.75rem', 
-                        height: '1.75rem', 
-                        background: 'var(--primary)', 
-                        borderRadius: 'var(--radius)', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
-                        fontWeight: 700, 
-                        fontSize: '0.75rem', 
-                        color: 'white' 
-                      }}>
-                        AJC
-                      </div>
-                      <h1 style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-main)' }}>PISOWIFI</h1>
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 bg-blue-500 rounded-lg flex items-center justify-center font-bold text-xs text-white">AJC</div>
+                      <h1 className="text-lg font-bold tracking-tight text-main">PISOWIFI</h1>
                     </div>
-                    <button 
-                      onClick={() => setSidebarOpen(false)} 
-                      style={{ 
-                        padding: '0.375rem', 
-                        background: 'transparent', 
-                        border: 'none', 
-                        borderRadius: 'var(--radius)', 
-                        color: 'var(--text-muted)', 
-                        cursor: 'pointer',
-                        display: window.innerWidth < 768 ? 'block' : 'none'
-                      }}
-                    >
+                    <button onClick={() => setSidebarOpen(false)} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 md:hidden">
                       ✕
                     </button>
                   </>
                 ) : (
-                  <div style={{ 
-                    width: '2rem', 
-                    height: '2rem', 
-                    background: 'var(--primary)', 
-                    borderRadius: 'var(--radius)', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    fontWeight: 700, 
-                    fontSize: '0.75rem', 
-                    color: 'white' 
-                  }}>
-                    A
-                  </div>
+                  <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-bold text-xs text-white">A</div>
                 )}
               </div>
               
-              <nav style={{ flex: 1, padding: sidebarOpen ? '0.75rem' : '0.5rem', overflowY: 'auto' }}>
+              <nav className={`flex-1 ${sidebarOpen ? 'p-3' : 'p-2'} space-y-1 overflow-y-auto scrollbar-hide`}>
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Dashboard} onClick={() => setActiveTab(AdminTab.Dashboard)} icon="📊" label="Dashboard" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Interfaces} onClick={() => setActiveTab(AdminTab.Interfaces)} icon="🔌" label="Interfaces" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Rates} onClick={() => setActiveTab(AdminTab.Rates)} icon="💰" label="Pricing" collapsed={!sidebarOpen} />
@@ -439,145 +345,58 @@ const App: React.FC = () => {
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Updater} onClick={() => setActiveTab(AdminTab.Updater)} icon="🚀" label="Updater" collapsed={!sidebarOpen} />
               </nav>
 
-              <div style={{ 
-                padding: '1rem', 
-                borderTop: '1px solid var(--border)', 
-                background: 'var(--bg)',
-                display: sidebarOpen ? 'block' : 'none'
-              }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <div style={{ 
-                      width: '0.5rem', 
-                      height: '0.5rem', 
-                      background: '#10b981', 
-                      borderRadius: '50%',
-                      animation: 'pulse 2s infinite'
-                    }}></div>
-                    {sidebarOpen && (
-                      <span style={{ 
-                        color: 'var(--text-muted)', 
-                        fontSize: '0.625rem', 
-                        fontWeight: 500, 
-                        textTransform: 'uppercase', 
-                        letterSpacing: '0.1em' 
-                      }}>
-                        v3.5.0-beta.1 ONLINE
-                      </span>
-                    )}
-                  </div>
-                  
-                  {/* Mobile Exit Button */}
-                  {sidebarOpen && (
-                    <button 
-                      onClick={handleToggleAdmin}
-                      style={{ 
-                        width: '100%', 
-                        background: '#fef2f2', 
-                        color: '#dc2626', 
-                        border: '1px solid #fecaca', 
-                        padding: '0.5rem 0.75rem', 
-                        borderRadius: 'var(--radius)', 
-                        fontSize: '0.75rem', 
-                        fontWeight: 500, 
-                        textTransform: 'uppercase', 
-                        letterSpacing: '0.05em',
-                        display: window.innerWidth < 768 ? 'flex' : 'none',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '0.5rem',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <span>🚪</span> Exit Admin
-                    </button>
-                  )}
-                </div>
+              <div className={`p-4 border-t border-gray-200 bg-gray-50 ${sidebarOpen ? 'block' : 'hidden md:block'}`}>
+                 <div className="flex flex-col gap-3">
+                   <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      {sidebarOpen && <span className="text-muted text-[9px] font-medium uppercase tracking-wider">v3.5.0-beta.1 ONLINE</span>}
+                   </div>
+                   
+                   {/* Mobile Exit Button */}
+                   {sidebarOpen && (
+                     <button 
+                       onClick={handleToggleAdmin}
+                       className="w-full bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-2 rounded-lg text-xs font-medium uppercase tracking-wide flex items-center justify-center gap-2 transition-colors md:hidden"
+                     >
+                       <span>🚪</span> Exit Admin
+                     </button>
+                   )}
+                 </div>
               </div>
             </aside>
 
             {/* Main Content */}
-            <main style={{ 
-              flex: 1, 
-              display: 'flex', 
-              flexDirection: 'column', 
-              minWidth: 0, 
-              background: 'var(--bg)', 
-              overflow: 'hidden',
-              marginLeft: sidebarOpen ? '240px' : '60px'
-            }}>
+            <main className="flex-1 flex flex-col min-w-0 bg-gray-50 overflow-hidden">
               {/* Compact Top Bar */}
-              <header style={{ 
-                height: '3.5rem', 
-                background: 'var(--bg-card)', 
-                borderBottom: '1px solid var(--border)', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'space-between', 
-                padding: '0 1rem',
-                zIndex: 30
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0 z-30">
+                <div className="flex items-center gap-3">
                   <button 
                     onClick={() => setSidebarOpen(!sidebarOpen)}
-                    style={{ 
-                      padding: '0.5rem', 
-                      background: 'transparent', 
-                      border: 'none', 
-                      borderRadius: 'var(--radius)', 
-                      color: 'var(--text-muted)', 
-                      cursor: 'pointer'
-                    }}
+                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
                   >
-                    ☰
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
                   </button>
-                  <h2 style={{ 
-                    fontSize: '0.875rem', 
-                    fontWeight: 700, 
-                    color: 'var(--text-main)', 
-                    textTransform: 'uppercase', 
-                    letterSpacing: '0.025em' 
-                  }}>
+                  <h2 className="text-sm font-bold text-main uppercase tracking-tight block">
                     {activeTab}
                   </h2>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <div style={{ 
-                    textAlign: 'right',
-                    display: window.innerWidth >= 768 ? 'block' : 'none'
-                  }}>
-                    <div style={{ fontSize: '0.625rem', fontWeight: 500, color: 'var(--text-main)', textTransform: 'uppercase' }}>
-                      Administrator
-                    </div>
-                    <div style={{ fontSize: '0.625rem', color: '#10b981', fontWeight: 500, textTransform: 'uppercase' }}>
-                      System Verified
-                    </div>
+                <div className="flex items-center gap-3">
+                  <div className="hidden md:flex flex-col items-end mr-2">
+                    <span className="text-[10px] font-medium text-main uppercase">Administrator</span>
+                    <span className="text-[9px] text-green-600 font-medium uppercase tracking-tighter">System Verified</span>
                   </div>
-                  <div style={{ 
-                    width: '2rem', 
-                    height: '2rem', 
-                    background: 'var(--primary)', 
-                    borderRadius: 'var(--radius)', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    color: 'white', 
-                    fontWeight: 700, 
-                    fontSize: '0.75rem'
-                  }}>
+                  <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center text-white font-bold text-xs shadow-sm">
                     AD
                   </div>
                 </div>
               </header>
 
               {/* Scrollable Content Area */}
-              <div style={{ 
-                flex: 1, 
-                overflowY: 'auto', 
-                padding: '1.5rem 2rem'
-              }}>
-                <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 scroll-smooth">
+                <div className="max-w-7xl mx-auto space-y-6">
                   {activeTab === AdminTab.Dashboard && <SystemDashboard />}
                   {activeTab === AdminTab.Interfaces && <InterfacesList />}
                   {activeTab === AdminTab.Rates && <RatesManager rates={rates} setRates={updateRates} />}
@@ -597,7 +416,7 @@ const App: React.FC = () => {
                   {activeTab === AdminTab.Updater && <SystemUpdater />}
                 </div>
                 {/* Bottom Spacer for Mobile */}
-                <div style={{ height: '5rem', display: window.innerWidth < 768 ? 'block' : 'none' }} />
+                <div className="h-20 md:hidden" />
               </div>
             </main>
           </div>
@@ -628,45 +447,16 @@ const SidebarItem: React.FC<{ active: boolean; onClick: () => void; icon: string
     onClick={disabled ? undefined : onClick} 
     title={collapsed ? label : undefined}
     disabled={disabled}
-    style={{
-      width: '100%',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.75rem',
-      padding: '0.625rem 0.75rem',
-      borderRadius: 'var(--radius)',
-      fontSize: '0.875rem',
-      fontWeight: 500,
-      transition: 'all 0.2s ease',
-      border: 'none',
-      cursor: disabled ? 'not-allowed' : 'pointer',
-      opacity: disabled ? 0.3 : 1,
-      background: active ? 'var(--primary)' : 'transparent',
-      color: active ? 'white' : 'var(--text-muted)',
-      justifyContent: collapsed ? 'center' : 'flex-start',
-      marginBottom: '0.25rem'
-    }}
-    onMouseEnter={(e) => {
-      if (!disabled && !active) {
-        e.currentTarget.style.background = 'var(--bg)';
-        e.currentTarget.style.color = 'var(--primary)';
-      }
-    }}
-    onMouseLeave={(e) => {
-      if (!disabled && !active) {
-        e.currentTarget.style.background = 'transparent';
-        e.currentTarget.style.color = 'var(--text-muted)';
-      }
-    }}
+    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group ${
+      disabled 
+        ? 'opacity-30 cursor-not-allowed' 
+        : active 
+          ? 'bg-blue-500 text-white shadow-sm' 
+          : 'text-muted hover:bg-blue-50 hover:text-blue-700'
+    } ${collapsed ? 'justify-center' : 'justify-start'}`}
   >
-    <span style={{ fontSize: '1.125rem', transform: active ? 'scale(1.1)' : 'scale(1)', transition: 'transform 0.2s ease' }}>
-      {icon}
-    </span>
-    {!collapsed && (
-      <span style={{ textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.75rem', fontWeight: 500 }}>
-        {label}
-      </span>
-    )}
+    <span className={`text-lg ${active ? 'scale-110' : 'group-hover:scale-110'} transition-transform`}>{icon}</span>
+    {!collapsed && <span className="uppercase tracking-wide text-xs font-medium">{label}</span>}
   </button>
 );
 

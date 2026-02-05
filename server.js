@@ -2183,6 +2183,35 @@ app.post('/api/sessions/restore', async (req, res) => {
       }
     }
     
+    // VOUCHER SESSION PROTECTION: Voucher sessions are bound to specific MAC+IP
+    if (session.session_type === 'voucher' || session.voucher_code) {
+      console.log(`[VOUCHER-RESTORE] Voucher session detected: ${session.voucher_code || 'mixed'}`);
+      
+      // Voucher sessions can only be restored on the EXACT same MAC address
+      if (session.mac !== mac) {
+        console.log(`[VOUCHER-RESTORE] Voucher session MAC mismatch: ${session.mac} != ${mac} - BLOCKING transfer`);
+        return res.status(403).json({ 
+          error: 'Voucher sessions are device-specific and cannot be transferred to other devices.' 
+        });
+      }
+      
+      // Same MAC, just update IP if needed (same device, different IP)
+      if (session.ip !== clientIp) {
+        console.log(`[VOUCHER-RESTORE] Updating voucher session IP: ${session.ip} -> ${clientIp}`);
+        await db.run('UPDATE sessions SET ip = ? WHERE token = ?', [clientIp, token]);
+        await network.whitelistMAC(mac, clientIp);
+      }
+      
+      return res.json({ 
+        success: true, 
+        remainingSeconds: session.remaining_seconds, 
+        isPaused: session.is_paused === 1,
+        sessionType: 'voucher',
+        message: 'Voucher session restored on original device'
+      });
+    }
+    
+    // COIN SESSION LOGIC: Regular MAC sync behavior for coin-based sessions
     // If same MAC, just update IP if needed
     if (session.mac === mac) {
        if (session.ip !== clientIp) {
@@ -2192,12 +2221,12 @@ app.post('/api/sessions/restore', async (req, res) => {
        return res.json({ success: true, remainingSeconds: session.remaining_seconds, isPaused: session.is_paused === 1 });
     }
 
-    // Different MAC - check if MAC sync is enabled
+    // Different MAC - check if MAC sync is enabled for coin sessions
     if (!isMacSyncEnabled) {
       return res.status(403).json({ error: 'MAC sync is disabled. Session can only be used on the original device.' });
     }
 
-    console.log(`[MAC-SYNC] Session token ${token} - transferring from ${session.mac} to ${mac}`);
+    console.log(`[MAC-SYNC] Coin session token ${token} - transferring from ${session.mac} to ${mac}`);
 
     // Check if the target MAC already has a different session
     const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
@@ -2439,10 +2468,11 @@ app.post('/api/vouchers/activate', async (req, res) => {
     
     console.log(`[Voucher] Device identified: ${mac} (${clientIp})`);
     
-    // Generate unique session ID for this voucher activation
+    // Generate unique session ID for this specific voucher activation
     const sessionId = `voucher_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    // Check if this specific session already has an active voucher
+    // Check if this SPECIFIC device session already has an active voucher
+    // We check by MAC + IP combination to ensure session-specific binding
     const existingVoucherSession = await db.get(`
       SELECT * FROM sessions 
       WHERE mac = ? AND ip = ? AND remaining_seconds > 0 AND voucher_code IS NOT NULL
@@ -2451,7 +2481,7 @@ app.post('/api/vouchers/activate', async (req, res) => {
     if (existingVoucherSession) {
       console.log(`[Voucher] Session ${mac}@${clientIp} already has active voucher: ${existingVoucherSession.voucher_code}`);
       return res.status(400).json({ 
-        error: `This session already has an active voucher (${existingVoucherSession.voucher_code}). Please wait for it to expire before using another voucher.` 
+        error: `This device already has an active voucher (${existingVoucherSession.voucher_code}). Please wait for it to expire before using another voucher.` 
       });
     }
     
@@ -2478,76 +2508,59 @@ app.post('/api/vouchers/activate', async (req, res) => {
     
     console.log(`[Voucher] Valid voucher found: ${voucher.code} (${voucher.minutes} minutes, ₱${voucher.price})`);
     
-    // Generate session token (MAC sync compatible with session ID binding)
+    // Generate session token for this specific session
     const token = crypto.randomBytes(16).toString('hex');
     const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
     const seconds = voucher.minutes * 60;
     
-    // Create/update session with SESSION ID binding (MAC sync enabled but session-specific)
+    // Create session with UNIQUE session ID (NOT MAC-based, session-specific)
+    // This prevents MAC sync from sharing voucher time across devices
     await db.run(`
       INSERT INTO sessions (
         id, mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, 
         token, token_expires_at, voucher_code, session_type
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'voucher')
-      ON CONFLICT(mac) DO UPDATE SET 
-        remaining_seconds = remaining_seconds + ?, 
-        total_paid = total_paid + ?, 
-        ip = ?, 
-        download_limit = CASE 
-          WHEN excluded.download_limit > 0 THEN excluded.download_limit 
-          ELSE download_limit 
-        END,
-        upload_limit = CASE 
-          WHEN excluded.upload_limit > 0 THEN excluded.upload_limit 
-          ELSE upload_limit 
-        END,
-        token = ?, 
-        token_expires_at = ?,
-        voucher_code = CASE 
-          WHEN voucher_code IS NULL THEN excluded.voucher_code 
-          ELSE voucher_code || ',' || excluded.voucher_code 
-        END,
-        session_type = CASE 
-          WHEN session_type = 'coin' AND excluded.session_type = 'voucher' THEN 'mixed'
-          WHEN session_type = 'voucher' AND excluded.session_type = 'voucher' THEN 'voucher'
-          ELSE excluded.session_type
-        END
     `, [
       sessionId, mac, clientIp, seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
-      token, tokenExpiresAt, voucher.code,
-      seconds, voucher.price, clientIp, token, tokenExpiresAt
+      token, tokenExpiresAt, voucher.code
     ]);
     
-    // Mark voucher as used with session ID binding
+    // Mark voucher as used with session ID binding (one voucher = one session)
     await db.run(`
       UPDATE vouchers 
       SET status = 'used', used_at = datetime('now'), used_by_mac = ?, used_by_ip = ?, 
-          session_token = ?, session_id = ?
+          session_id = ?
       WHERE id = ?
-    `, [mac, clientIp, token, sessionId, voucher.id]);
+    `, [mac, clientIp, sessionId, voucher.id]);
     
-    // Log voucher usage with session ID
-    await db.run(`
-      INSERT INTO voucher_usage_logs (
-        voucher_id, voucher_code, mac_address, ip_address, 
-        minutes_granted, price, session_token, session_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [voucher.id, voucher.code, mac, clientIp, voucher.minutes, voucher.price, token, sessionId]);
+    // Create voucher usage log for tracking
+    try {
+      await db.run(`
+        INSERT INTO voucher_usage_logs (
+          voucher_id, voucher_code, mac_address, ip_address, 
+          minutes_granted, price, session_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [voucher.id, voucher.code, mac, clientIp, voucher.minutes, voucher.price, sessionId]);
+    } catch (e) {
+      // Table might not exist, ignore for now
+      console.log('[Voucher] Usage log table not found, skipping log');
+    }
     
-    // Whitelist device (MAC sync enabled - all devices with same MAC get access)
+    // Whitelist device for this specific session
     await network.whitelistMAC(mac, clientIp);
     
-    console.log(`[Voucher] Successfully activated voucher ${voucher.code} for MAC ${mac} (${clientIp}) with session ID ${sessionId} - ${seconds}s, ₱${voucher.price} - MAC SYNC ENABLED`);
+    console.log(`[Voucher] Successfully activated voucher ${voucher.code} for session ${sessionId} (MAC: ${mac}, IP: ${clientIp}) - ${seconds}s, ₱${voucher.price} - SESSION-SPECIFIC BINDING`);
     
     res.json({
       success: true,
       mac,
       token,
+      sessionId,
       remainingSeconds: seconds,
       totalPaid: voucher.price,
       downloadLimit: voucher.download_limit,
       uploadLimit: voucher.upload_limit,
-      message: 'Voucher activated successfully! Internet access granted.'
+      message: 'Voucher activated successfully! Internet access granted for this device only.'
     });
     
   } catch (err) {

@@ -456,6 +456,13 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
             {mySession ? 'ADD MORE TIME' : 'INSERT COIN'}
           </button>
           
+          <button 
+            onClick={() => setShowVoucherModal(true)}
+            className="mt-3 w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl hover:from-purple-700 hover:to-pink-700 transition-all active:scale-95 flex items-center justify-center gap-2"
+          >
+            <span>🎫</span> USE VOUCHER CODE
+          </button>
+          
           {!mySession && onRestoreSession && (
             <button 
               onClick={onRestoreSession}
@@ -531,6 +538,18 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
             setCoinSlotLockId(null);
           }}
           rates={activeRates}
+        />
+      )}
+      
+      {showVoucherModal && (
+        <VoucherModal 
+          isOpen={showVoucherModal}
+          onClose={() => setShowVoucherModal(false)}
+          onVoucherActivated={(session) => {
+            onSessionStart(session);
+            setShowVoucherModal(false);
+            if (refreshSessions) refreshSessions();
+          }}
         />
       )}
       

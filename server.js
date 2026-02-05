@@ -1521,22 +1521,49 @@ app.get('/generate_204', async (req, res) => {
       console.log(`[CAPTIVE-DETECT] Authorized client ${mac} - returning 204 (internet available)`);
       return res.status(204).send();
     } else {
-      // Check for transferable sessions
+      // Check for transferable sessions and FORCE transfer
       const transferableSessions = await db.all(
-        'SELECT token FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
         [mac]
       );
       
       if (transferableSessions.length > 0) {
-        console.log(`[CAPTIVE-DETECT] New MAC ${mac} with transferable sessions - redirecting to portal for restoration`);
-        // Force redirect to portal page so JavaScript can run session restoration
+        console.log(`[CAPTIVE-DETECT] New MAC ${mac} with transferable sessions - FORCING session transfer`);
+        
+        // FORCE TRANSFER IMMEDIATELY
+        try {
+          const firstToken = transferableSessions[0].token;
+          const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
+          
+          if (oldSession && !oldSession.voucher_code) {
+            console.log(`[CAPTIVE-DETECT] FORCING transfer: ${oldSession.mac} -> ${mac}`);
+            
+            // Block old MAC
+            await network.blockMAC(oldSession.mac, oldSession.ip);
+            await new Promise(r => setTimeout(r, 500));
+            
+            // Whitelist new MAC
+            await network.whitelistMAC(mac, clientIp);
+            
+            // Update session
+            await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
+            
+            console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
+            
+            // Return 204 to indicate internet is available
+            return res.status(204).send();
+          }
+        } catch (e) {
+          console.error(`[CAPTIVE-DETECT] Error forcing transfer:`, e.message);
+        }
+        
+        // Fallback: redirect to portal
         return res.redirect(302, '/');
       }
     }
   }
   
   console.log(`[CAPTIVE-DETECT] Unauthorized client ${mac || 'unknown'} - redirecting to portal`);
-  // Force redirect to portal page instead of serving HTML directly
   return res.redirect(302, '/');
 });
 
@@ -1549,20 +1576,36 @@ app.get('/hotspot-detect.html', async (req, res) => {
     if (session) {
       return res.type('text/plain').send('Success');
     } else {
-      // Check for transferable sessions
+      // Check for transferable sessions and FORCE transfer
       const transferableSessions = await db.all(
-        'SELECT token FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
         [mac]
       );
       
       if (transferableSessions.length > 0) {
-        console.log(`[CAPTIVE-DETECT] hotspot-detect: New MAC ${mac} with transferable sessions - redirecting to portal`);
+        console.log(`[CAPTIVE-DETECT] hotspot-detect: New MAC ${mac} - FORCING session transfer`);
+        
+        try {
+          const firstToken = transferableSessions[0].token;
+          const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
+          
+          if (oldSession && !oldSession.voucher_code) {
+            await network.blockMAC(oldSession.mac, oldSession.ip);
+            await new Promise(r => setTimeout(r, 500));
+            await network.whitelistMAC(mac, clientIp);
+            await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
+            console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER: ${oldSession.mac} -> ${mac}`);
+            return res.type('text/plain').send('Success');
+          }
+        } catch (e) {
+          console.error(`[CAPTIVE-DETECT] Error:`, e.message);
+        }
+        
         return res.redirect(302, '/');
       }
     }
   }
   
-  // Not authorized - redirect to portal
   return res.redirect(302, '/');
 });
 
@@ -1575,20 +1618,32 @@ app.get('/ncsi.txt', async (req, res) => {
     if (session) {
       return res.type('text/plain').send('Microsoft NCSI');
     } else {
-      // Check for transferable sessions
       const transferableSessions = await db.all(
-        'SELECT token FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
         [mac]
       );
       
       if (transferableSessions.length > 0) {
-        console.log(`[CAPTIVE-DETECT] ncsi.txt: New MAC ${mac} with transferable sessions - redirecting to portal`);
+        console.log(`[CAPTIVE-DETECT] ncsi.txt: FORCING transfer for ${mac}`);
+        try {
+          const firstToken = transferableSessions[0].token;
+          const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
+          if (oldSession && !oldSession.voucher_code) {
+            await network.blockMAC(oldSession.mac, oldSession.ip);
+            await new Promise(r => setTimeout(r, 500));
+            await network.whitelistMAC(mac, clientIp);
+            await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
+            console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER: ${oldSession.mac} -> ${mac}`);
+            return res.type('text/plain').send('Microsoft NCSI');
+          }
+        } catch (e) {
+          console.error(`[CAPTIVE-DETECT] Error:`, e.message);
+        }
         return res.redirect(302, '/');
       }
     }
   }
   
-  // Not authorized - redirect to portal
   return res.redirect(302, '/');
 });
 
@@ -1601,14 +1656,28 @@ app.get('/connecttest.txt', async (req, res) => {
     if (session) {
       return res.type('text/plain').send('Success');
     } else {
-      // Check for transferable sessions
+      // Check for transferable sessions and FORCE transfer
       const transferableSessions = await db.all(
-        'SELECT token FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
         [mac]
       );
       
       if (transferableSessions.length > 0) {
-        console.log(`[CAPTIVE-DETECT] connecttest.txt: New MAC ${mac} with transferable sessions - redirecting to portal`);
+        console.log(`[CAPTIVE-DETECT] connecttest.txt: FORCING transfer for ${mac}`);
+        try {
+          const firstToken = transferableSessions[0].token;
+          const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
+          if (oldSession && !oldSession.voucher_code) {
+            await network.blockMAC(oldSession.mac, oldSession.ip);
+            await new Promise(r => setTimeout(r, 500));
+            await network.whitelistMAC(mac, clientIp);
+            await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
+            console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER: ${oldSession.mac} -> ${mac}`);
+            return res.type('text/plain').send('Success');
+          }
+        } catch (e) {
+          console.error(`[CAPTIVE-DETECT] Error:`, e.message);
+        }
         return res.redirect(302, '/');
       }
     }
@@ -1627,14 +1696,28 @@ app.get('/success.txt', async (req, res) => {
     if (session) {
       return res.type('text/plain').send('Success');
     } else {
-      // Check for transferable sessions
+      // Check for transferable sessions and FORCE transfer
       const transferableSessions = await db.all(
-        'SELECT token FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
         [mac]
       );
       
       if (transferableSessions.length > 0) {
-        console.log(`[CAPTIVE-DETECT] success.txt: New MAC ${mac} with transferable sessions - redirecting to portal`);
+        console.log(`[CAPTIVE-DETECT] success.txt: FORCING transfer for ${mac}`);
+        try {
+          const firstToken = transferableSessions[0].token;
+          const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
+          if (oldSession && !oldSession.voucher_code) {
+            await network.blockMAC(oldSession.mac, oldSession.ip);
+            await new Promise(r => setTimeout(r, 500));
+            await network.whitelistMAC(mac, clientIp);
+            await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
+            console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER: ${oldSession.mac} -> ${mac}`);
+            return res.type('text/plain').send('Success');
+          }
+        } catch (e) {
+          console.error(`[CAPTIVE-DETECT] Error:`, e.message);
+        }
         return res.redirect(302, '/');
       }
     }
@@ -1654,14 +1737,28 @@ app.get('/library/test/success.html', async (req, res) => {
     if (session) {
       return res.type('text/plain').send('Success');
     } else {
-      // Check for transferable sessions
+      // Check for transferable sessions and FORCE transfer
       const transferableSessions = await db.all(
-        'SELECT token FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
         [mac]
       );
       
       if (transferableSessions.length > 0) {
-        console.log(`[CAPTIVE-DETECT] library/test/success.html: New MAC ${mac} with transferable sessions - redirecting to portal`);
+        console.log(`[CAPTIVE-DETECT] library/test/success.html: FORCING transfer for ${mac}`);
+        try {
+          const firstToken = transferableSessions[0].token;
+          const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
+          if (oldSession && !oldSession.voucher_code) {
+            await network.blockMAC(oldSession.mac, oldSession.ip);
+            await new Promise(r => setTimeout(r, 500));
+            await network.whitelistMAC(mac, clientIp);
+            await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
+            console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER: ${oldSession.mac} -> ${mac}`);
+            return res.type('text/plain').send('Success');
+          }
+        } catch (e) {
+          console.error(`[CAPTIVE-DETECT] Error:`, e.message);
+        }
         return res.redirect(302, '/');
       }
     }

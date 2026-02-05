@@ -1779,20 +1779,43 @@ app.get('/generate_204', async (req, res) => {
           console.log(`========================================`);
         });
         
-        // Session ID system: No MAC transfer needed - device identified by Session ID
-        const sessionIdToShow = transferableSessions[0].session_id || 'UNKNOWN';
-        console.log(`[SESSION-ID] Device authenticated via Session ID: ${sessionIdToShow.substring(0,8)}...`);
-        console.log(`[SESSION-ID] MAC changed from ${transferableSessions[0].original_mac} to ${mac} - Session ID persists`);
+        // Session ID system: Create NEW unique Session ID for roaming device
+        const oldSession = transferableSessions[0];
+        const newSessionId = crypto.randomUUID(); // Generate new unique Session ID for new device
         
-        // Grant immediate internet access using Session ID
+        console.log(`[SESSION-ID] 🚨 SECURITY ALERT: Device roaming detected`);
+        console.log(`[SESSION-ID] Old Device: ${oldSession.original_mac} (Session ID: ${oldSession.session_id?.substring(0,8)}...)`);
+        console.log(`[SESSION-ID] New Device: ${mac} (NEW Session ID: ${newSessionId.substring(0,8)}...)`);
+        console.log(`[SESSION-ID] ⚠️  PREVENTING Session ID sharing between devices`);
+        
+        // Grant internet access to new device with NEW Session ID
         try {
           await network.whitelistMAC(mac, clientIp);
           console.log(`[SESSION-ID] ✅ Granted internet access to new MAC: ${mac}`);
           
-          // Update session with new MAC but keep same Session ID
-          const firstToken = transferableSessions[0].token;
-          await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
-          console.log(`[SESSION-ID] ✅ Session updated with new MAC: ${mac}`);
+          // Create COMPLETELY NEW session with transferred time but NEW Session ID
+          await db.run(
+            `INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token, token_expires_at, session_id, connected_at, session_type, voucher_code) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)`,
+            [
+              mac, 
+              clientIp, 
+              oldSession.remaining_seconds,
+              oldSession.total_paid || 0,
+              oldSession.download_limit || 0,
+              oldSession.upload_limit || 0,
+              crypto.randomBytes(16).toString('hex'), // New unique token
+              new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // New expiration
+              newSessionId,
+              oldSession.session_type || 'coin',
+              oldSession.voucher_code || null
+            ]
+          );
+          
+          // Immediately expire the old session to prevent sharing
+          await db.run('UPDATE sessions SET remaining_seconds = 0 WHERE session_id = ?', [oldSession.session_id]);
+          console.log(`[SESSION-ID] ✅ Created NEW session with unique Session ID: ${newSessionId.substring(0,8)}...`);
+          console.log(`[SESSION-ID] 🔒 Expired old session to prevent sharing: ${oldSession.session_id?.substring(0,8)}...`);
           
           return res.status(204).send();
         } catch (err) {
@@ -1834,19 +1857,43 @@ app.get('/hotspot-detect.html', async (req, res) => {
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
           
           if (oldSession) {
-            // Session ID system: No hardware validation needed - Session ID identifies device
-            const sessionIdToShow = oldSession.session_id || 'UNKNOWN';
-            console.log(`[SESSION-ID] Device authenticated via Session ID: ${sessionIdToShow.substring(0,8)}...`);
-            console.log(`[SESSION-ID] MAC changed from ${oldSession.mac} to ${mac} - Session ID persists`);
+            // Session ID system: Create NEW unique Session ID for roaming device
+            const oldSession = transferableSessions[0];
+            const newSessionId = crypto.randomUUID(); // Generate new unique Session ID for new device
             
-            // Grant immediate internet access using Session ID
+            console.log(`[SESSION-ID] 🚨 SECURITY ALERT: Device roaming detected`);
+            console.log(`[SESSION-ID] Old Device: ${oldSession.original_mac} (Session ID: ${oldSession.session_id?.substring(0,8)}...)`);
+            console.log(`[SESSION-ID] New Device: ${mac} (NEW Session ID: ${newSessionId.substring(0,8)}...)`);
+            console.log(`[SESSION-ID] ⚠️  PREVENTING Session ID sharing between devices`);
+            
+            // Grant internet access to new device with NEW Session ID
             try {
               await network.whitelistMAC(mac, clientIp);
               console.log(`[SESSION-ID] ✅ Granted internet access to new MAC: ${mac}`);
               
-              // Update session with new MAC but keep same Session ID
-              await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
-              console.log(`[SESSION-ID] ✅ Session updated with new MAC: ${mac}`);
+              // Create COMPLETELY NEW session with transferred time but NEW Session ID
+              await db.run(
+                `INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token, token_expires_at, session_id, connected_at, session_type, voucher_code) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)`,
+                [
+                  mac, 
+                  clientIp, 
+                  oldSession.remaining_seconds,
+                  oldSession.total_paid || 0,
+                  oldSession.download_limit || 0,
+                  oldSession.upload_limit || 0,
+                  crypto.randomBytes(16).toString('hex'), // New unique token
+                  new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // New expiration
+                  newSessionId,
+                  oldSession.session_type || 'coin',
+                  oldSession.voucher_code || null
+                ]
+              );
+              
+              // Immediately expire the old session to prevent sharing
+              await db.run('UPDATE sessions SET remaining_seconds = 0 WHERE session_id = ?', [oldSession.session_id]);
+              console.log(`[SESSION-ID] ✅ Created NEW session with unique Session ID: ${newSessionId.substring(0,8)}...`);
+              console.log(`[SESSION-ID] 🔒 Expired old session to prevent sharing: ${oldSession.session_id?.substring(0,8)}...`);
               
               return res.status(204).send();
             } catch (err) {

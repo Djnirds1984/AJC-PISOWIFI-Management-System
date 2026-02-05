@@ -1744,7 +1744,7 @@ app.get('/generate_204', async (req, res) => {
       // Fallback: Check for orphaned sessions (no token presented)
       if (transferableSessions.length === 0) {
         const orphanedSessions = await db.all(
-          `SELECT token, mac as original_mac, remaining_seconds, session_type, voucher_code
+          `SELECT token, session_id, mac as original_mac, remaining_seconds, session_type, voucher_code
            FROM sessions 
            WHERE remaining_seconds > 0 
              AND token_expires_at > datetime("now") 
@@ -1780,7 +1780,8 @@ app.get('/generate_204', async (req, res) => {
         });
         
         // Session ID system: No MAC transfer needed - device identified by Session ID
-        console.log(`[SESSION-ID] Device authenticated via Session ID: ${sessionId.substring(0,8)}...`);
+        const sessionIdToShow = transferableSessions[0].session_id || 'UNKNOWN';
+        console.log(`[SESSION-ID] Device authenticated via Session ID: ${sessionIdToShow.substring(0,8)}...`);
         console.log(`[SESSION-ID] MAC changed from ${transferableSessions[0].original_mac} to ${mac} - Session ID persists`);
         
         // Grant immediate internet access using Session ID
@@ -1834,7 +1835,8 @@ app.get('/hotspot-detect.html', async (req, res) => {
           
           if (oldSession) {
             // Session ID system: No hardware validation needed - Session ID identifies device
-            console.log(`[SESSION-ID] Device authenticated via Session ID: ${sessionId.substring(0,8)}...`);
+            const sessionIdToShow = oldSession.session_id || 'UNKNOWN';
+            console.log(`[SESSION-ID] Device authenticated via Session ID: ${sessionIdToShow.substring(0,8)}...`);
             console.log(`[SESSION-ID] MAC changed from ${oldSession.mac} to ${mac} - Session ID persists`);
             
             // Grant immediate internet access using Session ID

@@ -1778,73 +1778,39 @@ app.get('/generate_204', async (req, res) => {
       if (transferableSessions.length > 0) {
         console.log(`[CAPTIVE-DETECT] New MAC ${mac} with transferable sessions - FORCING session transfer`);
         
-        // Log all transferable session tokens
+        // Log session information for Session ID system
         transferableSessions.forEach((sess, index) => {
           console.log(`========================================`);
-          console.log(`[DEVICE-TOKEN] CAPTIVE PORTAL TRANSFERABLE SESSION #${index + 1}`);
-          console.log(`[DEVICE-TOKEN] Session Token: ${sess.token}`);
-          console.log(`[DEVICE-TOKEN] Original MAC: ${sess.original_mac}`);
-          console.log(`[DEVICE-TOKEN] Remaining Time: ${sess.remaining_seconds} seconds`);
-          console.log(`[DEVICE-TOKEN] Session Type: ${sess.session_type || 'coin'}`);
-          console.log(`[DEVICE-TOKEN] Voucher Code: ${sess.voucher_code || 'NONE'}`);
-          console.log(`[DEVICE-TOKEN] Owner Hardware: ${sess.owner_hardware || 'UNREGISTERED'}`);
-          console.log(`[DEVICE-TOKEN] Requesting Hardware: ${req.headers['x-hardware-id'] || 'UNKNOWN'}`);
-          console.log(`[DEVICE-TOKEN] Target MAC: ${mac}`);
-          console.log(`[DEVICE-TOKEN] Timestamp: ${new Date().toISOString()}`);
+          console.log(`[SESSION-ID] AUTHENTICATED SESSION #${index + 1}`);
+          console.log(`[SESSION-ID] Session Token: ${sess.token}`);
+          console.log(`[SESSION-ID] Session ID: ${sess.session_id.substring(0,8)}...`);
+          console.log(`[SESSION-ID] Original MAC: ${sess.original_mac}`);
+          console.log(`[SESSION-ID] Current MAC: ${mac}`);
+          console.log(`[SESSION-ID] Remaining Time: ${sess.remaining_seconds} seconds`);
+          console.log(`[SESSION-ID] Session Type: ${sess.session_type || 'coin'}`);
+          console.log(`[SESSION-ID] Voucher Code: ${sess.voucher_code || 'NONE'}`);
+          console.log(`[SESSION-ID] Timestamp: ${new Date().toISOString()}`);
           console.log(`========================================`);
         });
         
-        // NEW: Instant MAC transfer for seamless roaming
-        console.log(`[INSTANT-SWAP] MAC transfer detected: ${transferableSessions[0].original_mac} -> ${mac}`);
+        // Session ID system: No MAC transfer needed - device identified by Session ID
+        console.log(`[SESSION-ID] Device authenticated via Session ID: ${sessionId.substring(0,8)}...`);
+        console.log(`[SESSION-ID] MAC changed from ${transferableSessions[0].original_mac} to ${mac} - Session ID persists`);
         
+        // Grant immediate internet access using Session ID
         try {
-          const firstToken = transferableSessions[0].token;
-          const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
+          await network.whitelistMAC(mac, clientIp);
+          console.log(`[SESSION-ID] ✅ Granted internet access to new MAC: ${mac}`);
           
-          if (oldSession) {
-            // ACTION 1: Immediately revoke DNS access for Original MAC
-            console.log(`[INSTANT-SWAP] 🔥 Blocking old MAC: ${oldSession.mac} (${oldSession.ip})`);
-            try {
-              await network.blockMAC(oldSession.mac, oldSession.ip);
-              console.log(`[INSTANT-SWAP] ✅ Old MAC blocked successfully`);
-            } catch (blockErr) {
-              console.log(`[INSTANT-SWAP] Warning: Failed to block old MAC: ${blockErr.message}`);
-            }
-            
-            // Small delay to ensure blocking takes effect
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            // ACTION 2: Immediately grant DNS access for Requesting MAC
-            console.log(`[INSTANT-SWAP] 🔥 Whitelisting new MAC: ${mac} (${clientIp})`);
-            try {
-              await network.whitelistMAC(mac, clientIp);
-              console.log(`[INSTANT-SWAP] ✅ New MAC whitelisted successfully`);
-            } catch (whitelistErr) {
-              console.log(`[INSTANT-SWAP] Warning: Failed to whitelist new MAC: ${whitelistErr.message}`);
-            }
-            
-            // ACTION 3: Update database to bind token to new MAC
-            try {
-              await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
-              console.log(`[INSTANT-SWAP] ✅ Database updated - token now bound to ${mac}`);
-            } catch (dbErr) {
-              console.log(`[INSTANT-SWAP] Warning: Database update failed: ${dbErr.message}`);
-            }
-            
-            // Force immediate network refresh
-            try {
-              await network.forceNetworkRefresh(mac, clientIp);
-              console.log(`[INSTANT-SWAP] ✅ Network refresh completed`);
-            } catch (refreshErr) {
-              console.log(`[INSTANT-SWAP] Warning: Network refresh failed: ${refreshErr.message}`);
-            }
-            
-            console.log(`[INSTANT-SWAP] ✅ Seamless MAC transfer completed`);
-            console.log(`[INSTANT-SWAP] Returning 204 to close captive portal instantly`);
-            return res.status(204).send();
-          }
-        } catch (e) {
-          console.error(`[INSTANT-SWAP] Error during transfer:`, e.message);
+          // Update session with new MAC but keep same Session ID
+          const firstToken = transferableSessions[0].token;
+          await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
+          console.log(`[SESSION-ID] ✅ Session updated with new MAC: ${mac}`);
+          
+          return res.status(204).send();
+        } catch (err) {
+          console.error(`[SESSION-ID] Error granting access:`, err.message);
+          return res.status(500).json({ error: 'Failed to grant access' });
         }
         
         // Fallback: redirect to portal

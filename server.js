@@ -31,6 +31,24 @@ process.on('SIGHUP', () => {
   console.log('[SYSTEM] Received SIGHUP. Ignoring to prevent process termination on disconnect.');
 });
 
+// Helper function to register device hardware for session ownership
+async function registerDeviceHardware(mac, hardwareSignature) {
+  if (!hardwareSignature || hardwareSignature === 'unknown') return;
+  
+  try {
+    // Register or update device hardware signature
+    await db.run(`
+      INSERT OR REPLACE INTO device_registry (mac, hardware_signature, last_seen, session_count)
+      VALUES (?, ?, CURRENT_TIMESTAMP, 
+        COALESCE((SELECT session_count FROM device_registry WHERE mac = ?), 0))
+    `, [mac, hardwareSignature, mac]);
+    
+    console.log(`[HARDWARE] Registered device ${mac} with signature: ${hardwareSignature.substring(0, 16)}...`);
+  } catch (e) {
+    console.log(`[HARDWARE] Failed to register device ${mac}: ${e.message}`);
+  }
+}
+
 // GLOBAL ERROR HANDLERS TO PREVENT CRASHES
 process.on('uncaughtException', (err) => {
   console.error('[SYSTEM] Uncaught Exception:', err);
@@ -1716,9 +1734,20 @@ app.get('/generate_204', async (req, res) => {
       return res.status(204).send();
     } else {
       // Check for transferable sessions and FORCE transfer
+      // HARDWARE-BASED OWNERSHIP: Only allow transfers to sessions owned by THIS device
       const transferableSessions = await db.all(
-        'SELECT token, mac as original_mac, remaining_seconds, session_type, voucher_code FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? AND session_type != ? AND voucher_code IS NULL LIMIT 1',
-        [mac, 'voucher']
+        `SELECT s.token, s.mac as original_mac, s.remaining_seconds, s.session_type, s.voucher_code, s.hardware_id,
+                d.hardware_signature as owner_hardware
+         FROM sessions s
+         LEFT JOIN device_registry d ON s.mac = d.mac
+         WHERE s.remaining_seconds > 0 
+           AND s.token_expires_at > datetime("now") 
+           AND s.mac != ? 
+           AND s.session_type = ? 
+           AND s.voucher_code IS NULL
+           AND (d.hardware_signature IS NULL OR d.hardware_signature = ?)
+         LIMIT 1`,
+        [mac, 'coin', req.headers['x-hardware-id'] || 'unknown']
       );
       
       if (transferableSessions.length > 0) {
@@ -1733,6 +1762,8 @@ app.get('/generate_204', async (req, res) => {
           console.log(`[DEVICE-TOKEN] Remaining Time: ${sess.remaining_seconds} seconds`);
           console.log(`[DEVICE-TOKEN] Session Type: ${sess.session_type || 'coin'}`);
           console.log(`[DEVICE-TOKEN] Voucher Code: ${sess.voucher_code || 'NONE'}`);
+          console.log(`[DEVICE-TOKEN] Owner Hardware: ${sess.owner_hardware || 'UNREGISTERED'}`);
+          console.log(`[DEVICE-TOKEN] Requesting Hardware: ${req.headers['x-hardware-id'] || 'UNKNOWN'}`);
           console.log(`[DEVICE-TOKEN] Target MAC: ${mac}`);
           console.log(`[DEVICE-TOKEN] Timestamp: ${new Date().toISOString()}`);
           console.log(`========================================`);
@@ -2585,15 +2616,29 @@ app.use(async (req, res, next) => {
       console.log(`[PORTAL-REDIRECT] New MAC detected: ${mac} (${clientIp}) - checking for transferable sessions...`);
       
       // Check if there are any sessions that could be transferred to this device
+      // HARDWARE-BASED OWNERSHIP: Only allow transfers to sessions owned by THIS device
       const transferableSessions = await db.all(
-        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 5',
-        [mac]
+        `SELECT s.token, s.mac as original_mac, s.remaining_seconds, s.session_type, s.voucher_code, s.hardware_id,
+                d.hardware_signature as owner_hardware
+         FROM sessions s
+         LEFT JOIN device_registry d ON s.mac = d.mac
+         WHERE s.remaining_seconds > 0 
+           AND s.token_expires_at > datetime("now") 
+           AND s.mac != ? 
+           AND s.session_type = ? 
+           AND s.voucher_code IS NULL
+           AND (d.hardware_signature IS NULL OR d.hardware_signature = ?)
+         LIMIT 5`,
+        [mac, 'coin', req.headers['x-hardware-id'] || 'unknown']
       );
       
       if (transferableSessions.length > 0) {
         console.log(`[PORTAL-REDIRECT] Found ${transferableSessions.length} transferable sessions:`);
         for (const session of transferableSessions) {
           console.log(`[PORTAL-REDIRECT] - Token ${session.token.slice(0,8)}... from ${session.original_mac} (${session.remaining_seconds}s remaining)`);
+          console.log(`[PORTAL-REDIRECT]   Session Type: ${session.session_type || 'coin'}, Voucher Code: ${session.voucher_code || 'NONE'}`);
+          console.log(`[PORTAL-REDIRECT]   Owner Hardware: ${session.owner_hardware || 'UNREGISTERED'}`);
+          console.log(`[PORTAL-REDIRECT]   Requesting Hardware: ${req.headers['x-hardware-id'] || 'UNKNOWN'}`);
         }
         
         // IMPLEMENTING: Strict fingerprint validation before transfer (Ghost Token fix)
@@ -2947,6 +2992,9 @@ app.post('/api/sessions/start', async (req, res) => {
         [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, token, tokenExpiresAt, deviceUUID, deviceFingerprint]
       );
       console.log(`[SESSION] Created new session for device UUID: ${deviceUUID} with fingerprint`);
+            
+      // Register device hardware for ownership tracking
+      await registerDeviceHardware(mac, req.headers['x-hardware-id']);
     }
     
     // Whitelist the device in firewall
@@ -5882,6 +5930,9 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
           ]
         );
         
+        // Register device hardware for ownership tracking
+        await registerDeviceHardware(updatedDevice.mac, 'admin_created');
+        
         console.log(`[ADMIN] Created new session for ${updatedDevice.mac}: ${sessionToken} (${sessionTime}s, expires: ${tokenExpiresAt})`);
       }
     }
@@ -5976,6 +6027,9 @@ app.post('/api/devices/:id/connect', requireAdmin, async (req, res) => {
         'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, token, token_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [device.mac, device.ip, sessionTime, 0, Date.now(), sessionToken, tokenExpiresAt]
       );
+      
+      // Register device hardware for ownership tracking
+      await registerDeviceHardware(device.mac, 'admin_created');
       
       console.log(`[ADMIN] Created new session for ${device.mac}: ${sessionToken} (${sessionTime}s)`);
     }

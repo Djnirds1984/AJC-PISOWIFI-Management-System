@@ -2332,18 +2332,14 @@ app.post('/api/vouchers/activate', async (req, res) => {
     
     console.log(`[Voucher] Device identified: ${mac} (${clientIp})`);
     
-    // Generate unique session ID for this specific voucher activation
-    const sessionId = `voucher_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Check if this SPECIFIC device session already has an active voucher
-    // We check by MAC + IP combination to ensure session-specific binding
+    // Check if this device already has an active voucher session
     const existingVoucherSession = await db.get(`
       SELECT * FROM sessions 
-      WHERE mac = ? AND ip = ? AND remaining_seconds > 0 AND voucher_code IS NOT NULL
-    `, [mac, clientIp]);
+      WHERE mac = ? AND remaining_seconds > 0 AND voucher_code IS NOT NULL
+    `, [mac]);
     
     if (existingVoucherSession) {
-      console.log(`[Voucher] Session ${mac}@${clientIp} already has active voucher: ${existingVoucherSession.voucher_code}`);
+      console.log(`[Voucher] MAC ${mac} already has active voucher: ${existingVoucherSession.voucher_code}`);
       return res.status(400).json({ 
         error: `This device already has an active voucher (${existingVoucherSession.voucher_code}). Please wait for it to expire before using another voucher.` 
       });
@@ -2377,54 +2373,66 @@ app.post('/api/vouchers/activate', async (req, res) => {
     const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
     const seconds = voucher.minutes * 60;
     
-    // Create session with UNIQUE session ID (NOT MAC-based, session-specific)
-    // This prevents MAC sync from sharing voucher time across devices
-    await db.run(`
-      INSERT INTO sessions (
-        id, mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, 
-        token, token_expires_at, voucher_code, session_type
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'voucher')
-    `, [
-      sessionId, mac, clientIp, seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
-      token, tokenExpiresAt, voucher.code
-    ]);
+    // Check if MAC already has any session (voucher or coin)
+    const existingSession = await db.get('SELECT * FROM sessions WHERE mac = ?', [mac]);
     
-    // Mark voucher as used with session ID binding (one voucher = one session)
-    await db.run(`
-      UPDATE vouchers 
-      SET status = 'used', used_at = datetime('now'), used_by_mac = ?, used_by_ip = ?, 
-          session_id = ?
-      WHERE id = ?
-    `, [mac, clientIp, sessionId, voucher.id]);
-    
-    // Create voucher usage log for tracking
-    try {
+    if (existingSession) {
+      // If existing session has voucher, don't allow another voucher
+      if (existingSession.voucher_code) {
+        console.log(`[Voucher] MAC ${mac} already has active voucher: ${existingSession.voucher_code}`);
+        return res.status(400).json({ 
+          error: `This device already has an active voucher (${existingSession.voucher_code}). Please wait for it to expire before using another voucher.` 
+        });
+      }
+      
+      // Replace existing coin session with voucher session
       await db.run(`
-        INSERT INTO voucher_usage_logs (
-          voucher_id, voucher_code, mac_address, ip_address, 
-          minutes_granted, price, session_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [voucher.id, voucher.code, mac, clientIp, voucher.minutes, voucher.price, sessionId]);
-    } catch (e) {
-      // Table might not exist, ignore for now
-      console.log('[Voucher] Usage log table not found, skipping log');
+        UPDATE sessions SET 
+          remaining_seconds = ?, total_paid = ?, download_limit = ?, upload_limit = ?,
+          token = ?, token_expires_at = ?, voucher_code = ?, ip = ?
+        WHERE mac = ?
+      `, [
+        seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
+        token, tokenExpiresAt, voucher.code, clientIp, mac
+      ]);
+      
+      console.log(`[Voucher] Updated existing session for ${mac} with voucher ${voucher.code}`);
+    } else {
+      // Create new voucher session (using MAC as primary key)
+      await db.run(`
+        INSERT INTO sessions (
+          mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, 
+          token, token_expires_at, voucher_code, connected_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `, [
+        mac, clientIp, seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
+        token, tokenExpiresAt, voucher.code
+      ]);
+      
+      console.log(`[Voucher] Created new voucher session for ${mac}`);
     }
     
-    // Whitelist device for this specific session
+    // Mark voucher as used (without session_id since sessions table doesn't have id column)
+    await db.run(`
+      UPDATE vouchers 
+      SET status = 'used', used_at = datetime('now'), used_by_mac = ?, used_by_ip = ?
+      WHERE id = ?
+    `, [mac, clientIp, voucher.id]);
+    
+    // Whitelist device for internet access
     await network.whitelistMAC(mac, clientIp);
     
-    console.log(`[Voucher] Successfully activated voucher ${voucher.code} for session ${sessionId} (MAC: ${mac}, IP: ${clientIp}) - ${seconds}s, ₱${voucher.price} - SESSION-SPECIFIC BINDING`);
+    console.log(`[Voucher] Successfully activated voucher ${voucher.code} for MAC: ${mac}, IP: ${clientIp} - ${seconds}s, ₱${voucher.price}`);
     
     res.json({
       success: true,
       mac,
       token,
-      sessionId,
       remainingSeconds: seconds,
       totalPaid: voucher.price,
       downloadLimit: voucher.download_limit,
       uploadLimit: voucher.upload_limit,
-      message: 'Voucher activated successfully! Internet access granted for this device only.'
+      message: 'Voucher activated successfully! Internet access granted.'
     });
     
   } catch (err) {

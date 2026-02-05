@@ -1648,12 +1648,6 @@ app.get('/generate_204', async (req, res) => {
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
           
           if (oldSession) {
-            // BLOCK voucher sessions from transferring between devices
-            if (oldSession.session_type === 'voucher' || oldSession.voucher_code) {
-              console.log(`[CAPTIVE-DETECT] BLOCKING voucher session transfer: ${oldSession.mac} -> ${mac}`);
-              console.log(`[SECURITY-ALERT] Voucher session hijacking attempt blocked in captive portal`);
-              return next(); // Don't transfer voucher sessions
-            }
             console.log(`[CAPTIVE-DETECT] FORCING transfer: ${oldSession.mac} -> ${mac}`);
             
             // Block old MAC
@@ -1716,12 +1710,6 @@ app.get('/hotspot-detect.html', async (req, res) => {
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
           
           if (oldSession) {
-            // BLOCK voucher sessions from transferring between devices
-            if (oldSession.session_type === 'voucher' || oldSession.voucher_code) {
-              console.log(`[CAPTIVE-DETECT] BLOCKING voucher session transfer: ${oldSession.mac} -> ${mac}`);
-              console.log(`[SECURITY-ALERT] Voucher session hijacking attempt blocked in captive portal`);
-              return next(); // Don't transfer voucher sessions
-            }
             await network.blockMAC(oldSession.mac, oldSession.ip);
             await new Promise(r => setTimeout(r, 800));
             await network.whitelistMAC(mac, clientIp);
@@ -1769,12 +1757,6 @@ app.get('/ncsi.txt', async (req, res) => {
           const firstToken = transferableSessions[0].token;
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
           if (oldSession) {
-            // BLOCK voucher sessions from transferring between devices
-            if (oldSession.session_type === 'voucher' || oldSession.voucher_code) {
-              console.log(`[CAPTIVE-DETECT] BLOCKING voucher session transfer: ${oldSession.mac} -> ${mac}`);
-              console.log(`[SECURITY-ALERT] Voucher session hijacking attempt blocked in captive portal`);
-              return next(); // Don't transfer voucher sessions
-            }
             await network.blockMAC(oldSession.mac, oldSession.ip);
             await new Promise(r => setTimeout(r, 800));
             await network.whitelistMAC(mac, clientIp);
@@ -1822,12 +1804,6 @@ app.get('/connecttest.txt', async (req, res) => {
           const firstToken = transferableSessions[0].token;
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
           if (oldSession) {
-            // BLOCK voucher sessions from transferring between devices
-            if (oldSession.session_type === 'voucher' || oldSession.voucher_code) {
-              console.log(`[CAPTIVE-DETECT] BLOCKING voucher session transfer: ${oldSession.mac} -> ${mac}`);
-              console.log(`[SECURITY-ALERT] Voucher session hijacking attempt blocked in captive portal`);
-              return next(); // Don't transfer voucher sessions
-            }
             await network.blockMAC(oldSession.mac, oldSession.ip);
             await new Promise(r => setTimeout(r, 800));
             await network.whitelistMAC(mac, clientIp);
@@ -1876,12 +1852,6 @@ app.get('/success.txt', async (req, res) => {
           const firstToken = transferableSessions[0].token;
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
           if (oldSession) {
-            // BLOCK voucher sessions from transferring between devices
-            if (oldSession.session_type === 'voucher' || oldSession.voucher_code) {
-              console.log(`[CAPTIVE-DETECT] BLOCKING voucher session transfer: ${oldSession.mac} -> ${mac}`);
-              console.log(`[SECURITY-ALERT] Voucher session hijacking attempt blocked in captive portal`);
-              return next(); // Don't transfer voucher sessions
-            }
             await network.blockMAC(oldSession.mac, oldSession.ip);
             await new Promise(r => setTimeout(r, 800));
             await network.whitelistMAC(mac, clientIp);
@@ -1931,12 +1901,6 @@ app.get('/library/test/success.html', async (req, res) => {
           const firstToken = transferableSessions[0].token;
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
           if (oldSession) {
-            // BLOCK voucher sessions from transferring between devices
-            if (oldSession.session_type === 'voucher' || oldSession.voucher_code) {
-              console.log(`[CAPTIVE-DETECT] BLOCKING voucher session transfer: ${oldSession.mac} -> ${mac}`);
-              console.log(`[SECURITY-ALERT] Voucher session hijacking attempt blocked in captive portal`);
-              return next(); // Don't transfer voucher sessions
-            }
             await network.blockMAC(oldSession.mac, oldSession.ip);
             await new Promise(r => setTimeout(r, 800));
             await network.whitelistMAC(mac, clientIp);
@@ -2098,12 +2062,9 @@ app.use(async (req, res, next) => {
                 }
               }
               
-              // Check if this is a voucher session (cannot transfer)
-              if (session.session_type === 'voucher' || session.voucher_code) {
-                console.log(`[PORTAL-REDIRECT] Voucher session detected - cannot transfer to different MAC`);
-                console.log(`[SECURITY-ALERT] Blocking voucher session transfer in portal redirect`);
-                return next();
-              }
+              // Voucher sessions now allowed to transfer (same as coin sessions)
+              // Previously: if (session.session_type === 'voucher' || session.voucher_code) { return next(); }
+              console.log(`[PORTAL-REDIRECT] Session detected - allowing transfer for token ${firstToken.slice(0,8)}...`);
               
               // FORCE TRANSFER: Update session with new MAC and IP
               console.log(`[PORTAL-REDIRECT] FORCING session transfer: ${session.mac} -> ${mac}`);
@@ -2521,37 +2482,84 @@ app.post('/api/sessions/restore', async (req, res) => {
       }
     }
     
-    // VOUCHER SESSION PROTECTION: Voucher sessions are device-specific and cannot transfer
-    // Voucher time is bound to original MAC address, not transferable between devices
+    // VOUCHER SESSION LOGIC: Treat vouchers like coin sessions for roaming
+    // Voucher time is bound to session token, can transfer between MAC addresses
     if (session.session_type === 'voucher' || session.voucher_code) {
-      console.log(`[VOUCHER-PROTECT] Voucher session detected: ${session.voucher_code || 'mixed'}`);
+      console.log(`[VOUCHER-ROAM] Voucher session detected: ${session.voucher_code || 'mixed'} - allowing roaming transfer`);
       
-      // Voucher sessions can only be used on the EXACT same MAC address
-      if (session.mac !== mac) {
-        console.log(`[VOUCHER-PROTECT] Voucher session MAC mismatch: ${session.mac} != ${mac} - BLOCKING transfer`);
-        console.log(`[SECURITY-ALERT] Attempted voucher session hijacking blocked!`);
-        console.log(`[SECURITY-ALERT] Original owner: MAC=${session.mac}, IP=${session.ip}`);
-        console.log(`[SECURITY-ALERT] Requesting device: MAC=${mac}, IP=${clientIp}`);
-        return res.status(403).json({ 
-          error: 'Voucher sessions are device-specific and cannot be transferred to other devices.',
-          security_code: 'VOUCHER_DEVICE_MISMATCH'
+      // Same MAC, just update IP if needed
+      if (session.mac === mac) {
+        if (session.ip !== clientIp) {
+          console.log(`[VOUCHER-ROAM] Updating voucher session IP: ${session.ip} -> ${clientIp}`);
+          await db.run('UPDATE sessions SET ip = ? WHERE token = ?', [clientIp, token]);
+          await network.whitelistMAC(mac, clientIp);
+        }
+        return res.json({ 
+          success: true, 
+          remainingSeconds: session.remaining_seconds, 
+          isPaused: session.is_paused === 1,
+          sessionType: 'voucher',
+          message: 'Voucher session restored on same device'
         });
       }
       
-      // Same MAC, just update IP if needed (same device, different IP)
-      if (session.ip !== clientIp) {
-        console.log(`[VOUCHER-PROTECT] Updating voucher session IP: ${session.ip} -> ${clientIp}`);
-        await db.run('UPDATE sessions SET ip = ? WHERE token = ?', [clientIp, token]);
-        await network.whitelistMAC(mac, clientIp);
+      // Different MAC - allow transfer (voucher roaming)
+      console.log(`[VOUCHER-ROAM] Voucher session token ${token.slice(0,8)}... - transferring from ${session.mac} to ${mac}`);
+      
+      // Check if MAC sync is enabled
+      if (!isMacSyncEnabled) {
+        console.log(`[VOUCHER-ROAM] MAC sync disabled - blocking voucher transfer from ${session.mac} to ${mac}`);
+        return res.status(403).json({ error: 'MAC sync is disabled. Voucher session can only be used on the original device.' });
       }
       
-      return res.json({ 
+      // Check if the target MAC already has a different session
+      const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
+      let extraTime = 0;
+      let extraPaid = 0;
+      
+      if (targetSession) {
+        // Merge existing time from the target MAC if any
+        extraTime = targetSession.remaining_seconds;
+        extraPaid = targetSession.total_paid;
+        console.log(`[VOUCHER-ROAM] Merging existing session on ${mac}: +${extraTime}s, +₱${extraPaid}`);
+        await db.run('DELETE FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
+      }
+      
+      // Update session with new MAC and IP (session ID stays the same)
+      await db.run(
+        'UPDATE sessions SET mac = ?, ip = ?, remaining_seconds = ?, total_paid = ? WHERE token = ?',
+        [mac, clientIp, session.remaining_seconds + extraTime, session.total_paid + extraPaid, token]
+      );
+      
+      // Switch network access
+      console.log(`[VOUCHER-ROAM] Blocking old MAC: ${session.mac} (${session.ip})`);
+      await network.blockMAC(session.mac, session.ip); // Block old MAC
+      
+      // Add delay to ensure old rules are cleared
+      await new Promise(r => setTimeout(r, 500));
+      
+      console.log(`[VOUCHER-ROAM] Whitelisting new MAC: ${mac} (${clientIp})`);
+      await network.whitelistMAC(mac, clientIp); // Allow new MAC
+      
+      // Force network refresh to ensure connection activates immediately
+      try {
+        await network.forceNetworkRefresh(mac, clientIp);
+      } catch (e) {
+        console.log(`[VOUCHER-ROAM] Network refresh failed: ${e.message}`);
+      }
+      
+      // Log session transfer for audit
+      console.log(`[VOUCHER-ROAM] Voucher session transferred: ${session.mac} -> ${mac} (${session.remaining_seconds + extraTime}s remaining)`);
+      
+      res.json({ 
         success: true, 
-        remainingSeconds: session.remaining_seconds, 
+        migrated: true, 
+        remainingSeconds: session.remaining_seconds + extraTime, 
         isPaused: session.is_paused === 1,
         sessionType: 'voucher',
-        message: 'Voucher session restored on original device'
+        message: 'Voucher session transferred to new device. Internet access should activate within 10 seconds.'
       });
+      return;
     }
     
     // COIN SESSION LOGIC: Regular MAC sync behavior for coin-based sessions

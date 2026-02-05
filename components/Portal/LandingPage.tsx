@@ -107,9 +107,13 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
         if (hasRestorableSession === 'true' && availableSessions && parseInt(availableSessions) > 0) {
           console.log(`[Portal] Server indicates ${availableSessions} transferable sessions available`);
           
-          // If server provided a token, save it to localStorage
+          // If server provided a token, save it to device-specific localStorage
           if (serverToken) {
-            console.log(`[Portal] Saving server-provided token to localStorage`);
+            console.log(`[Portal] Saving server-provided token to device-specific storage`);
+            // Create device-specific key using MAC address
+            const deviceKey = `ajc_session_token_${myMac}`;
+            localStorage.setItem(deviceKey, serverToken);
+            // Also save to legacy key for backward compatibility
             localStorage.setItem('ajc_session_token', serverToken);
           }
           
@@ -129,9 +133,22 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     // Proactive session restoration check
     // If user has a session token but no active session, try to restore automatically
     const checkAndRestoreSession = async () => {
-      const sessionToken = localStorage.getItem('ajc_session_token');
+      // Check device-specific token first
+      const deviceKey = `ajc_session_token_${myMac}`;
+      let sessionToken = localStorage.getItem(deviceKey);
+      
+      // Fall back to legacy key if device-specific not found
+      if (!sessionToken) {
+        sessionToken = localStorage.getItem('ajc_session_token');
+        if (sessionToken) {
+          // Migrate to device-specific storage
+          console.log(`[Portal] Migrating legacy token to device-specific storage`);
+          localStorage.setItem(deviceKey, sessionToken);
+        }
+      }
+      
       if (sessionToken && !mySession && onRestoreSession) {
-        console.log('[Portal] Detected session token without active session - attempting automatic restoration');
+        console.log('[Portal] Detected device-specific session token without active session - attempting automatic restoration');
         setTimeout(() => {
           onRestoreSession();
         }, 500); // Fast trigger

@@ -1366,175 +1366,32 @@ async function getMacFromIp(ip) {
 }
 
 // Device tracking to prevent re-scanning processed devices
-const processedDevices = new Map(); // MAC -> { processed: true, timestamp: Date.now(), hasSession: boolean }
+// DISABLED: No longer needed since auto-scanning is disabled
+// const processedDevices = new Map(); // MAC -> { processed: true, timestamp: Date.now(), hasSession: boolean }
 
-// Clean up old processed device entries every 5 minutes
-setInterval(() => {
-  const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
-  for (const [mac, data] of processedDevices.entries()) {
-    if (data.timestamp < fiveMinutesAgo) {
-      processedDevices.delete(mac);
-    }
-  }
-}, 5 * 60 * 1000);
+// DISABLED: Clean up old processed device entries every 5 minutes
+// setInterval(() => {
+//   const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+//   for (const [mac, data] of processedDevices.entries()) {
+//     if (data.timestamp < fiveMinutesAgo) {
+//       processedDevices.delete(mac);
+//     }
+//   }
+// }, 5 * 60 * 1000);
 
 // Background scanner for new client connections and automatic session restoration
+// DISABLED: Auto-scanning is CPU-intensive and unnecessary with token-based session system
+// The system now waits for devices to communicate through the captive portal instead
 async function scanForNewClients() {
-  try {
-    // Get all current active sessions
-    const activeSessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds > 0');
-    const activeMACs = new Set(activeSessions.map(s => s.mac));
-    
-    // Scan network for connected devices
-    let connectedDevices = [];
-    
-    if (process.platform === 'win32') {
-      // Windows: Use arp -a to find connected devices
-      try {
-        const { stdout } = await execPromise('arp -a');
-        const lines = stdout.split('\n');
-        
-        for (const line of lines) {
-          // Match format: "  192.168.1.100    aa-bb-cc-dd-ee-ff     dynamic"
-          const match = line.match(/\s+(\d+\.\d+\.\d+\.\d+)\s+([a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2})\s+dynamic/);
-          if (match) {
-            const ip = match[1];
-            const mac = match[2].replace(/-/g, ':').toUpperCase();
-            
-            // Filter for local network IPs (10.x.x.x, 192.168.x.x)
-            if (ip.startsWith('10.') || ip.startsWith('192.168.')) {
-              connectedDevices.push({ ip, mac });
-            }
-          }
-        }
-      } catch (e) {
-        console.log('[CLIENT-SCAN] Windows ARP scan failed:', e.message);
-      }
-    } else {
-      // Linux: Use ip neigh and ARP table
-      try {
-        const { stdout } = await execPromise('ip neigh show');
-        const lines = stdout.split('\n');
-        
-        for (const line of lines) {
-          // Format: "10.0.0.5 dev wlan0 lladdr aa:bb:cc:dd:ee:ff REACHABLE"
-          const match = line.match(/(\d+\.\d+\.\d+\.\d+).*lladdr\s+([a-fA-F0-9:]+)/);
-          if (match) {
-            connectedDevices.push({ ip: match[1], mac: match[2].toUpperCase() });
-          }
-        }
-      } catch (e) {
-        console.log('[CLIENT-SCAN] Linux neigh scan failed:', e.message);
-      }
-    }
-    
-    // Check each connected device for automatic session restoration
-    for (const device of connectedDevices) {
-      const { ip, mac } = device;
-      
-      // Skip if device already has active session
-      if (activeMACs.has(mac)) {
-        continue;
-      }
-      
-      // Skip if device was already processed recently
-      const processed = processedDevices.get(mac);
-      if (processed) {
-        continue; // Device already processed, skip to save CPU
-      }
-      
-      console.log(`[CLIENT-SCAN] New device detected: ${mac} (${ip}) - checking for session tokens...`);
-      
-      // Find the most recent transferable session (prioritize sessions from similar IP range)
-      const availableSession = await db.get(
-        `SELECT token, mac as original_mac, remaining_seconds, ip as original_ip, total_paid, connected_at 
-         FROM sessions 
-         WHERE remaining_seconds > 0 AND mac != ? AND token_expires_at > datetime("now") 
-         ORDER BY 
-           CASE WHEN SUBSTR(ip, 1, INSTR(ip || '.', '.') + INSTR(SUBSTR(ip, INSTR(ip, '.') + 1) || '.', '.')) = 
-                     SUBSTR(?, 1, INSTR(? || '.', '.') + INSTR(SUBSTR(?, INSTR(?, '.') + 1) || '.', '.')) 
-                THEN 0 ELSE 1 END,
-           connected_at DESC 
-         LIMIT 1`,
-        [mac, ip, ip, ip, ip]
-      );
-      
-      if (availableSession) {
-        console.log(`[CLIENT-SCAN] Found ${availableSession.remaining_seconds > 0 ? 1 : 0} transferable sessions for new device ${mac}`);
-        console.log(`[CLIENT-SCAN] Device ${mac} should visit portal to restore session automatically`);
-        console.log(`[CLIENT-SCAN] - Available session: ${availableSession.token} from ${availableSession.original_mac} (${availableSession.remaining_seconds}s remaining)`);
-        
-        // Perform automatic session transfer
-        try {
-          // Check if the target MAC already has a different session
-          const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ? AND token != ?', [mac, availableSession.token]);
-          let extraTime = 0;
-          let extraPaid = 0;
-          
-          if (targetSession) {
-            // Merge existing time from the target MAC if any
-            extraTime = targetSession.remaining_seconds;
-            extraPaid = targetSession.total_paid;
-            console.log(`[CLIENT-SCAN] Merging existing session on ${mac}: +${extraTime}s, +₱${extraPaid}`);
-            await db.run('DELETE FROM sessions WHERE mac = ? AND token != ?', [mac, availableSession.token]);
-          }
-
-          // Update session with new MAC and IP (session token stays the same)
-          await db.run(
-            'UPDATE sessions SET mac = ?, ip = ?, remaining_seconds = ?, total_paid = ? WHERE token = ?',
-            [mac, ip, availableSession.remaining_seconds + extraTime, availableSession.total_paid + extraPaid, availableSession.token]
-          );
-          
-          // Only whitelist new MAC - DO NOT block old MAC to allow switching back
-          await network.whitelistMAC(mac, ip); // Allow new MAC
-          
-          // Log successful transfer
-          console.log(`[AUTO-SYNC] Session automatically transferred: ${availableSession.original_mac} -> ${mac} (${availableSession.remaining_seconds + extraTime}s remaining)`);
-          console.log(`[AUTO-SYNC] Device ${mac} now has internet access with session ${availableSession.token}`);
-          console.log(`[AUTO-SYNC] Old MAC ${availableSession.original_mac} remains whitelisted for seamless switching back`);
-          
-          // Mark device as processed with session
-          processedDevices.set(mac, { processed: true, timestamp: Date.now(), hasSession: true });
-          
-        } catch (transferError) {
-          console.error(`[CLIENT-SCAN] Failed to transfer session for ${mac}:`, transferError.message);
-          // Mark as processed even if transfer failed to avoid retrying
-          processedDevices.set(mac, { processed: true, timestamp: Date.now(), hasSession: false });
-        }
-        
-      } else {
-        console.log(`[CLIENT-SCAN] No transferable sessions found for new device ${mac} - will redirect to portal for coin insertion`);
-        // Mark device as processed without session
-        processedDevices.set(mac, { processed: true, timestamp: Date.now(), hasSession: false });
-      }
-      
-      // Add device to tracking (for admin panel visibility)
-      try {
-        // Check if device was previously deleted - if so, don't re-add it
-        const deletedDevice = await db.get('SELECT id FROM wifi_devices WHERE mac = ? AND is_deleted = 1', [mac]);
-        if (deletedDevice) {
-          console.log(`[CLIENT-SCAN] Skipping re-insertion of deleted device: ${mac}`);
-          return;
-        }
-        
-        const deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        await db.run(
-          'INSERT OR IGNORE INTO wifi_devices (id, mac, ip, interface, download_limit, upload_limit, connected_at, last_seen, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [deviceId, mac, ip, 'auto-detected', 0, 0, Date.now(), Date.now(), 1]
-        );
-      } catch (e) {
-        // Ignore duplicate device errors
-      }
-    }
-    
-  } catch (e) {
-    console.error('[CLIENT-SCAN] Error scanning for new clients:', e.message);
-  }
+  // This function is disabled to save CPU resources
+  // Session restoration now happens reactively when devices visit the captive portal
+  // The token-based system handles MAC changes automatically without proactive scanning
+  console.log('[CLIENT-SCAN] Auto-scanning is disabled - using reactive token-based session restoration');
 }
 
-// Start background client scanner with automatic session transfer
-setInterval(scanForNewClients, 10000); // Scan every 10 seconds for balanced performance
-console.log('[CLIENT-SCAN] Background client scanner with auto-transfer started (10s interval)');
+// DISABLED: Background client scanner - replaced with reactive token-based system
+// setInterval(scanForNewClients, 10000); // Scan every 10 seconds for balanced performance
+console.log('[CLIENT-SCAN] Background client scanner DISABLED - using reactive token-based session restoration for better CPU efficiency');
 app.get('/api/zerotier/status', requireAdmin, async (req, res) => {
   try {
     const installed = await zerotier.isInstalled();
@@ -4509,7 +4366,7 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
     if (sessionTime !== undefined && updatedDevice.ip && updatedDevice.mac) {
       const session = await db.get('SELECT * FROM sessions WHERE mac = ?', [updatedDevice.mac]);
       if (session) {
-        // Update session with new time and ensure limits are synced
+        // Update existing session with new time and ensure limits are synced
         const newSessionUpdates = ['remaining_seconds = ?'];
         const newSessionValues = [sessionTime];
         
@@ -4523,10 +4380,40 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
           newSessionValues.push(uploadLimit !== undefined ? uploadLimit : updatedDevice.upload_limit);
         }
         
+        // Ensure session has token and 3-day expiration for MAC sync
+        if (!session.token) {
+          const sessionToken = crypto.randomBytes(32).toString('hex');
+          const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(); // 3 days
+          newSessionUpdates.push('token = ?', 'token_expires_at = ?');
+          newSessionValues.push(sessionToken, tokenExpiresAt);
+          console.log(`[ADMIN] Generated session token for ${updatedDevice.mac}: ${sessionToken} (expires: ${tokenExpiresAt})`);
+        }
+        
         newSessionValues.push(updatedDevice.mac);
         await db.run(`UPDATE sessions SET ${newSessionUpdates.join(', ')} WHERE mac = ?`, newSessionValues);
         
         console.log(`[ADMIN] Updated session for ${updatedDevice.mac}: time=${sessionTime}s, DL=${downloadLimit || updatedDevice.download_limit}, UL=${uploadLimit || updatedDevice.upload_limit}`);
+      } else {
+        // Create new session with token and 3-day expiration
+        const sessionToken = crypto.randomBytes(32).toString('hex');
+        const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(); // 3 days
+        
+        await db.run(
+          'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, download_limit, upload_limit, token, token_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [
+            updatedDevice.mac, 
+            updatedDevice.ip, 
+            sessionTime, 
+            0, 
+            Date.now(), 
+            downloadLimit !== undefined ? downloadLimit : updatedDevice.download_limit,
+            uploadLimit !== undefined ? uploadLimit : updatedDevice.upload_limit,
+            sessionToken,
+            tokenExpiresAt
+          ]
+        );
+        
+        console.log(`[ADMIN] Created new session for ${updatedDevice.mac}: ${sessionToken} (${sessionTime}s, expires: ${tokenExpiresAt})`);
       }
     }
     
@@ -4596,17 +4483,32 @@ app.post('/api/devices/:id/connect', requireAdmin, async (req, res) => {
     const sessionTime = device.session_time || 3600; // Default 1 hour
     
     if (existingSession) {
-      // Update existing session
-      await db.run(
-        'UPDATE sessions SET remaining_seconds = remaining_seconds + ?, ip = ? WHERE mac = ?',
-        [sessionTime, device.ip, device.mac]
-      );
+      // Update existing session and ensure it has token for MAC sync
+      const updates = ['remaining_seconds = remaining_seconds + ?', 'ip = ?'];
+      const values = [sessionTime, device.ip];
+      
+      // Ensure session has token and 3-day expiration for MAC sync
+      if (!existingSession.token) {
+        const sessionToken = crypto.randomBytes(32).toString('hex');
+        const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(); // 3 days
+        updates.push('token = ?', 'token_expires_at = ?');
+        values.push(sessionToken, tokenExpiresAt);
+        console.log(`[ADMIN] Generated session token for existing session ${device.mac}: ${sessionToken}`);
+      }
+      
+      values.push(device.mac);
+      await db.run(`UPDATE sessions SET ${updates.join(', ')} WHERE mac = ?`, values);
     } else {
-      // Create new session
+      // Create new session with token and 3-day expiration
+      const sessionToken = crypto.randomBytes(32).toString('hex');
+      const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(); // 3 days
+      
       await db.run(
-        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at) VALUES (?, ?, ?, ?, ?)',
-        [device.mac, device.ip, sessionTime, 0, Date.now()]
+        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, token, token_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [device.mac, device.ip, sessionTime, 0, Date.now(), sessionToken, tokenExpiresAt]
       );
+      
+      console.log(`[ADMIN] Created new session for ${device.mac}: ${sessionToken} (${sessionTime}s)`);
     }
     
     res.json({ success: true, sessionTime });

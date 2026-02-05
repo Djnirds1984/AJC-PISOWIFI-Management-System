@@ -1736,7 +1736,7 @@ app.get('/generate_204', async (req, res) => {
       // Check for transferable sessions and FORCE transfer
       // HARDWARE-BASED OWNERSHIP: Only allow transfers to sessions owned by THIS device
       const transferableSessions = await db.all(
-        `SELECT s.token, s.mac as original_mac, s.remaining_seconds, s.session_type, s.voucher_code, s.hardware_id,
+        `SELECT s.token, s.mac as original_mac, s.remaining_seconds, s.session_type, s.voucher_code,
                 d.hardware_signature as owner_hardware
          FROM sessions s
          LEFT JOIN device_registry d ON s.mac = d.mac
@@ -2618,7 +2618,7 @@ app.use(async (req, res, next) => {
       // Check if there are any sessions that could be transferred to this device
       // HARDWARE-BASED OWNERSHIP: Only allow transfers to sessions owned by THIS device
       const transferableSessions = await db.all(
-        `SELECT s.token, s.mac as original_mac, s.remaining_seconds, s.session_type, s.voucher_code, s.hardware_id,
+        `SELECT s.token, s.mac as original_mac, s.remaining_seconds, s.session_type, s.voucher_code,
                 d.hardware_signature as owner_hardware
          FROM sessions s
          LEFT JOIN device_registry d ON s.mac = d.mac

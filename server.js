@@ -3048,6 +3048,12 @@ app.post('/api/sessions/restore', async (req, res) => {
         await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, token]);
       }
       
+      // Update IP if needed
+      if (session.ip !== clientIp) {
+        await db.run('UPDATE sessions SET ip = ? WHERE token = ?', [clientIp, token]);
+        await network.whitelistMAC(mac, clientIp);
+      }
+      
       // Grant internet access
       try {
         await network.whitelistMAC(mac, clientIp);
@@ -3063,189 +3069,14 @@ app.post('/api/sessions/restore', async (req, res) => {
         remainingSeconds: session.remaining_seconds,
         message: 'Session restored successfully'
       });
-    }
-      
-      // Update IP if needed
-      if (session.ip !== clientIp) {
-        await db.run('UPDATE sessions SET ip = ? WHERE token = ?', [clientIp, token]);
-        await network.whitelistMAC(mac, clientIp);
-      }
-    }
-    
-    if (!isAuthorizedDevice) {
+    } else {
+      // Handle unauthorized device
       return res.status(403).json({ 
         error: 'Security violation: This session token belongs to a different device.',
         security_code: 'DEVICE_MISMATCH_BLOCKED',
         reason: securityViolationReason
       });
     }
-    
-    console.log(`========================================`);
-    console.log(`[SESSION-RESTORE] SESSION RESTORE REQUEST`);
-    console.log(`[SESSION-RESTORE] Requesting Device MAC: ${mac}`);
-    console.log(`[SESSION-RESTORE] Requesting Device IP: ${clientIp}`);
-    console.log(`[SESSION-RESTORE] Session Token: ${token}`);
-    console.log(`[SESSION-RESTORE] Session ID: ${sessionId || 'Not provided'}`);
-    console.log(`[SESSION-RESTORE] Token Owner MAC: ${session.mac}`);
-    console.log(`[SESSION-RESTORE] Token Owner IP: ${session.ip}`);
-    console.log(`[SESSION-RESTORE] Session Type: ${session.session_type || 'coin'}`);
-    console.log(`[SESSION-RESTORE] Remaining Time: ${session.remaining_seconds} seconds`);
-    console.log(`[SESSION-RESTORE] TIMESTAMP: ${new Date().toISOString()}`);
-    console.log(`========================================`);
-    
-    // Check if token has expired (3-day expiration)
-    if (session.token_expires_at) {
-      const now = new Date();
-      const tokenExpiresAt = new Date(session.token_expires_at);
-      if (now > tokenExpiresAt) {
-        return res.status(401).json({ error: 'Session token has expired. Please insert coins to get a new session.' });
-      }
-    }
-    
-    // VOUCHER SESSION LOGIC: Treat vouchers like coin sessions for roaming
-    // Voucher time is bound to session token, can transfer between MAC addresses
-    if (session.session_type === 'voucher' || session.voucher_code) {
-      console.log(`[VOUCHER-ROAM] Voucher session detected: ${session.voucher_code || 'mixed'} - allowing roaming transfer`);
-      
-      // Same MAC, just update IP if needed
-      if (session.mac === mac) {
-        if (session.ip !== clientIp) {
-          console.log(`[VOUCHER-ROAM] Updating voucher session IP: ${session.ip} -> ${clientIp}`);
-          await db.run('UPDATE sessions SET ip = ? WHERE token = ?', [clientIp, token]);
-          await network.whitelistMAC(mac, clientIp);
-        }
-        return res.json({ 
-          success: true, 
-          remainingSeconds: session.remaining_seconds, 
-          isPaused: session.is_paused === 1,
-          sessionType: 'voucher',
-          message: 'Voucher session restored on same device'
-        });
-      }
-      
-      // Different MAC - allow transfer (voucher roaming)
-      console.log(`[VOUCHER-ROAM] Voucher session token ${token.slice(0,8)}... - transferring from ${session.mac} to ${mac}`);
-      
-      // Check if MAC sync is enabled
-      if (!isMacSyncEnabled) {
-        console.log(`[VOUCHER-ROAM] MAC sync disabled - blocking voucher transfer from ${session.mac} to ${mac}`);
-        return res.status(403).json({ error: 'MAC sync is disabled. Voucher session can only be used on the original device.' });
-      }
-      
-      // Check if the target MAC already has a different session
-      const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
-      let extraTime = 0;
-      let extraPaid = 0;
-      
-      if (targetSession) {
-        // Merge existing time from the target MAC if any
-        extraTime = targetSession.remaining_seconds;
-        extraPaid = targetSession.total_paid;
-        console.log(`[VOUCHER-ROAM] Merging existing session on ${mac}: +${extraTime}s, +₱${extraPaid}`);
-        await db.run('DELETE FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
-      }
-      
-      // Update session with new MAC and IP (session ID stays the same)
-      await db.run(
-        'UPDATE sessions SET mac = ?, ip = ?, remaining_seconds = ?, total_paid = ? WHERE token = ?',
-        [mac, clientIp, session.remaining_seconds + extraTime, session.total_paid + extraPaid, token]
-      );
-      
-      // Switch network access
-      console.log(`[VOUCHER-ROAM] Blocking old MAC: ${session.mac} (${session.ip})`);
-      await network.blockMAC(session.mac, session.ip); // Block old MAC
-      
-      // Add delay to ensure old rules are cleared
-      await new Promise(r => setTimeout(r, 500));
-      
-      console.log(`[VOUCHER-ROAM] Whitelisting new MAC: ${mac} (${clientIp})`);
-      await network.whitelistMAC(mac, clientIp); // Allow new MAC
-      
-      // Force network refresh to ensure connection activates immediately
-      try {
-        // await network.forceNetworkRefresh(mac, clientIp); // Removed - not needed in Session ID system
-      } catch (e) {
-        console.log(`[VOUCHER-ROAM] Network refresh failed: ${e.message}`);
-      }
-      
-      // Log session transfer for audit
-      console.log(`[VOUCHER-ROAM] Voucher session transferred: ${session.mac} -> ${mac} (${session.remaining_seconds + extraTime}s remaining)`);
-      
-      res.json({ 
-        success: true, 
-        migrated: true, 
-        remainingSeconds: session.remaining_seconds + extraTime, 
-        isPaused: session.is_paused === 1,
-        sessionType: 'voucher',
-        message: 'Voucher session transferred to new device. Internet access should activate within 10 seconds.'
-      });
-      return;
-    }
-    
-    // COIN SESSION LOGIC: Regular MAC sync behavior for coin-based sessions
-    // If same MAC, just update IP if needed
-    if (session.mac === mac) {
-       if (session.ip !== clientIp) {
-         await db.run('UPDATE sessions SET ip = ? WHERE mac = ?', [clientIp, mac]);
-         await network.whitelistMAC(mac, clientIp);
-       }
-       return res.json({ success: true, remainingSeconds: session.remaining_seconds, isPaused: session.is_paused === 1 });
-    }
-
-    // Different MAC - check if MAC sync is enabled for coin sessions
-    if (!isMacSyncEnabled) {
-      console.log(`[MAC-SYNC] MAC sync disabled - blocking transfer from ${session.mac} to ${mac}`);
-      return res.status(403).json({ error: 'MAC sync is disabled. Session can only be used on the original device.' });
-    }
-
-    console.log(`[MAC-SYNC] Coin session token ${token.slice(0,8)}... - transferring from ${session.mac} to ${mac}`);
-
-    // Check if the target MAC already has a different session
-    const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
-    let extraTime = 0;
-    let extraPaid = 0;
-    
-    if (targetSession) {
-      // Merge existing time from the target MAC if any
-      extraTime = targetSession.remaining_seconds;
-      extraPaid = targetSession.total_paid;
-      console.log(`[MAC-SYNC] Merging existing session on ${mac}: +${extraTime}s, +₱${extraPaid}`);
-      await db.run('DELETE FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
-    }
-
-    // Update session with new MAC and IP (session ID stays the same)
-    await db.run(
-      'UPDATE sessions SET mac = ?, ip = ?, remaining_seconds = ?, total_paid = ? WHERE token = ?',
-      [mac, clientIp, session.remaining_seconds + extraTime, session.total_paid + extraPaid, token]
-    );
-    
-    // Switch network access
-    console.log(`[MAC-SYNC] Blocking old MAC: ${session.mac} (${session.ip})`);
-    await network.blockMAC(session.mac, session.ip); // Block old MAC
-    
-    // Add delay to ensure old rules are cleared
-    await new Promise(r => setTimeout(r, 500));
-    
-    console.log(`[MAC-SYNC] Whitelisting new MAC: ${mac} (${clientIp})`);
-    await network.whitelistMAC(mac, clientIp); // Allow new MAC
-    
-    // Force network refresh to ensure connection activates immediately
-    try {
-      // await network.forceNetworkRefresh(mac, clientIp); // Removed - not needed in Session ID system
-    } catch (e) {
-      console.log(`[MAC-SYNC] Network refresh failed: ${e.message}`);
-    }
-    
-    // Log session transfer for audit
-    console.log(`[MAC-SYNC] Session transferred: ${session.mac} -> ${mac} (${session.remaining_seconds + extraTime}s remaining)`);
-    
-    res.json({ 
-      success: true, 
-      migrated: true, 
-      remainingSeconds: session.remaining_seconds + extraTime, 
-      isPaused: session.is_paused === 1,
-      message: 'Session transferred to new device. Internet access should activate within 10 seconds.'
-    });
   } catch (err) { 
     console.error('[SESSION-RESTORE] Restore error:', err);
     return res.status(500).json({ error: err.message }); 

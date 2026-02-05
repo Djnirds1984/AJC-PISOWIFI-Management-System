@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminTab, UserSession, Rate, WifiDevice } from './types';
-import { attachDeviceHeaders, attachDeviceFingerprintHeaders } from './lib/device-id';
+import { attachDeviceHeaders, attachDeviceFingerprintHeaders, getOrCreateSessionId, attachSessionHeaders } from './lib/device-id';
 import LandingPage from './components/Portal/LandingPage';
 import SystemDashboard from './components/Admin/SystemDashboard';
 import InterfacesList from './components/Admin/InterfacesList';
@@ -166,9 +166,16 @@ const App: React.FC = () => {
 
       const coinSlot = (session as any).coinSlot as string | undefined;
       const coinSlotLockId = (session as any).coinSlotLockId as string | undefined;
+      
+      // Get Session ID and attach it to headers
+      const sessionId = getOrCreateSessionId();
+      const headers = attachSessionHeaders({
+        'Content-Type': 'application/json'
+      });
+      
       const res = await fetch('/api/sessions/start', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           mac: session.mac,
           minutes: Math.ceil(session.remainingSeconds / 60),

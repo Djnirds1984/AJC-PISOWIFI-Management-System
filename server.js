@@ -2235,8 +2235,8 @@ app.use(async (req, res, next) => {
         for (const session of transferableSessions) {
           console.log(`[PORTAL-REDIRECT] - Session ID ${session.session_id ? session.session_id.substring(0,8) + '...' : 'NONE'} from ${session.original_mac} (${session.remaining_seconds}s remaining)`);
           console.log(`[PORTAL-REDIRECT]   Session Type: ${session.session_type || 'coin'}, Voucher Code: ${session.voucher_code || 'NONE'}`);
-          console.log(`[PORTAL-REDIRECT]   Owner Hardware: ${session.owner_hardware || 'UNREGISTERED'}`);
-          console.log(`[PORTAL-REDIRECT]   Requesting Session Info: UNKNOWN`);
+          // Removed hardware references - Session ID system only
+          console.log(`[PORTAL-REDIRECT]   Device Info: Identified by Session ID`);
         }
         
         // IMPLEMENTING: Strict fingerprint validation before transfer (Ghost Token fix)

@@ -1782,15 +1782,63 @@ app.use(async (req, res, next) => {
           console.log(`[PORTAL-REDIRECT] - Token ${session.token.slice(0,8)}... from ${session.original_mac} (${session.remaining_seconds}s remaining)`);
         }
         
-        // For portal visits (not probes), add special headers to trigger automatic session restoration
+        // For portal visits (not probes), FORCE automatic session restoration
         if (!isProbe && url === '/') {
-          console.log(`[PORTAL-REDIRECT] Portal visit detected - client will attempt automatic session restoration`);
-          // Add headers with token information so frontend can attempt restoration
+          console.log(`[PORTAL-REDIRECT] Portal visit detected - FORCING automatic session restoration`);
+          
+          // FORCE: Immediately attempt session restoration on the server side
+          const firstToken = transferableSessions[0].token;
+          console.log(`[PORTAL-REDIRECT] FORCING session restoration for token ${firstToken.slice(0,8)}... to MAC ${mac}`);
+          
+          try {
+            // Directly call the session restoration logic
+            const session = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
+            
+            if (session) {
+              // Check token expiration
+              if (session.token_expires_at) {
+                const now = new Date();
+                const tokenExpiresAt = new Date(session.token_expires_at);
+                if (now > tokenExpiresAt) {
+                  console.log(`[PORTAL-REDIRECT] Token expired, cannot restore`);
+                  return next();
+                }
+              }
+              
+              // Check if this is a voucher session (cannot transfer)
+              if (session.session_type === 'voucher' || session.voucher_code) {
+                console.log(`[PORTAL-REDIRECT] Voucher session detected - cannot transfer to different MAC`);
+                return next();
+              }
+              
+              // FORCE TRANSFER: Update session with new MAC and IP
+              console.log(`[PORTAL-REDIRECT] FORCING session transfer: ${session.mac} -> ${mac}`);
+              
+              // Block old MAC
+              await network.blockMAC(session.mac, session.ip);
+              await new Promise(r => setTimeout(r, 500));
+              
+              // Whitelist new MAC
+              await network.whitelistMAC(mac, clientIp);
+              
+              // Update session
+              await db.run(
+                'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?',
+                [mac, clientIp, firstToken]
+              );
+              
+              console.log(`[PORTAL-REDIRECT] ✅ SESSION FORCED TRANSFER COMPLETE: ${session.mac} -> ${mac} (${session.remaining_seconds}s remaining)`);
+            }
+          } catch (e) {
+            console.error(`[PORTAL-REDIRECT] Error forcing session transfer:`, e.message);
+          }
+          
+          // Add headers for frontend confirmation
           res.setHeader('X-AJC-Session-Restore-Available', 'true');
           res.setHeader('X-AJC-Available-Sessions', transferableSessions.length.toString());
-          // Pass the first transferable token to the frontend
-          res.setHeader('X-AJC-Session-Token', transferableSessions[0].token);
+          res.setHeader('X-AJC-Session-Token', firstToken);
           res.setHeader('X-AJC-Session-Remaining', transferableSessions[0].remaining_seconds.toString());
+          res.setHeader('X-AJC-Session-Forced', 'true');
         }
       } else {
         console.log(`[PORTAL-REDIRECT] No transferable sessions found for ${mac} - new client needs to pay`);

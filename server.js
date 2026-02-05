@@ -1847,78 +1847,24 @@ app.get('/hotspot-detect.html', async (req, res) => {
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
           
           if (oldSession) {
-            // STEP 1: GET HARDWARE FINGERPRINT FROM REQUEST
-            const presentedFingerprint = req.headers['x-device-fingerprint'];
-            const presentedHardwareID = req.headers['x-hardware-id'];
+            // Session ID system: No hardware validation needed - Session ID identifies device
+            console.log(`[SESSION-ID] Device authenticated via Session ID: ${sessionId.substring(0,8)}...`);
+            console.log(`[SESSION-ID] MAC changed from ${oldSession.mac} to ${mac} - Session ID persists`);
             
-            console.log(`[SECURITY] Hardware validation for token ${firstToken.substring(0, 8)}...`);
-            console.log(`[SECURITY] Stored Hardware ID: ${oldSession.hardware_id || 'NONE'}`);
-            console.log(`[SECURITY] Presented Hardware ID: ${presentedHardwareID || 'NONE'}`);
-            console.log(`[SECURITY] Stored Fingerprint: ${oldSession.device_fingerprint ? oldSession.device_fingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            console.log(`[SECURITY] Presented Fingerprint: ${presentedFingerprint ? presentedFingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            
-            // STEP 2: STRICT HARDWARE VALIDATION
-            let isLegitimateTransfer = false;
-            let validationMethod = '';
-            
-            // Method A: Hardware ID match (most reliable)
-            if (presentedHardwareID && oldSession.hardware_id) {
-              if (presentedHardwareID === oldSession.hardware_id) {
-                isLegitimateTransfer = true;
-                validationMethod = 'HARDWARE_ID_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Hardware ID match confirmed`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Hardware ID mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
-            else if (presentedFingerprint && oldSession.device_fingerprint) {
-              // Check for exact match first (ideal case)
-              if (presentedFingerprint === oldSession.device_fingerprint) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_EXACT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
-              } 
-              // Check for relaxed match (same device, minor differences allowed for roaming)
-              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
-                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method C: No hardware info available (associate new hardware)
-            else if (presentedHardwareID || presentedFingerprint) {
-              isLegitimateTransfer = true;
-              validationMethod = 'NEW_HARDWARE_ASSOCIATION';
-              console.log(`[SECURITY] ⚠️  ASSOCIATING new hardware with existing session`);
-            }
-            
-            // STEP 3: HANDLE VALIDATION RESULT
-            if (isLegitimateTransfer) {
-              console.log(`[CAPTIVE-DETECT] ✅ Hardware validation PASSED - proceeding with legitimate MAC transfer`);
-              console.log(`[CAPTIVE-DETECT] Validation method: ${validationMethod}`);
-              
-              // Perform the legitimate transfer
-              await network.blockMAC(oldSession.mac, oldSession.ip);
-            await new Promise(r => setTimeout(r, 800));
-            await network.whitelistMAC(mac, clientIp);
-            
-            // Force network refresh
+            // Grant immediate internet access using Session ID
             try {
-              await network.forceNetworkRefresh(mac, clientIp);
-            } catch (e) {
-              console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
+              await network.whitelistMAC(mac, clientIp);
+              console.log(`[SESSION-ID] ✅ Granted internet access to new MAC: ${mac}`);
+              
+              // Update session with new MAC but keep same Session ID
+              await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
+              console.log(`[SESSION-ID] ✅ Session updated with new MAC: ${mac}`);
+              
+              return res.status(204).send();
+            } catch (err) {
+              console.error(`[SESSION-ID] Error granting access:`, err.message);
+              return res.status(500).json({ error: 'Failed to grant access' });
             }
-            
-            await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
-            console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER: ${oldSession.mac} -> ${mac}`);
-            return res.type('text/plain').send('Success');
-          }
         }
         } catch (e) {
           console.error(`[CAPTIVE-DETECT] Error:`, e.message);
@@ -2018,7 +1964,7 @@ app.get('/ncsi.txt', async (req, res) => {
               
               // Force network refresh
               try {
-                await network.forceNetworkRefresh(mac, clientIp);
+                // await network.forceNetworkRefresh(mac, clientIp); // Removed - not needed in Session ID system
               } catch (e) {
                 console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
               }
@@ -2161,7 +2107,7 @@ app.get('/connecttest.txt', async (req, res) => {
               
               // Force network refresh
               try {
-                await network.forceNetworkRefresh(mac, clientIp);
+                // await network.forceNetworkRefresh(mac, clientIp); // Removed - not needed in Session ID system
               } catch (e) {
                 console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
               }
@@ -2305,7 +2251,7 @@ app.get('/success.txt', async (req, res) => {
               
               // Force network refresh
               try {
-                await network.forceNetworkRefresh(mac, clientIp);
+                // await network.forceNetworkRefresh(mac, clientIp); // Removed - not needed in Session ID system
               } catch (e) {
                 console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
               }
@@ -2450,7 +2396,7 @@ app.get('/library/test/success.html', async (req, res) => {
               
               // Force network refresh
               try {
-                await network.forceNetworkRefresh(mac, clientIp);
+                // await network.forceNetworkRefresh(mac, clientIp); // Removed - not needed in Session ID system
               } catch (e) {
                 console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
               }
@@ -3073,64 +3019,51 @@ app.post('/api/sessions/restore', async (req, res) => {
       console.log(`[SESSION-RESTORE] ✅ Session now bound to Session ID: ${sessionId}`);
     }
     
-    // CRITICAL SECURITY CHECK: Verify requesting device matches token owner
-    // NEW: Direct MAC transfer logic for instant connectivity
+    // Session ID system: Authenticate using Session ID
     let isAuthorizedDevice = false;
     let securityViolationReason = '';
     
-    // Check if this is a legitimate MAC transfer request
-    if (session.mac !== mac) {
-      console.log(`[INSTANT-SWAP] MAC transfer detected: ${session.mac} -> ${mac}`);
-      console.log(`[INSTANT-SWAP] Token: ${token.substring(0,8)}...`);
-      console.log(`[INSTANT-SWAP] Session ID: ${sessionId?.substring(0,8)}...`);
+    // Check if session belongs to this Session ID
+    if (sessionId && session.session_id === sessionId) {
+      console.log(`[SESSION-RESTORE] ✅ Session ID authentication successful: ${sessionId.substring(0,8)}...`);
+      isAuthorizedDevice = true;
+    } else if (!sessionId && session.mac === mac) {
+      // Fallback to MAC check only if no Session ID provided
+      console.log(`[SESSION-RESTORE] ✅ MAC authentication successful: ${mac}`);
+      isAuthorizedDevice = true;
+    } else {
+      securityViolationReason = sessionId ? 
+        `Session ID mismatch: expected ${session.session_id?.substring(0,8)}..., got ${sessionId?.substring(0,8)}...` :
+        `MAC mismatch: expected ${session.mac}, got ${mac}`;
+      console.log(`[SESSION-RESTORE] ❌ Authentication failed - ${securityViolationReason}`);
+    }
+    
+    // Handle authorized device
+    if (isAuthorizedDevice) {
+      console.log(`[SESSION-RESTORE] Device authorized for session ${token.substring(0,8)}...`);
       
-      // ACTION 1: Immediately revoke DNS access for Original MAC
-      console.log(`[INSTANT-SWAP] 🔥 Blocking old MAC: ${session.mac} (${session.ip})`);
-      try {
-        await network.blockMAC(session.mac, session.ip);
-        console.log(`[INSTANT-SWAP] ✅ Old MAC blocked successfully`);
-      } catch (blockErr) {
-        console.log(`[INSTANT-SWAP] Warning: Failed to block old MAC: ${blockErr.message}`);
+      // If MAC changed, update session record
+      if (session.mac !== mac) {
+        console.log(`[SESSION-RESTORE] MAC changed from ${session.mac} to ${mac} - updating session`);
+        await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, token]);
       }
       
-      // ACTION 2: Immediately grant DNS access for Requesting MAC
-      console.log(`[INSTANT-SWAP] 🔥 Whitelisting new MAC: ${mac} (${clientIp})`);
+      // Grant internet access
       try {
         await network.whitelistMAC(mac, clientIp);
-        console.log(`[INSTANT-SWAP] ✅ New MAC whitelisted successfully`);
-      } catch (whitelistErr) {
-        console.log(`[INSTANT-SWAP] Warning: Failed to whitelist new MAC: ${whitelistErr.message}`);
+        console.log(`[SESSION-RESTORE] ✅ Internet access granted to ${mac}`);
+      } catch (networkErr) {
+        console.log(`[SESSION-RESTORE] Warning: Failed to grant internet access: ${networkErr.message}`);
       }
       
-      // ACTION 3: Update database to bind token to new MAC
-      try {
-        await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, token]);
-        console.log(`[INSTANT-SWAP] ✅ Database updated - token now bound to ${mac}`);
-      } catch (dbErr) {
-        console.log(`[INSTANT-SWAP] Warning: Database update failed: ${dbErr.message}`);
-      }
-      
-      // Force immediate network refresh
-      try {
-        await network.forceNetworkRefresh(mac, clientIp);
-        console.log(`[INSTANT-SWAP] ✅ Network refresh completed`);
-      } catch (refreshErr) {
-        console.log(`[INSTANT-SWAP] Warning: Network refresh failed: ${refreshErr.message}`);
-      }
-      
-      // Mark as authorized for instant response
-      isAuthorizedDevice = true;
-      securityViolationReason = 'LEGITIMATE_MAC_TRANSFER';
-      
-      console.log(`[INSTANT-SWAP] ✅ Seamless MAC transfer completed`);
-      console.log(`[INSTANT-SWAP] Returning 204 to close captive portal instantly`);
-      
-      // SILENT RESPONSE: Return 204 to close captive portal
-      return res.status(204).send();
-    } else {
-      // Same MAC - normal session continuation
-      isAuthorizedDevice = true;
-      securityViolationReason = 'SAME_DEVICE';
+      // Return success response
+      return res.json({
+        success: true,
+        token: session.token,
+        remainingSeconds: session.remaining_seconds,
+        message: 'Session restored successfully'
+      });
+    }
       
       // Update IP if needed
       if (session.ip !== clientIp) {
@@ -3230,7 +3163,7 @@ app.post('/api/sessions/restore', async (req, res) => {
       
       // Force network refresh to ensure connection activates immediately
       try {
-        await network.forceNetworkRefresh(mac, clientIp);
+        // await network.forceNetworkRefresh(mac, clientIp); // Removed - not needed in Session ID system
       } catch (e) {
         console.log(`[VOUCHER-ROAM] Network refresh failed: ${e.message}`);
       }
@@ -3298,7 +3231,7 @@ app.post('/api/sessions/restore', async (req, res) => {
     
     // Force network refresh to ensure connection activates immediately
     try {
-      await network.forceNetworkRefresh(mac, clientIp);
+      // await network.forceNetworkRefresh(mac, clientIp); // Removed - not needed in Session ID system
     } catch (e) {
       console.log(`[MAC-SYNC] Network refresh failed: ${e.message}`);
     }
@@ -3314,8 +3247,8 @@ app.post('/api/sessions/restore', async (req, res) => {
       message: 'Session transferred to new device. Internet access should activate within 10 seconds.'
     });
   } catch (err) { 
-    console.error('[MAC-SYNC] Restore error:', err);
-    res.status(500).json({ error: err.message }); 
+    console.error('[SESSION-RESTORE] Restore error:', err);
+    return res.status(500).json({ error: err.message }); 
   }
 });
 
@@ -3346,7 +3279,7 @@ app.post('/api/sessions/resume', async (req, res) => {
     await db.run('UPDATE sessions SET is_paused = 0 WHERE token = ?', [token]);
     
     // Use forceNetworkRefresh to ensure internet returns properly
-    await network.forceNetworkRefresh(session.mac, session.ip);
+    // await network.forceNetworkRefresh(session.mac, session.ip); // Removed - not needed in Session ID system
 
     console.log(`[AUTH] Session resumed for ${session.mac}`);
     res.json({ success: true, message: 'Time resumed. Internet access restored.' });
@@ -3792,7 +3725,7 @@ app.post('/api/network/refresh', async (req, res) => {
     }
     
     // Force network refresh for the requesting device
-    await network.forceNetworkRefresh(mac, clientIp);
+    // await network.forceNetworkRefresh(mac, clientIp); // Removed - not needed in Session ID system
     
     res.json({ 
       success: true, 

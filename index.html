@@ -4,38 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>AJC PISOWIFI - Access Portal</title>
-    <!-- Local Tailwind CSS (Offline Support) -->
-    <script src="/dist/tailwind.js"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: { 
-              primary: 'var(--primary)',
-              slate: { 
-                50: 'var(--bg)', 
-                100: 'var(--slate-100)', 
-                200: 'var(--border)', 
-                400: 'var(--text-muted)', 
-                500: 'var(--text-muted)', 
-                600: 'var(--text-muted)', 
-                900: 'var(--text-main)', 
-                950: 'var(--text-main)' 
-              },
-              blue: {
-                100: 'rgba(var(--primary), 0.1)',
-                500: 'var(--primary)',
-                600: 'var(--primary)',
-                700: 'var(--primary-dark)'
-              },
-              white: 'var(--bg-card)',
-              black: 'var(--bg)' // Inverted for dark mode logic often
-            },
-            borderRadius: { '4xl': '2rem', '5xl': '3rem' }
-          }
-        }
-      }
-    </script>
+    <!-- Lightweight Tailwind-Compatible CSS (50KB vs 3.4MB) -->
+    <link rel="stylesheet" href="/styles/tailwind-lite.css">
     <script>
       // Instant Theme Restore
       (function() {

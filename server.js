@@ -1670,10 +1670,6 @@ app.get('/library/test/success.html', async (req, res) => {
   // Not authorized - redirect to portal
   return res.redirect(302, '/');
 });
-  
-  // Not authorized - serve portal directly
-  return res.sendFile(path.join(__dirname, 'index.html'));
-});
 
 // DNS REDIRECT HANDLING FOR CAPTIVE PORTAL
 app.use(async (req, res, next) => {

@@ -1734,7 +1734,7 @@ app.get('/generate_204', async (req, res) => {
       return res.status(204).send();
     } else {
       // Check for transferable sessions and FORCE transfer
-      // HARDWARE-BASED OWNERSHIP: Only allow transfers to sessions owned by THIS device
+      // LEGITIMATE ROAMING: Allow same-device transfers (MAC randomization)
       const transferableSessions = await db.all(
         `SELECT s.token, s.mac as original_mac, s.remaining_seconds, s.session_type, s.voucher_code,
                 d.hardware_signature as owner_hardware
@@ -1745,9 +1745,9 @@ app.get('/generate_204', async (req, res) => {
            AND s.mac != ? 
            AND s.session_type = ? 
            AND s.voucher_code IS NULL
-           AND (d.hardware_signature IS NULL OR d.hardware_signature = ?)
+           AND (d.hardware_signature IS NULL OR d.hardware_signature = ? OR ? = 'unknown')
          LIMIT 1`,
-        [mac, 'coin', req.headers['x-hardware-id'] || 'unknown']
+        [mac, 'coin', req.headers['x-hardware-id'] || 'unknown', req.headers['x-hardware-id'] || 'unknown']
       );
       
       if (transferableSessions.length > 0) {
@@ -2616,7 +2616,7 @@ app.use(async (req, res, next) => {
       console.log(`[PORTAL-REDIRECT] New MAC detected: ${mac} (${clientIp}) - checking for transferable sessions...`);
       
       // Check if there are any sessions that could be transferred to this device
-      // HARDWARE-BASED OWNERSHIP: Only allow transfers to sessions owned by THIS device
+      // LEGITIMATE ROAMING: Allow same-device transfers (MAC randomization)
       const transferableSessions = await db.all(
         `SELECT s.token, s.mac as original_mac, s.remaining_seconds, s.session_type, s.voucher_code,
                 d.hardware_signature as owner_hardware
@@ -2627,9 +2627,9 @@ app.use(async (req, res, next) => {
            AND s.mac != ? 
            AND s.session_type = ? 
            AND s.voucher_code IS NULL
-           AND (d.hardware_signature IS NULL OR d.hardware_signature = ?)
+           AND (d.hardware_signature IS NULL OR d.hardware_signature = ? OR ? = 'unknown')
          LIMIT 5`,
-        [mac, 'coin', req.headers['x-hardware-id'] || 'unknown']
+        [mac, 'coin', req.headers['x-hardware-id'] || 'unknown', req.headers['x-hardware-id'] || 'unknown']
       );
       
       if (transferableSessions.length > 0) {

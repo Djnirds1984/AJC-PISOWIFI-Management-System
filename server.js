@@ -1599,6 +1599,7 @@ app.get('/dist/tailwind.js', (req, res) => {
 });
 
 app.use('/dist', express.static(path.join(__dirname, 'dist')));
+app.use('/styles', express.static(path.join(__dirname, 'styles')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.static(__dirname));
 

@@ -250,7 +250,8 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   };
 
   const handlePause = async () => {
-    if (!mySession || !mySession.token) return;
+    // Only allow pause when there's an active session with time
+    if (!mySession || !mySession.token || mySession.remainingSeconds <= 0) return;
     try {
       const result = await apiClient.pauseSession(mySession.token);
       if (result.success) {
@@ -264,6 +265,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   };
 
   const handleResume = async () => {
+    // Only allow resume when there's an active session
     if (!mySession || !mySession.token) return;
     try {
       const result = await apiClient.resumeSession(mySession.token);
@@ -362,6 +364,15 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   };
 
   const formatSessionTime = (seconds: number) => {
+    // If no session or no time, show 00:00:00
+    if (seconds <= 0) {
+      return (
+        <>
+          00<span className="text-2xl">h</span> 00<span className="text-2xl">m</span> 00<span className="text-2xl">s</span>
+        </>
+      );
+    }
+    
     if (seconds >= 86400) { // 24 hours or more
       const days = Math.floor(seconds / 86400);
       const remainingSeconds = seconds % 86400;
@@ -427,14 +438,17 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
 
       <main className="relative z-20">
         <div className="portal-card">
-          {mySession ? (
-            <div className="mb-6 animate-in fade-in zoom-in duration-500">
-              <p className="text-blue-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Authenticated Session</p>
-              <h2 className={`text-6xl font-black mb-4 tracking-tighter ${mySession.isPaused ? 'text-orange-500 animate-pulse' : 'text-slate-900'}`}>
-                {formatSessionTime(mySession.remainingSeconds)}
-              </h2>
-              <div className="flex flex-col gap-1 text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-6">
-                {mySession.isPaused ? (
+          {/* Always show whoami info */}
+          <div className="mb-6 animate-in fade-in zoom-in duration-500">
+            <p className="text-blue-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">
+              {mySession ? 'Authenticated Session' : 'Device Information'}
+            </p>
+            <h2 className={`text-6xl font-black mb-4 tracking-tighter ${mySession?.isPaused ? 'text-orange-500 animate-pulse' : mySession ? 'text-slate-900' : 'text-slate-400'}`}>
+              {formatSessionTime(mySession ? mySession.remainingSeconds : 0)}
+            </h2>
+            <div className="flex flex-col gap-1 text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-6">
+              {mySession ? (
+                mySession.isPaused ? (
                   <span className="text-orange-500 font-black flex items-center justify-center gap-2">
                     <span className="w-1.5 h-1.5 bg-orange-500 rounded-full"></span>
                     Time Paused - Internet Suspended
@@ -444,33 +458,42 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
                     <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
                     Internet Access Live
                   </span>
-                )}
-                <span>Session ID: {myMac}</span>
-              </div>
-              
-              {!mySession.isPaused ? (
-                <>
-                  <button 
-                    onClick={handleGoToInternet}
-                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest mb-3 shadow-xl hover:bg-black transition-all active:scale-95 flex items-center justify-center gap-2"
-                  >
-                    <span>🌍</span> PROCEED TO INTERNET
-                  </button>
-                  
-                  <button 
-                    onClick={handlePause}
-                    className="w-full bg-orange-500 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest mb-3 shadow-xl hover:bg-orange-600 transition-all active:scale-95 flex items-center justify-center gap-2"
-                  >
-                    <span>⏸️</span> PAUSE MY TIME
-                  </button>
-                </>
+                )
               ) : (
-                <button 
-                  onClick={handleResume}
-                  className="w-full bg-green-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest mb-3 shadow-xl hover:bg-green-700 transition-all active:scale-95 flex items-center justify-center gap-2"
-                >
-                  <span>▶️</span> RESUME MY TIME
-                </button>
+                <span className="text-slate-500 font-black flex items-center justify-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-slate-400 rounded-full"></span>
+                  No Active Session
+                </span>
+              )}
+              <span>Session ID: {myMac}</span>
+            </div>
+              
+              {/* Show pause button only when there's an active session with time */}
+              {mySession && mySession.remainingSeconds > 0 && (
+                !mySession.isPaused ? (
+                  <>
+                    <button 
+                      onClick={handleGoToInternet}
+                      className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest mb-3 shadow-xl hover:bg-black transition-all active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <span>🌍</span> PROCEED TO INTERNET
+                    </button>
+                    
+                    <button 
+                      onClick={handlePause}
+                      className="w-full bg-orange-500 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest mb-3 shadow-xl hover:bg-orange-600 transition-all active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <span>⏸️</span> PAUSE MY TIME
+                    </button>
+                  </>
+                ) : (
+                  <button 
+                    onClick={handleResume}
+                    className="w-full bg-green-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest mb-3 shadow-xl hover:bg-green-700 transition-all active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <span>▶️</span> RESUME MY TIME
+                  </button>
+                )
               )}
               
               <button 
@@ -482,19 +505,6 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
                 {isRefreshing ? 'REFRESHING...' : 'REFRESH CONNECTION'}
               </button>
             </div>
-          ) : (
-            <div className="mb-6 text-center">
-              <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">📡</div>
-              <h2 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Insert Coins to Connect</h2>
-              <p className="text-slate-500 text-xs mb-4 px-4">Drop coins to enable high-speed internet access.</p>
-              <button 
-                onClick={() => setShowRatesModal(true)}
-                className="inline-flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-colors"
-              >
-                💰 RATES
-              </button>
-            </div>
-          )}
 
           {isRevoked && (
             <div className="mx-6 mb-6 p-4 bg-orange-50 border border-orange-100 rounded-2xl text-orange-600 text-center animate-in fade-in slide-in-from-top-4 duration-300">
@@ -552,6 +562,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
             <span>🎫</span> USE VOUCHER CODE
           </button>
           
+          {/* Restore session button - only show when there's no active session but we have a restore function */}
           {!mySession && onRestoreSession && (
             <div className="mt-4 text-center">
               <button 

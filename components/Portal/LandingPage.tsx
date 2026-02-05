@@ -5,7 +5,7 @@ import VoucherModal from './VoucherModal';
 import ChatWidget from './ChatWidget';
 import { apiClient } from '../../lib/api';
 import { getPortalConfig, fetchPortalConfig, PortalConfig, DEFAULT_PORTAL_CONFIG } from '../../lib/theme';
-import { getOrCreateDeviceUUID, attachDeviceHeaders } from '../../lib/device-id';
+import { getOrCreateDeviceUUID, attachDeviceHeaders, getDeviceFingerprint, attachDeviceFingerprintHeaders } from '../../lib/device-id';
 
 // Add refreshSessions prop to Props interface
 interface Props {
@@ -83,8 +83,8 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     // Try to get real MAC in background without blocking UI
     const fetchWhoAmI = async () => {
       try {
-        // Add device UUID to API calls
-        const headers = attachDeviceHeaders();
+        // Add device UUID and fingerprint to API calls
+        const headers = attachDeviceFingerprintHeaders();
         const data = await apiClient.whoAmI(headers);
         if (data.mac && data.mac !== 'unknown') {
           setMyMac(data.mac);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminTab, UserSession, Rate, WifiDevice } from './types';
-import { attachDeviceHeaders } from './lib/device-id';
+import { attachDeviceHeaders, attachDeviceFingerprintHeaders } from './lib/device-id';
 import LandingPage from './components/Portal/LandingPage';
 import SystemDashboard from './components/Admin/SystemDashboard';
 import InterfacesList from './components/Admin/InterfacesList';
@@ -227,8 +227,8 @@ const App: React.FC = () => {
     
     if (sessionToken) {
       try {
-        // Add device UUID to restore request
-        const headers = attachDeviceHeaders({
+        // Add device UUID and fingerprint to restore request
+        const headers = attachDeviceFingerprintHeaders({
           'Content-Type': 'application/json'
         });
         

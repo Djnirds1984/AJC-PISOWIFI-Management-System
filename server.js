@@ -1643,36 +1643,101 @@ app.get('/generate_204', async (req, res) => {
           console.log(`========================================`);
         });
         
-        // FORCE TRANSFER IMMEDIATELY
+        // FORCE TRANSFER IMMEDIATELY WITH FINGERPRINT VALIDATION
         try {
           const firstToken = transferableSessions[0].token;
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
           
           if (oldSession) {
-            console.log(`[CAPTIVE-DETECT] FORCING transfer: ${oldSession.mac} -> ${mac}`);
+            // STRICT FINGERPRINT VALIDATION BEFORE TRANSFER
+            const presentedFingerprint = req.headers['x-device-fingerprint'];
             
-            // Block old MAC
-            await network.blockMAC(oldSession.mac, oldSession.ip);
-            // Increased delay to ensure old rules are completely cleared
-            await new Promise(r => setTimeout(r, 800));
-            
-            // Whitelist new MAC
-            await network.whitelistMAC(mac, clientIp);
-            
-            // Force network refresh to ensure connection activates immediately
-            try {
-              await network.forceNetworkRefresh(mac, clientIp);
-            } catch (e) {
-              console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
+            if (presentedFingerprint && oldSession.device_fingerprint) {
+              // Both fingerprints available - validate them
+              if (oldSession.device_fingerprint !== presentedFingerprint) {
+                // Fingerprint mismatch - BLOCK the transfer (Potential Session Hijack!)
+                console.log(`========================================`);
+                console.log(`[SECURITY-ALERT] SESSION HIJACK ATTEMPT BLOCKED!`);
+                console.log(`[SECURITY-ALERT] CAPTIVE-DETECT (/generate_204): Fingerprint mismatch during forced transfer`);
+                console.log(`[SECURITY-ALERT] Token: ${firstToken.substring(0, 16)}...`);
+                console.log(`[SECURITY-ALERT] Stored Fingerprint: ${oldSession.device_fingerprint.substring(0, 32)}...`);
+                console.log(`[SECURITY-ALERT] Presented Fingerprint: ${presentedFingerprint.substring(0, 32)}...`);
+                console.log(`[SECURITY-ALERT] Original MAC: ${oldSession.mac}`);
+                console.log(`[SECURITY-ALERT] Requesting MAC: ${mac}`);
+                console.log(`[SECURITY-ALERT] TIMESTAMP: ${new Date().toISOString()}`);
+                console.log(`========================================`);
+                
+                // Do NOT trigger NET unblocking commands
+                // Do NOT transfer the session
+                // Continue to portal redirect instead
+                console.log(`[SECURITY-BLOCK] Blocked forced transfer in /generate_204 due to fingerprint mismatch`);
+              } else {
+                console.log(`[FINGERPRINT] ✅ Fingerprint validation passed for /generate_204 transfer`);
+                
+                // SAFE TO PROCEED WITH TRANSFER
+                console.log(`[CAPTIVE-DETECT] FORCING transfer: ${oldSession.mac} -> ${mac}`);
+                
+                // Block old MAC
+                await network.blockMAC(oldSession.mac, oldSession.ip);
+                // Increased delay to ensure old rules are completely cleared
+                await new Promise(r => setTimeout(r, 800));
+                
+                // Whitelist new MAC
+                await network.whitelistMAC(mac, clientIp);
+                
+                // Force network refresh to ensure connection activates immediately
+                try {
+                  await network.forceNetworkRefresh(mac, clientIp);
+                } catch (e) {
+                  console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
+                }
+                
+                // Update session
+                await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
+                
+                console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
+                
+                // Return 204 to indicate internet is available
+                return res.status(204).send();
+              }
+            } else {
+              // Either no fingerprint provided or session doesn't have fingerprint
+              // Proceed with transfer but associate fingerprint if provided
+              
+              console.log(`[CAPTIVE-DETECT] FORCING transfer: ${oldSession.mac} -> ${mac}`);
+              
+              // Block old MAC
+              await network.blockMAC(oldSession.mac, oldSession.ip);
+              // Increased delay to ensure old rules are completely cleared
+              await new Promise(r => setTimeout(r, 800));
+              
+              // Whitelist new MAC
+              await network.whitelistMAC(mac, clientIp);
+              
+              // Force network refresh to ensure connection activates immediately
+              try {
+                await network.forceNetworkRefresh(mac, clientIp);
+              } catch (e) {
+                console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
+              }
+              
+              // Update session with potential fingerprint association
+              const updateParams = [mac, clientIp, firstToken];
+              let updateQuery = 'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?';
+              
+              if (presentedFingerprint) {
+                updateQuery = 'UPDATE sessions SET mac = ?, ip = ?, device_fingerprint = ? WHERE token = ?';
+                updateParams.splice(2, 0, presentedFingerprint);
+                console.log(`[FINGERPRINT] Associating fingerprint with session during /generate_204 transfer`);
+              }
+              
+              await db.run(updateQuery, updateParams);
+              
+              console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
+              
+              // Return 204 to indicate internet is available
+              return res.status(204).send();
             }
-            
-            // Update session
-            await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
-            
-            console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
-            
-            // Return 204 to indicate internet is available
-            return res.status(204).send();
           }
         } catch (e) {
           console.error(`[CAPTIVE-DETECT] Error forcing transfer:`, e.message);
@@ -2067,7 +2132,41 @@ app.use(async (req, res, next) => {
               // Previously: if (session.session_type === 'voucher' || session.voucher_code) { return next(); }
               console.log(`[PORTAL-REDIRECT] Session detected - allowing transfer for token ${firstToken.slice(0,8)}...`);
               
-              // FORCE TRANSFER: Update session with new MAC and IP
+              // STRICT FINGERPRINT VALIDATION BEFORE TRANSFER
+              // Core Fix for Session Hijacking Prevention
+              const presentedFingerprint = req.headers['x-device-fingerprint'];
+              
+              if (presentedFingerprint && session.device_fingerprint) {
+                // Both fingerprints available - validate them
+                if (session.device_fingerprint !== presentedFingerprint) {
+                  // Fingerprint mismatch - BLOCK the transfer (Potential Session Hijack!)
+                  console.log(`========================================`);
+                  console.log(`[SECURITY-ALERT] SESSION HIJACK ATTEMPT BLOCKED!`);
+                  console.log(`[SECURITY-ALERT] PORTAL-REDIRECT: Fingerprint mismatch during forced transfer`);
+                  console.log(`[SECURITY-ALERT] Token: ${firstToken.substring(0, 16)}...`);
+                  console.log(`[SECURITY-ALERT] Stored Fingerprint: ${session.device_fingerprint.substring(0, 32)}...`);
+                  console.log(`[SECURITY-ALERT] Presented Fingerprint: ${presentedFingerprint.substring(0, 32)}...`);
+                  console.log(`[SECURITY-ALERT] Original MAC: ${session.mac}`);
+                  console.log(`[SECURITY-ALERT] Requesting MAC: ${mac}`);
+                  console.log(`[SECURITY-ALERT] TIMESTAMP: ${new Date().toISOString()}`);
+                  console.log(`========================================`);
+                  
+                  // Do NOT trigger NET unblocking commands
+                  // Do NOT transfer the session
+                  // Return next() to let normal portal flow continue (will show login page)
+                  console.log(`[SECURITY-BLOCK] Blocked forced transfer due to fingerprint mismatch`);
+                  return next();
+                } else {
+                  console.log(`[FINGERPRINT] ✅ Fingerprint validation passed for forced transfer`);
+                }
+              } else if (presentedFingerprint && !session.device_fingerprint) {
+                // New device with fingerprint accessing old session without fingerprint
+                // Associate the fingerprint with this session
+                await db.run('UPDATE sessions SET device_fingerprint = ? WHERE token = ?', [presentedFingerprint, firstToken]);
+                console.log(`[FINGERPRINT] Associated fingerprint with existing session for forced transfer`);
+              }
+              
+              // SAFE TO PROCEED WITH TRANSFER
               console.log(`[PORTAL-REDIRECT] FORCING session transfer: ${session.mac} -> ${mac}`);
               
               // Block old MAC
@@ -2077,7 +2176,7 @@ app.use(async (req, res, next) => {
               // Whitelist new MAC
               await network.whitelistMAC(mac, clientIp);
               
-              // Update session
+              // Update session with new MAC, IP, and potentially new fingerprint
               await db.run(
                 'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?',
                 [mac, clientIp, firstToken]
@@ -2327,6 +2426,14 @@ app.post('/api/sessions/start', async (req, res) => {
   } else {
     console.log(`[SESSION] Device UUID provided: ${deviceUUID} for MAC ${mac}`);
   }
+      
+  // Get device fingerprint from headers
+  const deviceFingerprint = req.headers['x-device-fingerprint'];
+  if (!deviceFingerprint) {
+    console.log(`[SESSION] Warning: No device fingerprint provided for MAC ${mac}`);
+  } else {
+    console.log(`[SESSION] Device fingerprint provided for MAC ${mac}`);
+  }
 
   cleanupExpiredCoinSlotLocks();
   const slot = normalizeCoinSlot(requestedSlot);
@@ -2417,17 +2524,17 @@ app.post('/api/sessions/start', async (req, res) => {
     if (existingSessionByDevice) {
       // Update existing session
       await db.run(
-        'UPDATE sessions SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?, token = ?, token_expires_at = ?, mac = ? WHERE device_uuid = ?',
-        [seconds, pesos, clientIp, downloadLimit, uploadLimit, token, tokenExpiresAt, mac, deviceUUID]
+        'UPDATE sessions SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?, token = ?, token_expires_at = ?, mac = ?, device_fingerprint = ? WHERE device_uuid = ?',
+        [seconds, pesos, clientIp, downloadLimit, uploadLimit, token, tokenExpiresAt, mac, deviceFingerprint, deviceUUID]
       );
-      console.log(`[SESSION] Updated existing session for device UUID: ${deviceUUID}`);
+      console.log(`[SESSION] Updated existing session for device UUID: ${deviceUUID} with fingerprint`);
     } else {
       // Create new session
       await db.run(
-        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token, token_expires_at, device_uuid, connected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))',
-        [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, token, tokenExpiresAt, deviceUUID]
+        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token, token_expires_at, device_uuid, device_fingerprint, connected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))',
+        [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, token, tokenExpiresAt, deviceUUID, deviceFingerprint]
       );
-      console.log(`[SESSION] Created new session for device UUID: ${deviceUUID}`);
+      console.log(`[SESSION] Created new session for device UUID: ${deviceUUID} with fingerprint`);
     }
     
     // Whitelist the device in firewall
@@ -2458,7 +2565,10 @@ app.post('/api/sessions/restore', async (req, res) => {
   // Get device UUID from headers
   const deviceUUID = req.headers['x-device-uuid'];
   
-  console.log(`[MAC-SYNC] Session restore request: IP=${clientIp}, Token=${token?.slice(0,8)}..., Device UUID=${deviceUUID?.slice(0,8)}...`);
+  // Get device fingerprint from headers
+  const deviceFingerprint = req.headers['x-device-fingerprint'];
+  
+  console.log(`[MAC-SYNC] Session restore request: IP=${clientIp}, Token=${token?.slice(0,8)}..., Device UUID=${deviceUUID?.slice(0,8)}..., Fingerprint=${deviceFingerprint?.slice(0,16)}...`);
   
   // Fallback: Generate temporary MAC if detection fails (Windows compatibility)
   if (!mac) {
@@ -2485,11 +2595,13 @@ app.post('/api/sessions/restore', async (req, res) => {
     // CRITICAL SECURITY CHECK: Verify requesting device matches token owner
     // First check device UUID if available, fall back to MAC comparison
     let isAuthorizedDevice = false;
+    let securityViolationReason = '';
     
     if (deviceUUID && session.device_uuid) {
       // Use device UUID for authorization
       isAuthorizedDevice = session.device_uuid === deviceUUID;
       if (!isAuthorizedDevice) {
+        securityViolationReason = 'DEVICE_UUID_MISMATCH';
         console.log(`========================================`);
         console.log(`[SECURITY-BLOCK] DEVICE UUID ACCESS VIOLATION DETECTED!`);
         console.log(`[SECURITY-BLOCK] Token Owner Device UUID: ${session.device_uuid}`);
@@ -2510,6 +2622,7 @@ app.post('/api/sessions/restore', async (req, res) => {
           console.log(`[BACKWARD-COMPAT] Associated session with device UUID: ${deviceUUID}`);
         }
       } else {
+        securityViolationReason = 'MAC_IP_MISMATCH_BACKWARD_COMPAT';
         console.log(`========================================`);
         console.log(`[SECURITY-BLOCK] MAC/IP ACCESS VIOLATION DETECTED!`);
         console.log(`[SECURITY-BLOCK] Token Owner: MAC=${session.mac}, IP=${session.ip}`);
@@ -2520,6 +2633,7 @@ app.post('/api/sessions/restore', async (req, res) => {
       // Fall back to MAC-based authorization for backward compatibility
       isAuthorizedDevice = (session.mac === mac && session.ip === clientIp);
       if (!isAuthorizedDevice) {
+        securityViolationReason = 'MAC_IP_MISMATCH';
         console.log(`========================================`);
         console.log(`[SECURITY-BLOCK] MAC/IP ACCESS VIOLATION DETECTED!`);
         console.log(`[SECURITY-BLOCK] Token Owner: MAC=${session.mac}, IP=${session.ip}`);
@@ -2528,10 +2642,44 @@ app.post('/api/sessions/restore', async (req, res) => {
       }
     }
     
+    // STRICT FINGERPRINT VALIDATION (Core Fix for Session Hijacking)
+    if (isAuthorizedDevice && deviceFingerprint && session.device_fingerprint) {
+      // Both fingerprints are available - validate them
+      if (session.device_fingerprint !== deviceFingerprint) {
+        // Fingerprint mismatch - potential session hijack!
+        isAuthorizedDevice = false;
+        securityViolationReason = 'FINGERPRINT_MISMATCH';
+        
+        console.log(`========================================`);
+        console.log(`[SECURITY-ALERT] POTENTIAL SESSION HIJACK DETECTED!`);
+        console.log(`[SECURITY-ALERT] Token: ${token.substring(0, 16)}...`);
+        console.log(`[SECURITY-ALERT] Stored Fingerprint: ${session.device_fingerprint.substring(0, 32)}...`);
+        console.log(`[SECURITY-ALERT] Presented Fingerprint: ${deviceFingerprint.substring(0, 32)}...`);
+        console.log(`[SECURITY-ALERT] Original MAC: ${session.mac}`);
+        console.log(`[SECURITY-ALERT] Requesting MAC: ${mac}`);
+        console.log(`[SECURITY-ALERT] Original IP: ${session.ip}`);
+        console.log(`[SECURITY-ALERT] Requesting IP: ${clientIp}`);
+        console.log(`[SECURITY-ALERT] TIMESTAMP: ${new Date().toISOString()}`);
+        console.log(`========================================`);
+        
+        // Log this security event
+        console.log(`[SECURITY-EVENT] Session hijack attempt blocked - fingerprint mismatch`);
+        
+        // Do NOT trigger NET unblocking commands
+        // Return security violation response
+      }
+    } else if (isAuthorizedDevice && deviceFingerprint && !session.device_fingerprint) {
+      // New device with fingerprint trying to access old session without fingerprint
+      // Associate the fingerprint with this session
+      await db.run('UPDATE sessions SET device_fingerprint = ? WHERE token = ?', [deviceFingerprint, token]);
+      console.log(`[FINGERPRINT] Associated fingerprint with existing session`);
+    }
+    
     if (!isAuthorizedDevice) {
       return res.status(403).json({ 
         error: 'Security violation: This session token belongs to a different device.',
-        security_code: 'DEVICE_MISMATCH_BLOCKED'
+        security_code: 'DEVICE_MISMATCH_BLOCKED',
+        reason: securityViolationReason
       });
     }
     
@@ -2929,11 +3077,19 @@ app.post('/api/vouchers/activate', async (req, res) => {
     
     // Get device UUID from headers
     const deviceUUID = req.headers['x-device-uuid'];
+    
+    // Get device fingerprint from headers
+    const deviceFingerprint = req.headers['x-device-fingerprint'];
     if (!deviceUUID) {
       console.log(`[Voucher] Warning: No device UUID provided for MAC ${mac}`);
       // Continue without device UUID for backward compatibility
     } else {
       console.log(`[Voucher] Device UUID provided: ${deviceUUID} for MAC ${mac}`);
+    }
+    if (!deviceFingerprint) {
+      console.log(`[Voucher] Warning: No device fingerprint provided for MAC ${mac}`);
+    } else {
+      console.log(`[Voucher] Device fingerprint provided for MAC ${mac}`);
     }
     
     console.log(`[Voucher] Device identified: ${mac} (${clientIp})`);
@@ -3078,18 +3234,18 @@ app.post('/api/vouchers/activate', async (req, res) => {
       
       console.log(`[Voucher] Updated existing session for device ${deviceUUID || mac} with voucher ${voucher.code}`);
     } else {
-      // Create new voucher session with device UUID
+      // Create new voucher session with device UUID and fingerprint
       await db.run(`
         INSERT INTO sessions (
           mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, 
-          token, token_expires_at, voucher_code, connected_at, session_type, device_uuid
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'voucher', ?)
+          token, token_expires_at, voucher_code, connected_at, session_type, device_uuid, device_fingerprint
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'voucher', ?, ?)
       `, [
         mac, clientIp, seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
-        token, tokenExpiresAt, voucher.code, deviceUUID
+        token, tokenExpiresAt, voucher.code, deviceUUID, deviceFingerprint
       ]);
       
-      console.log(`[Voucher] Created new voucher session for device ${deviceUUID || mac} with UNIQUE token`);
+      console.log(`[Voucher] Created new voucher session for device ${deviceUUID || mac} with UNIQUE token and fingerprint`);
     }
     
     // Mark voucher as used and bind to device

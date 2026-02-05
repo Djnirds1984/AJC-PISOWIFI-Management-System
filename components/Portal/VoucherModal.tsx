@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { attachDeviceHeaders } from '../../lib/device-id';
+import { attachDeviceHeaders, attachDeviceFingerprintHeaders } from '../../lib/device-id';
 
 interface VoucherModalProps {
   isOpen: boolean;
@@ -22,8 +22,8 @@ const VoucherModal: React.FC<VoucherModalProps> = ({ isOpen, onClose, onVoucherA
     setError(null);
 
     try {
-      // Add device UUID to request headers
-      const headers = attachDeviceHeaders({
+      // Add device UUID and fingerprint to request headers
+      const headers = attachDeviceFingerprintHeaders({
         'Content-Type': 'application/json',
       });
       

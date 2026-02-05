@@ -2021,10 +2021,14 @@ app.post('/api/sessions/restore', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
   let mac = await getMacFromIp(clientIp);
   
+  console.log(`[MAC-SYNC] Session restore request: IP=${clientIp}, Token=${token?.slice(0,8)}...`);
+  
   // Fallback: Generate temporary MAC if detection fails (Windows compatibility)
   if (!mac) {
     mac = `TEMP-${clientIp.replace(/\./g, '-')}-${Date.now().toString(36).slice(-4)}`;
     console.log(`[MAC-SYNC] MAC detection failed for ${clientIp}, using temporary MAC: ${mac}`);
+  } else {
+    console.log(`[MAC-SYNC] MAC detected for ${clientIp}: ${mac}`);
   }
   
   if (!token) return res.status(400).json({ error: 'Session token required' });
@@ -2087,10 +2091,11 @@ app.post('/api/sessions/restore', async (req, res) => {
 
     // Different MAC - check if MAC sync is enabled for coin sessions
     if (!isMacSyncEnabled) {
+      console.log(`[MAC-SYNC] MAC sync disabled - blocking transfer from ${session.mac} to ${mac}`);
       return res.status(403).json({ error: 'MAC sync is disabled. Session can only be used on the original device.' });
     }
 
-    console.log(`[MAC-SYNC] Coin session token ${token} - transferring from ${session.mac} to ${mac}`);
+    console.log(`[MAC-SYNC] Coin session token ${token.slice(0,8)}... - transferring from ${session.mac} to ${mac}`);
 
     // Check if the target MAC already has a different session
     const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
@@ -2112,13 +2117,32 @@ app.post('/api/sessions/restore', async (req, res) => {
     );
     
     // Switch network access
+    console.log(`[MAC-SYNC] Blocking old MAC: ${session.mac} (${session.ip})`);
     await network.blockMAC(session.mac, session.ip); // Block old MAC
+    
+    // Add delay to ensure old rules are cleared
+    await new Promise(r => setTimeout(r, 500));
+    
+    console.log(`[MAC-SYNC] Whitelisting new MAC: ${mac} (${clientIp})`);
     await network.whitelistMAC(mac, clientIp); // Allow new MAC
+    
+    // Force network refresh to ensure connection activates immediately
+    try {
+      await network.forceNetworkRefresh(mac, clientIp);
+    } catch (e) {
+      console.log(`[MAC-SYNC] Network refresh failed: ${e.message}`);
+    }
     
     // Log session transfer for audit
     console.log(`[MAC-SYNC] Session transferred: ${session.mac} -> ${mac} (${session.remaining_seconds + extraTime}s remaining)`);
     
-    res.json({ success: true, migrated: true, remainingSeconds: session.remaining_seconds + extraTime, isPaused: session.is_paused === 1 });
+    res.json({ 
+      success: true, 
+      migrated: true, 
+      remainingSeconds: session.remaining_seconds + extraTime, 
+      isPaused: session.is_paused === 1,
+      message: 'Session transferred to new device. Internet access should activate within 10 seconds.'
+    });
   } catch (err) { 
     console.error('[MAC-SYNC] Restore error:', err);
     res.status(500).json({ error: err.message }); 

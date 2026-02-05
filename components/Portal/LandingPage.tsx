@@ -93,6 +93,20 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     if (!window.location.hostname.includes('localhost')) {
       fetchWhoAmI();
     }
+
+    // Proactive session restoration check
+    // If user has a session token but no active session, try to restore automatically
+    const checkAndRestoreSession = async () => {
+      const sessionToken = localStorage.getItem('ajc_session_token');
+      if (sessionToken && !mySession && onRestoreSession) {
+        console.log('[Portal] Detected session token without active session - attempting automatic restoration');
+        setTimeout(() => {
+          onRestoreSession();
+        }, 2000); // Small delay to let other initialization complete
+      }
+    };
+    
+    checkAndRestoreSession();
   }, []);
 
   const mySession = sessions.find(s => s.mac === myMac);
@@ -464,12 +478,17 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
           </button>
           
           {!mySession && onRestoreSession && (
-            <button 
-              onClick={onRestoreSession}
-              className="mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-blue-600 transition-colors"
-            >
-              Lost Connection? Restore Session
-            </button>
+            <div className="mt-4 text-center">
+              <button 
+                onClick={onRestoreSession}
+                className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-2 mx-auto"
+              >
+                <span>🔄</span> RESTORE MY SESSION
+              </button>
+              <p className="text-[9px] text-slate-400 mt-2 uppercase tracking-widest">
+                Switched WiFi networks? Click to restore your time.
+              </p>
+            </div>
           )}
         </div>
 

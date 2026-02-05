@@ -222,6 +222,8 @@ const App: React.FC = () => {
   // Check for existing session token and try to restore (Fix for randomized MACs/SSID switching)
   const restoreSession = async (retries = 5) => {
     const sessionToken = localStorage.getItem('ajc_session_token');
+    console.log(`[Session] Attempting to restore session, token: ${sessionToken ? sessionToken.slice(0,8) + '...' : 'none'}, retries: ${retries}`);
+    
     if (sessionToken) {
       try {
         const res = await fetch('/api/sessions/restore', {
@@ -229,6 +231,8 @@ const App: React.FC = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: sessionToken })
         });
+        
+        console.log(`[Session] Restore response: ${res.status} ${res.statusText}`);
         
         // If 400 (Bad Request), it likely means MAC resolution failed temporarily. Retry.
         if (res.status === 400 && retries > 0) {
@@ -238,16 +242,57 @@ const App: React.FC = () => {
         }
 
         const data = await res.json();
+        console.log(`[Session] Restore data:`, data);
+        
         if (data.success) {
           console.log('Session restored successfully');
           if (data.migrated) {
             console.log('Session migrated to new network info');
+            
+            // Show user feedback for successful migration
+            if (data.message) {
+              // Create a temporary notification
+              const notification = document.createElement('div');
+              notification.style.cssText = `
+                position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+                background: #10b981; color: white; padding: 12px 24px;
+                border-radius: 8px; font-weight: bold; z-index: 9999;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                font-size: 14px; text-align: center;
+              `;
+              notification.textContent = '✅ ' + data.message;
+              document.body.appendChild(notification);
+              
+              // Remove notification after 5 seconds
+              setTimeout(() => {
+                if (notification.parentNode) {
+                  notification.parentNode.removeChild(notification);
+                }
+              }, 5000);
+            }
+            
+            // Test internet connectivity after session migration
+            setTimeout(async () => {
+              try {
+                console.log('[Session] Testing internet connectivity after migration...');
+                await fetch('http://connectivitycheck.gstatic.com/generate_204', { 
+                  mode: 'no-cors',
+                  cache: 'no-cache'
+                });
+                console.log('[Session] Internet connectivity test passed');
+              } catch (e) {
+                console.log('[Session] Internet connectivity test failed, but this is normal for no-cors requests');
+              }
+            }, 2000);
+            
             loadData(); // Reload to see active session
           }
         } else if (res.status === 404) {
           // Token invalid/expired - only remove if we are sure
           console.log('[Session] Token expired or invalid');
           localStorage.removeItem('ajc_session_token');
+        } else {
+          console.log('[Session] Restore failed:', data.error);
         }
       } catch (e) {
         console.error('Failed to restore session:', e);
@@ -255,6 +300,8 @@ const App: React.FC = () => {
           setTimeout(() => restoreSession(retries - 1), 2000);
         }
       }
+    } else {
+      console.log('[Session] No session token found to restore');
     }
   };
 

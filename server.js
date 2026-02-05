@@ -1755,11 +1755,10 @@ app.get('/generate_204', async (req, res) => {
           [mac, 'coin']
         );
         
-        // Only allow if no hardware registry exists (legitimate case)
-        const deviceRegistered = await db.get('SELECT mac FROM device_registry WHERE mac = ?', [mac]);
-        if (!deviceRegistered && orphanedSessions.length > 0) {
+        // Session ID system: Allow transfer for coin sessions without device registry check
+        if (orphanedSessions.length > 0) {
           transferableSessions = [orphanedSessions[0]]; // Take first one
-          console.log(`[CAPTIVE-DETECT] Allowing transfer for unregistered device`);
+          console.log(`[CAPTIVE-DETECT] Allowing session transfer for coin session`);
         }
       }
       
@@ -1771,7 +1770,6 @@ app.get('/generate_204', async (req, res) => {
           console.log(`========================================`);
           console.log(`[SESSION-ID] AUTHENTICATED SESSION #${index + 1}`);
           console.log(`[SESSION-ID] Session Token: ${sess.token}`);
-          console.log(`[SESSION-ID] Session ID: ${sess.session_id.substring(0,8)}...`);
           console.log(`[SESSION-ID] Original MAC: ${sess.original_mac}`);
           console.log(`[SESSION-ID] Current MAC: ${mac}`);
           console.log(`[SESSION-ID] Remaining Time: ${sess.remaining_seconds} seconds`);
@@ -1890,110 +1888,22 @@ app.get('/ncsi.txt', async (req, res) => {
           
           if (oldSession) {
             // STEP 1: GET HARDWARE FINGERPRINT FROM REQUEST
-            const presentedFingerprint = req.headers['x-device-fingerprint'];
-            const presentedHardwareID = req.headers['x-hardware-id'];
+            // Session ID system: Direct MAC transfer without hardware validation
+            console.log(`[CAPTIVE-DETECT] Session ID system - transferring session to new MAC: ${oldSession.mac} -> ${mac}`);
             
-            console.log(`[SECURITY] Hardware validation for token ${firstToken.substring(0, 8)}...`);
-            console.log(`[SECURITY] Stored Hardware ID: ${oldSession.hardware_id || 'NONE'}`);
-            console.log(`[SECURITY] Presented Hardware ID: ${presentedHardwareID || 'NONE'}`);
-            console.log(`[SECURITY] Stored Fingerprint: ${oldSession.device_fingerprint ? oldSession.device_fingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            console.log(`[SECURITY] Presented Fingerprint: ${presentedFingerprint ? presentedFingerprint.substring(0, 32) + '...' : 'NONE'}`);
+            // Perform the session transfer
+            await network.blockMAC(oldSession.mac, oldSession.ip);
+            await new Promise(r => setTimeout(r, 800));
+            await network.whitelistMAC(mac, clientIp);
             
-            // STEP 2: STRICT HARDWARE VALIDATION
-            let isLegitimateTransfer = false;
-            let validationMethod = '';
+            // Update session with new MAC/IP
+            await db.run(
+              'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?',
+              [mac, clientIp, firstToken]
+            );
             
-            // Method A: Hardware ID match (most reliable)
-            if (presentedHardwareID && oldSession.hardware_id) {
-              if (presentedHardwareID === oldSession.hardware_id) {
-                isLegitimateTransfer = true;
-                validationMethod = 'HARDWARE_ID_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Hardware ID match confirmed`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Hardware ID mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
-            else if (presentedFingerprint && oldSession.device_fingerprint) {
-              // Check for exact match first (ideal case)
-              if (presentedFingerprint === oldSession.device_fingerprint) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_EXACT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
-              } 
-              // Check for relaxed match (same device, minor differences allowed for roaming)
-              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
-                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method C: No hardware info available (associate new hardware)
-            else if (presentedHardwareID || presentedFingerprint) {
-              isLegitimateTransfer = true;
-              validationMethod = 'NEW_HARDWARE_ASSOCIATION';
-              console.log(`[SECURITY] ⚠️  ASSOCIATING new hardware with existing session`);
-            }
-            
-            // STEP 3: HANDLE VALIDATION RESULT
-            if (isLegitimateTransfer) {
-              console.log(`[CAPTIVE-DETECT] ✅ Hardware validation PASSED - proceeding with legitimate MAC transfer`);
-              console.log(`[CAPTIVE-DETECT] Validation method: ${validationMethod}`);
-              
-              // Perform the legitimate transfer
-              await network.blockMAC(oldSession.mac, oldSession.ip);
-              await new Promise(r => setTimeout(r, 800));
-              await network.whitelistMAC(mac, clientIp);
-              
-              // Force network refresh
-              try {
-                // await network.forceNetworkRefresh(mac, clientIp); // Removed - not needed in Session ID system
-              } catch (e) {
-                console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
-              }
-              
-              // Update session with new MAC/IP and associate hardware if needed
-              const updateParams = [mac, clientIp, firstToken];
-              let updateQuery = 'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?';
-              
-              if (presentedHardwareID && !oldSession.hardware_id) {
-                updateQuery = 'UPDATE sessions SET mac = ?, ip = ?, hardware_id = ? WHERE token = ?';
-                updateParams.splice(2, 0, presentedHardwareID);
-                console.log(`[HARDWARE] Associating Hardware ID: ${presentedHardwareID}`);
-              }
-              
-              if (presentedFingerprint && !oldSession.device_fingerprint) {
-                updateQuery = updateQuery.replace('WHERE token = ?', ', device_fingerprint = ? WHERE token = ?');
-                updateParams.splice(updateParams.length - 1, 0, presentedFingerprint);
-                console.log(`[FINGERPRINT] Associating device fingerprint`);
-              }
-              
-              await db.run(updateQuery, updateParams);
-              
-              console.log(`[CAPTIVE-DETECT] ✅ LEGITIMATE TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
-              return res.status(204).send();
-            } else {
-              // BLOCK the transfer - this is likely a Ghost Token
-              console.log(`========================================`);
-              console.log(`[SECURITY-ALERT] GHOST TOKEN DETECTED AND BLOCKED!`);
-              console.log(`[SECURITY-ALERT] Token: ${firstToken.substring(0, 16)}...`);
-              console.log(`[SECURITY-ALERT] Original MAC: ${oldSession.mac}`);
-              console.log(`[SECURITY-ALERT] Requesting MAC: ${mac}`);
-              console.log(`[SECURITY-ALERT] Reason: Hardware validation failed`);
-              console.log(`[SECURITY-ALERT] Action: Blocking NET unblocking commands`);
-              console.log(`[SECURITY-ALERT] TIMESTAMP: ${new Date().toISOString()}`);
-              console.log(`========================================`);
-              
-              // Do NOT trigger NET unblocking commands
-              // Do NOT transfer the session
-              // Redirect to portal for proper authentication
-              console.log(`[SECURITY-BLOCK] Blocked Ghost Token transfer - redirecting to portal for authentication`);
-            }
+            console.log(`[CAPTIVE-DETECT] ✅ SESSION TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
+            return res.status(204).send();
           }
         } catch (e) {
           console.error(`[CAPTIVE-DETECT] Error during session transfer:`, e.message);
@@ -2033,110 +1943,22 @@ app.get('/connecttest.txt', async (req, res) => {
           
           if (oldSession) {
             // STEP 1: GET HARDWARE FINGERPRINT FROM REQUEST
-            const presentedFingerprint = req.headers['x-device-fingerprint'];
-            const presentedHardwareID = req.headers['x-hardware-id'];
+            // Session ID system: Direct MAC transfer without hardware validation
+            console.log(`[CAPTIVE-DETECT] Session ID system - transferring session to new MAC: ${oldSession.mac} -> ${mac}`);
             
-            console.log(`[SECURITY] Hardware validation for token ${firstToken.substring(0, 8)}...`);
-            console.log(`[SECURITY] Stored Hardware ID: ${oldSession.hardware_id || 'NONE'}`);
-            console.log(`[SECURITY] Presented Hardware ID: ${presentedHardwareID || 'NONE'}`);
-            console.log(`[SECURITY] Stored Fingerprint: ${oldSession.device_fingerprint ? oldSession.device_fingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            console.log(`[SECURITY] Presented Fingerprint: ${presentedFingerprint ? presentedFingerprint.substring(0, 32) + '...' : 'NONE'}`);
+            // Perform the session transfer
+            await network.blockMAC(oldSession.mac, oldSession.ip);
+            await new Promise(r => setTimeout(r, 800));
+            await network.whitelistMAC(mac, clientIp);
             
-            // STEP 2: STRICT HARDWARE VALIDATION
-            let isLegitimateTransfer = false;
-            let validationMethod = '';
+            // Update session with new MAC/IP
+            await db.run(
+              'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?',
+              [mac, clientIp, firstToken]
+            );
             
-            // Method A: Hardware ID match (most reliable)
-            if (presentedHardwareID && oldSession.hardware_id) {
-              if (presentedHardwareID === oldSession.hardware_id) {
-                isLegitimateTransfer = true;
-                validationMethod = 'HARDWARE_ID_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Hardware ID match confirmed`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Hardware ID mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
-            else if (presentedFingerprint && oldSession.device_fingerprint) {
-              // Check for exact match first (ideal case)
-              if (presentedFingerprint === oldSession.device_fingerprint) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_EXACT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
-              } 
-              // Check for relaxed match (same device, minor differences allowed for roaming)
-              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
-                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method C: No hardware info available (associate new hardware)
-            else if (presentedHardwareID || presentedFingerprint) {
-              isLegitimateTransfer = true;
-              validationMethod = 'NEW_HARDWARE_ASSOCIATION';
-              console.log(`[SECURITY] ⚠️  ASSOCIATING new hardware with existing session`);
-            }
-            
-            // STEP 3: HANDLE VALIDATION RESULT
-            if (isLegitimateTransfer) {
-              console.log(`[CAPTIVE-DETECT] ✅ Hardware validation PASSED - proceeding with legitimate MAC transfer`);
-              console.log(`[CAPTIVE-DETECT] Validation method: ${validationMethod}`);
-              
-              // Perform the legitimate transfer
-              await network.blockMAC(oldSession.mac, oldSession.ip);
-              await new Promise(r => setTimeout(r, 800));
-              await network.whitelistMAC(mac, clientIp);
-              
-              // Force network refresh
-              try {
-                // await network.forceNetworkRefresh(mac, clientIp); // Removed - not needed in Session ID system
-              } catch (e) {
-                console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
-              }
-              
-              // Update session with new MAC/IP and associate hardware if needed
-              const updateParams = [mac, clientIp, firstToken];
-              let updateQuery = 'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?';
-              
-              if (presentedHardwareID && !oldSession.hardware_id) {
-                updateQuery = 'UPDATE sessions SET mac = ?, ip = ?, hardware_id = ? WHERE token = ?';
-                updateParams.splice(2, 0, presentedHardwareID);
-                console.log(`[HARDWARE] Associating Hardware ID: ${presentedHardwareID}`);
-              }
-              
-              if (presentedFingerprint && !oldSession.device_fingerprint) {
-                updateQuery = updateQuery.replace('WHERE token = ?', ', device_fingerprint = ? WHERE token = ?');
-                updateParams.splice(updateParams.length - 1, 0, presentedFingerprint);
-                console.log(`[FINGERPRINT] Associating device fingerprint`);
-              }
-              
-              await db.run(updateQuery, updateParams);
-              
-              console.log(`[CAPTIVE-DETECT] ✅ LEGITIMATE TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
-              return res.status(204).send();
-            } else {
-              // BLOCK the transfer - this is likely a Ghost Token
-              console.log(`========================================`);
-              console.log(`[SECURITY-ALERT] GHOST TOKEN DETECTED AND BLOCKED!`);
-              console.log(`[SECURITY-ALERT] Token: ${firstToken.substring(0, 16)}...`);
-              console.log(`[SECURITY-ALERT] Original MAC: ${oldSession.mac}`);
-              console.log(`[SECURITY-ALERT] Requesting MAC: ${mac}`);
-              console.log(`[SECURITY-ALERT] Reason: Hardware validation failed`);
-              console.log(`[SECURITY-ALERT] Action: Blocking NET unblocking commands`);
-              console.log(`[SECURITY-ALERT] TIMESTAMP: ${new Date().toISOString()}`);
-              console.log(`========================================`);
-              
-              // Do NOT trigger NET unblocking commands
-              // Do NOT transfer the session
-              // Redirect to portal for proper authentication
-              console.log(`[SECURITY-BLOCK] Blocked Ghost Token transfer - redirecting to portal for authentication`);
-            }
+            console.log(`[CAPTIVE-DETECT] ✅ SESSION TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
+            return res.status(204).send();
           }
         } catch (e) {
           console.error(`[CAPTIVE-DETECT] Error during session transfer:`, e.message);
@@ -2177,110 +1999,22 @@ app.get('/success.txt', async (req, res) => {
           
           if (oldSession) {
             // STEP 1: GET HARDWARE FINGERPRINT FROM REQUEST
-            const presentedFingerprint = req.headers['x-device-fingerprint'];
-            const presentedHardwareID = req.headers['x-hardware-id'];
+            // Session ID system: Direct MAC transfer without hardware validation
+            console.log(`[CAPTIVE-DETECT] Session ID system - transferring session to new MAC: ${oldSession.mac} -> ${mac}`);
             
-            console.log(`[SECURITY] Hardware validation for token ${firstToken.substring(0, 8)}...`);
-            console.log(`[SECURITY] Stored Hardware ID: ${oldSession.hardware_id || 'NONE'}`);
-            console.log(`[SECURITY] Presented Hardware ID: ${presentedHardwareID || 'NONE'}`);
-            console.log(`[SECURITY] Stored Fingerprint: ${oldSession.device_fingerprint ? oldSession.device_fingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            console.log(`[SECURITY] Presented Fingerprint: ${presentedFingerprint ? presentedFingerprint.substring(0, 32) + '...' : 'NONE'}`);
+            // Perform the session transfer
+            await network.blockMAC(oldSession.mac, oldSession.ip);
+            await new Promise(r => setTimeout(r, 800));
+            await network.whitelistMAC(mac, clientIp);
             
-            // STEP 2: STRICT HARDWARE VALIDATION
-            let isLegitimateTransfer = false;
-            let validationMethod = '';
+            // Update session with new MAC/IP
+            await db.run(
+              'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?',
+              [mac, clientIp, firstToken]
+            );
             
-            // Method A: Hardware ID match (most reliable)
-            if (presentedHardwareID && oldSession.hardware_id) {
-              if (presentedHardwareID === oldSession.hardware_id) {
-                isLegitimateTransfer = true;
-                validationMethod = 'HARDWARE_ID_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Hardware ID match confirmed`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Hardware ID mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
-            else if (presentedFingerprint && oldSession.device_fingerprint) {
-              // Check for exact match first (ideal case)
-              if (presentedFingerprint === oldSession.device_fingerprint) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_EXACT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
-              } 
-              // Check for relaxed match (same device, minor differences allowed for roaming)
-              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
-                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method C: No hardware info available (associate new hardware)
-            else if (presentedHardwareID || presentedFingerprint) {
-              isLegitimateTransfer = true;
-              validationMethod = 'NEW_HARDWARE_ASSOCIATION';
-              console.log(`[SECURITY] ⚠️  ASSOCIATING new hardware with existing session`);
-            }
-            
-            // STEP 3: HANDLE VALIDATION RESULT
-            if (isLegitimateTransfer) {
-              console.log(`[CAPTIVE-DETECT] ✅ Hardware validation PASSED - proceeding with legitimate MAC transfer`);
-              console.log(`[CAPTIVE-DETECT] Validation method: ${validationMethod}`);
-              
-              // Perform the legitimate transfer
-              await network.blockMAC(oldSession.mac, oldSession.ip);
-              await new Promise(r => setTimeout(r, 800));
-              await network.whitelistMAC(mac, clientIp);
-              
-              // Force network refresh
-              try {
-                // await network.forceNetworkRefresh(mac, clientIp); // Removed - not needed in Session ID system
-              } catch (e) {
-                console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
-              }
-              
-              // Update session with new MAC/IP and associate hardware if needed
-              const updateParams = [mac, clientIp, firstToken];
-              let updateQuery = 'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?';
-              
-              if (presentedHardwareID && !oldSession.hardware_id) {
-                updateQuery = 'UPDATE sessions SET mac = ?, ip = ?, hardware_id = ? WHERE token = ?';
-                updateParams.splice(2, 0, presentedHardwareID);
-                console.log(`[HARDWARE] Associating Hardware ID: ${presentedHardwareID}`);
-              }
-              
-              if (presentedFingerprint && !oldSession.device_fingerprint) {
-                updateQuery = updateQuery.replace('WHERE token = ?', ', device_fingerprint = ? WHERE token = ?');
-                updateParams.splice(updateParams.length - 1, 0, presentedFingerprint);
-                console.log(`[FINGERPRINT] Associating device fingerprint`);
-              }
-              
-              await db.run(updateQuery, updateParams);
-              
-              console.log(`[CAPTIVE-DETECT] ✅ LEGITIMATE TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
-              return res.status(204).send();
-            } else {
-              // BLOCK the transfer - this is likely a Ghost Token
-              console.log(`========================================`);
-              console.log(`[SECURITY-ALERT] GHOST TOKEN DETECTED AND BLOCKED!`);
-              console.log(`[SECURITY-ALERT] Token: ${firstToken.substring(0, 16)}...`);
-              console.log(`[SECURITY-ALERT] Original MAC: ${oldSession.mac}`);
-              console.log(`[SECURITY-ALERT] Requesting MAC: ${mac}`);
-              console.log(`[SECURITY-ALERT] Reason: Hardware validation failed`);
-              console.log(`[SECURITY-ALERT] Action: Blocking NET unblocking commands`);
-              console.log(`[SECURITY-ALERT] TIMESTAMP: ${new Date().toISOString()}`);
-              console.log(`========================================`);
-              
-              // Do NOT trigger NET unblocking commands
-              // Do NOT transfer the session
-              // Redirect to portal for proper authentication
-              console.log(`[SECURITY-BLOCK] Blocked Ghost Token transfer - redirecting to portal for authentication`);
-            }
+            console.log(`[CAPTIVE-DETECT] ✅ SESSION TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
+            return res.status(204).send();
           }
         } catch (e) {
           console.error(`[CAPTIVE-DETECT] Error during session transfer:`, e.message);
@@ -2322,110 +2056,22 @@ app.get('/library/test/success.html', async (req, res) => {
           
           if (oldSession) {
             // STEP 1: GET HARDWARE FINGERPRINT FROM REQUEST
-            const presentedFingerprint = req.headers['x-device-fingerprint'];
-            const presentedHardwareID = req.headers['x-hardware-id'];
+            // Session ID system: Direct MAC transfer without hardware validation
+            console.log(`[CAPTIVE-DETECT] Session ID system - transferring session to new MAC: ${oldSession.mac} -> ${mac}`);
             
-            console.log(`[SECURITY] Hardware validation for token ${firstToken.substring(0, 8)}...`);
-            console.log(`[SECURITY] Stored Hardware ID: ${oldSession.hardware_id || 'NONE'}`);
-            console.log(`[SECURITY] Presented Hardware ID: ${presentedHardwareID || 'NONE'}`);
-            console.log(`[SECURITY] Stored Fingerprint: ${oldSession.device_fingerprint ? oldSession.device_fingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            console.log(`[SECURITY] Presented Fingerprint: ${presentedFingerprint ? presentedFingerprint.substring(0, 32) + '...' : 'NONE'}`);
+            // Perform the session transfer
+            await network.blockMAC(oldSession.mac, oldSession.ip);
+            await new Promise(r => setTimeout(r, 800));
+            await network.whitelistMAC(mac, clientIp);
             
-            // STEP 2: STRICT HARDWARE VALIDATION
-            let isLegitimateTransfer = false;
-            let validationMethod = '';
+            // Update session with new MAC/IP
+            await db.run(
+              'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?',
+              [mac, clientIp, firstToken]
+            );
             
-            // Method A: Hardware ID match (most reliable)
-            if (presentedHardwareID && oldSession.hardware_id) {
-              if (presentedHardwareID === oldSession.hardware_id) {
-                isLegitimateTransfer = true;
-                validationMethod = 'HARDWARE_ID_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Hardware ID match confirmed`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Hardware ID mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
-            else if (presentedFingerprint && oldSession.device_fingerprint) {
-              // Check for exact match first (ideal case)
-              if (presentedFingerprint === oldSession.device_fingerprint) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_EXACT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
-              } 
-              // Check for relaxed match (same device, minor differences allowed for roaming)
-              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
-                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method C: No hardware info available (associate new hardware)
-            else if (presentedHardwareID || presentedFingerprint) {
-              isLegitimateTransfer = true;
-              validationMethod = 'NEW_HARDWARE_ASSOCIATION';
-              console.log(`[SECURITY] ⚠️  ASSOCIATING new hardware with existing session`);
-            }
-            
-            // STEP 3: HANDLE VALIDATION RESULT
-            if (isLegitimateTransfer) {
-              console.log(`[CAPTIVE-DETECT] ✅ Hardware validation PASSED - proceeding with legitimate MAC transfer`);
-              console.log(`[CAPTIVE-DETECT] Validation method: ${validationMethod}`);
-              
-              // Perform the legitimate transfer
-              await network.blockMAC(oldSession.mac, oldSession.ip);
-              await new Promise(r => setTimeout(r, 800));
-              await network.whitelistMAC(mac, clientIp);
-              
-              // Force network refresh
-              try {
-                // await network.forceNetworkRefresh(mac, clientIp); // Removed - not needed in Session ID system
-              } catch (e) {
-                console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
-              }
-              
-              // Update session with new MAC/IP and associate hardware if needed
-              const updateParams = [mac, clientIp, firstToken];
-              let updateQuery = 'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?';
-              
-              if (presentedHardwareID && !oldSession.hardware_id) {
-                updateQuery = 'UPDATE sessions SET mac = ?, ip = ?, hardware_id = ? WHERE token = ?';
-                updateParams.splice(2, 0, presentedHardwareID);
-                console.log(`[HARDWARE] Associating Hardware ID: ${presentedHardwareID}`);
-              }
-              
-              if (presentedFingerprint && !oldSession.device_fingerprint) {
-                updateQuery = updateQuery.replace('WHERE token = ?', ', device_fingerprint = ? WHERE token = ?');
-                updateParams.splice(updateParams.length - 1, 0, presentedFingerprint);
-                console.log(`[FINGERPRINT] Associating device fingerprint`);
-              }
-              
-              await db.run(updateQuery, updateParams);
-              
-              console.log(`[CAPTIVE-DETECT] ✅ LEGITIMATE TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
-              return res.status(204).send();
-            } else {
-              // BLOCK the transfer - this is likely a Ghost Token
-              console.log(`========================================`);
-              console.log(`[SECURITY-ALERT] GHOST TOKEN DETECTED AND BLOCKED!`);
-              console.log(`[SECURITY-ALERT] Token: ${firstToken.substring(0, 16)}...`);
-              console.log(`[SECURITY-ALERT] Original MAC: ${oldSession.mac}`);
-              console.log(`[SECURITY-ALERT] Requesting MAC: ${mac}`);
-              console.log(`[SECURITY-ALERT] Reason: Hardware validation failed`);
-              console.log(`[SECURITY-ALERT] Action: Blocking NET unblocking commands`);
-              console.log(`[SECURITY-ALERT] TIMESTAMP: ${new Date().toISOString()}`);
-              console.log(`========================================`);
-              
-              // Do NOT trigger NET unblocking commands
-              // Do NOT transfer the session
-              // Redirect to portal for proper authentication
-              console.log(`[SECURITY-BLOCK] Blocked Ghost Token transfer - redirecting to portal for authentication`);
-            }
+            console.log(`[CAPTIVE-DETECT] ✅ SESSION TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
+            return res.status(204).send();
           }
         } catch (e) {
           console.error(`[CAPTIVE-DETECT] Error during session transfer:`, e.message);
@@ -2588,7 +2234,7 @@ app.use(async (req, res, next) => {
           console.log(`[PORTAL-REDIRECT] - Token ${session.token.slice(0,8)}... from ${session.original_mac} (${session.remaining_seconds}s remaining)`);
           console.log(`[PORTAL-REDIRECT]   Session Type: ${session.session_type || 'coin'}, Voucher Code: ${session.voucher_code || 'NONE'}`);
           console.log(`[PORTAL-REDIRECT]   Owner Hardware: ${session.owner_hardware || 'UNREGISTERED'}`);
-          console.log(`[PORTAL-REDIRECT]   Requesting Hardware: ${req.headers['x-hardware-id'] || 'UNKNOWN'}`);
+          console.log(`[PORTAL-REDIRECT]   Requesting Session Info: UNKNOWN`);
         }
         
         // IMPLEMENTING: Strict fingerprint validation before transfer (Ghost Token fix)
@@ -2835,11 +2481,11 @@ app.post('/api/sessions/start', async (req, res) => {
   }
       
   // Get device fingerprint from headers
-  const deviceFingerprint = req.headers['x-device-fingerprint'];
+  // No device fingerprint needed for Session ID system
   if (!deviceFingerprint) {
-    console.log(`[SESSION] Warning: No device fingerprint provided for MAC ${mac}`);
+    console.log(`[SESSION] Session ID system - no device fingerprint needed for MAC ${mac}`);
   } else {
-    console.log(`[SESSION] Device fingerprint provided for MAC ${mac}`);
+    // Session ID system doesn't use device fingerprints
   }
 
   cleanupExpiredCoinSlotLocks();

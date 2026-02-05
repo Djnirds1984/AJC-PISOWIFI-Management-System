@@ -1513,90 +1513,163 @@ app.get('/success', (req, res) => {
 // CAPTIVE PORTAL DETECTION ENDPOINTS
 app.get('/generate_204', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
-  const mac = await getMacFromIp(clientIp);
+  let mac = await getMacFromIp(clientIp);
   
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
+      console.log(`[CAPTIVE-DETECT] Authorized client ${mac} - returning 204 (internet available)`);
       return res.status(204).send();
+    } else {
+      // Check for transferable sessions
+      const transferableSessions = await db.all(
+        'SELECT token FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        [mac]
+      );
+      
+      if (transferableSessions.length > 0) {
+        console.log(`[CAPTIVE-DETECT] New MAC ${mac} with transferable sessions - redirecting to portal for restoration`);
+        // Force redirect to portal page so JavaScript can run session restoration
+        return res.redirect(302, '/');
+      }
     }
   }
   
-  // Not authorized - serve portal directly
-  return res.sendFile(path.join(__dirname, 'index.html'));
+  console.log(`[CAPTIVE-DETECT] Unauthorized client ${mac || 'unknown'} - redirecting to portal`);
+  // Force redirect to portal page instead of serving HTML directly
+  return res.redirect(302, '/');
 });
 
 app.get('/hotspot-detect.html', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
-  const mac = await getMacFromIp(clientIp);
+  let mac = await getMacFromIp(clientIp);
   
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Success');
+    } else {
+      // Check for transferable sessions
+      const transferableSessions = await db.all(
+        'SELECT token FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        [mac]
+      );
+      
+      if (transferableSessions.length > 0) {
+        console.log(`[CAPTIVE-DETECT] hotspot-detect: New MAC ${mac} with transferable sessions - redirecting to portal`);
+        return res.redirect(302, '/');
+      }
     }
   }
   
-  // Not authorized - serve portal directly
-  return res.sendFile(path.join(__dirname, 'index.html'));
+  // Not authorized - redirect to portal
+  return res.redirect(302, '/');
 });
 
 app.get('/ncsi.txt', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
-  const mac = await getMacFromIp(clientIp);
+  let mac = await getMacFromIp(clientIp);
   
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Microsoft NCSI');
+    } else {
+      // Check for transferable sessions
+      const transferableSessions = await db.all(
+        'SELECT token FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        [mac]
+      );
+      
+      if (transferableSessions.length > 0) {
+        console.log(`[CAPTIVE-DETECT] ncsi.txt: New MAC ${mac} with transferable sessions - redirecting to portal`);
+        return res.redirect(302, '/');
+      }
     }
   }
   
-  // Not authorized - serve portal directly
-  return res.sendFile(path.join(__dirname, 'index.html'));
+  // Not authorized - redirect to portal
+  return res.redirect(302, '/');
 });
 
 app.get('/connecttest.txt', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
-  const mac = await getMacFromIp(clientIp);
+  let mac = await getMacFromIp(clientIp);
   
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Success');
+    } else {
+      // Check for transferable sessions
+      const transferableSessions = await db.all(
+        'SELECT token FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        [mac]
+      );
+      
+      if (transferableSessions.length > 0) {
+        console.log(`[CAPTIVE-DETECT] connecttest.txt: New MAC ${mac} with transferable sessions - redirecting to portal`);
+        return res.redirect(302, '/');
+      }
     }
   }
   
-  // Not authorized - serve portal directly
-  return res.sendFile(path.join(__dirname, 'index.html'));
+  // Not authorized - redirect to portal
+  return res.redirect(302, '/');
 });
 
 app.get('/success.txt', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
-  const mac = await getMacFromIp(clientIp);
+  let mac = await getMacFromIp(clientIp);
   
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Success');
+    } else {
+      // Check for transferable sessions
+      const transferableSessions = await db.all(
+        'SELECT token FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        [mac]
+      );
+      
+      if (transferableSessions.length > 0) {
+        console.log(`[CAPTIVE-DETECT] success.txt: New MAC ${mac} with transferable sessions - redirecting to portal`);
+        return res.redirect(302, '/');
+      }
     }
   }
   
-  // Not authorized - serve portal directly
-  return res.sendFile(path.join(__dirname, 'index.html'));
+  // Not authorized - redirect to portal
+  return res.redirect(302, '/');
 });
 
 // Apple-specific captive portal detection
 app.get('/library/test/success.html', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
-  const mac = await getMacFromIp(clientIp);
+  let mac = await getMacFromIp(clientIp);
   
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Success');
+    } else {
+      // Check for transferable sessions
+      const transferableSessions = await db.all(
+        'SELECT token FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
+        [mac]
+      );
+      
+      if (transferableSessions.length > 0) {
+        console.log(`[CAPTIVE-DETECT] library/test/success.html: New MAC ${mac} with transferable sessions - redirecting to portal`);
+        return res.redirect(302, '/');
+      }
     }
   }
+  
+  // Not authorized - redirect to portal
+  return res.redirect(302, '/');
+});
   
   // Not authorized - serve portal directly
   return res.sendFile(path.join(__dirname, 'index.html'));
@@ -1662,13 +1735,15 @@ app.use(async (req, res, next) => {
   }
   
   if (mac) {
-    const session = await db.get('SELECT mac, ip, remaining_seconds FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
-    if (session) {
+    // FIRST: Check if this MAC already has an active session
+    const directSession = await db.get('SELECT mac, ip, remaining_seconds FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    
+    if (directSession) {
       // If IP has changed, update the whitelist rule
-      if (session.ip !== clientIp) {
-        console.log(`[NET] Client ${mac} moved from IP ${session.ip} to ${clientIp} (likely different SSID). Re-applying limits...`);
+      if (directSession.ip !== clientIp) {
+        console.log(`[NET] Client ${mac} moved from IP ${directSession.ip} to ${clientIp} (likely different SSID). Re-applying limits...`);
         // Block and clean up old IP (removes TC rules from old VLAN interface)
-        await network.blockMAC(mac, session.ip);
+        await network.blockMAC(mac, directSession.ip);
         // Add extra delay to ensure complete cleanup
         await new Promise(r => setTimeout(r, 300));
         // Whitelist and re-apply limits on new IP (applies TC rules to new VLAN interface)
@@ -1696,25 +1771,30 @@ app.use(async (req, res, next) => {
       
       return next();
     } else {
-      // No active session found - log new client detection
-      if (!isProbe && url === '/') {
-        console.log(`[PORTAL-REDIRECT] New client detected: ${mac} (${clientIp}) - no active session found`);
-        console.log(`[PORTAL-REDIRECT] Checking for transferable sessions...`);
-        
-        // Check if there are any sessions that could be transferred to this device
-        const availableSessions = await db.all(
-          'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") LIMIT 5'
-        );
-        
-        if (availableSessions.length > 0) {
-          console.log(`[PORTAL-REDIRECT] Found ${availableSessions.length} transferable sessions for ${mac}:`);
-          for (const session of availableSessions) {
-            console.log(`[PORTAL-REDIRECT] - Session ${session.token} from ${session.original_mac} (${session.remaining_seconds}s remaining)`);
-          }
-          console.log(`[PORTAL-REDIRECT] Client ${mac} will be redirected to portal for automatic session restoration`);
-        } else {
-          console.log(`[PORTAL-REDIRECT] No transferable sessions found for ${mac} - redirecting to portal for coin insertion`);
+      // SECOND: No direct session found - check for transferable sessions
+      console.log(`[PORTAL-REDIRECT] New MAC detected: ${mac} (${clientIp}) - checking for transferable sessions...`);
+      
+      // Check if there are any sessions that could be transferred to this device
+      const transferableSessions = await db.all(
+        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 5',
+        [mac]
+      );
+      
+      if (transferableSessions.length > 0) {
+        console.log(`[PORTAL-REDIRECT] Found ${transferableSessions.length} transferable sessions:`);
+        for (const session of transferableSessions) {
+          console.log(`[PORTAL-REDIRECT] - Token ${session.token.slice(0,8)}... from ${session.original_mac} (${session.remaining_seconds}s remaining)`);
         }
+        
+        // For portal visits (not probes), add a special header to trigger automatic session restoration
+        if (!isProbe && url === '/') {
+          console.log(`[PORTAL-REDIRECT] Portal visit detected - client will attempt automatic session restoration`);
+          // Add a custom header that the frontend can detect
+          res.setHeader('X-AJC-Session-Restore-Available', 'true');
+          res.setHeader('X-AJC-Available-Sessions', transferableSessions.length.toString());
+        }
+      } else {
+        console.log(`[PORTAL-REDIRECT] No transferable sessions found for ${mac} - new client needs to pay`);
       }
     }
   } else {

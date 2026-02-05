@@ -94,6 +94,27 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
       fetchWhoAmI();
     }
 
+    // AGGRESSIVE SESSION RESTORATION: Check server headers for restoration hints
+    const checkServerSessionHints = async () => {
+      try {
+        const response = await fetch('/', { method: 'HEAD' });
+        const hasRestorableSession = response.headers.get('X-AJC-Session-Restore-Available');
+        const availableSessions = response.headers.get('X-AJC-Available-Sessions');
+        
+        if (hasRestorableSession === 'true' && availableSessions && parseInt(availableSessions) > 0) {
+          console.log(`[Portal] Server indicates ${availableSessions} transferable sessions available - triggering immediate restoration`);
+          if (onRestoreSession) {
+            // Immediate restoration attempt
+            setTimeout(() => {
+              onRestoreSession();
+            }, 1000);
+          }
+        }
+      } catch (e) {
+        console.log('[Portal] Could not check server session hints:', e.message);
+      }
+    };
+
     // Proactive session restoration check
     // If user has a session token but no active session, try to restore automatically
     const checkAndRestoreSession = async () => {
@@ -106,7 +127,26 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
       }
     };
     
+    // Run both checks immediately
+    checkServerSessionHints();
     checkAndRestoreSession();
+    
+    // PERIODIC SESSION RESTORATION: Keep trying every 10 seconds if we have a token but no session
+    const periodicRestoreCheck = setInterval(() => {
+      const sessionToken = localStorage.getItem('ajc_session_token');
+      if (sessionToken && !mySession && onRestoreSession) {
+        console.log('[Portal] Periodic check: Still have token but no session - attempting restoration');
+        onRestoreSession();
+      } else if (mySession || !sessionToken) {
+        // Stop checking if we have a session or no token
+        clearInterval(periodicRestoreCheck);
+      }
+    }, 10000);
+    
+    // Cleanup interval on unmount
+    return () => {
+      clearInterval(periodicRestoreCheck);
+    };
   }, []);
 
   const mySession = sessions.find(s => s.mac === myMac);

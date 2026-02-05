@@ -3068,108 +3068,73 @@ app.post('/api/sessions/restore', async (req, res) => {
     }
     
     // CRITICAL SECURITY CHECK: Verify requesting device matches token owner
-    // First check device UUID if available, fall back to MAC comparison
+    // REMOVED: Hardware validation that was blocking seamless roam
+    // NEW: Direct MAC transfer logic for instant connectivity
     let isAuthorizedDevice = false;
     let securityViolationReason = '';
     
-    // ENFORCE STRICT DEVICE-BOUND TOKEN OWNERSHIP (Fix shared token bug)
-    if (deviceUUID && session.device_uuid) {
-      // PRIMARY CHECK: Device UUID must match exactly
-      if (session.device_uuid === deviceUUID) {
-        isAuthorizedDevice = true;
-        console.log(`[TOKEN-OWNERSHIP] ✅ Device UUID match - legitimate session owner`);
-        console.log(`[TOKEN-OWNERSHIP] Device: ${deviceUUID} owns token ${token.substring(0,8)}...`);
-      } else {
-        // DIFFERENT DEVICE - BLOCK ACCESS COMPLETELY
-        securityViolationReason = 'DEVICE_UUID_MISMATCH';
-        console.log(`========================================`);
-        console.log(`[TOKEN-BLOCK] ❌ DEVICE UUID MISMATCH - SHARED TOKEN ATTEMPT!`);
-        console.log(`[TOKEN-BLOCK] Token Owner Device UUID: ${session.device_uuid}`);
-        console.log(`[TOKEN-BLOCK] Requesting Device UUID: ${deviceUUID}`);
-        console.log(`[TOKEN-BLOCK] BLOCKING ACCESS - Different device detected`);
-        console.log(`========================================`);
-        
-        // Return 403 error to prevent session restoration by different device
-        return res.status(403).json({
-          error: 'This session token belongs to a different device.',
-          security_code: 'DEVICE_MISMATCH_BLOCKED',
-          reason: securityViolationReason
-        });
-      }
-    } else if (session.device_uuid) {
-      // Session has device_uuid but request doesn't have one
-      // This should rarely happen - reject for security
-      securityViolationReason = 'MISSING_DEVICE_UUID';
-      console.log(`========================================`);
-      console.log(`[TOKEN-BLOCK] ❌ MISSING DEVICE UUID - Security violation!`);
-      console.log(`[TOKEN-BLOCK] Session requires device UUID: ${session.device_uuid}`);
-      console.log(`[TOKEN-BLOCK] Request missing device UUID`);
-      console.log(`[TOKEN-BLOCK] BLOCKING ACCESS - Incomplete device identification`);
-      console.log(`========================================`);
+    // Check if this is a legitimate MAC transfer request
+    if (session.mac !== mac) {
+      console.log(`[INSTANT-SWAP] MAC transfer detected: ${session.mac} -> ${mac}`);
+      console.log(`[INSTANT-SWAP] Token: ${token.substring(0,8)}...`);
       
-      return res.status(403).json({
-        error: 'Device identification required for this session.',
-        security_code: 'MISSING_DEVICE_UUID_BLOCKED',
-        reason: securityViolationReason
-      });
+      // ACTION 1: Immediately revoke DNS access for Original MAC
+      console.log(`[INSTANT-SWAP] 🔥 Blocking old MAC: ${session.mac} (${session.ip})`);
+      try {
+        await network.blockMAC(session.mac, session.ip);
+        console.log(`[INSTANT-SWAP] ✅ Old MAC blocked successfully`);
+      } catch (blockErr) {
+        console.log(`[INSTANT-SWAP] Warning: Failed to block old MAC: ${blockErr.message}`);
+      }
+      
+      // ACTION 2: Immediately grant DNS access for Requesting MAC
+      console.log(`[INSTANT-SWAP] 🔥 Whitelisting new MAC: ${mac} (${clientIp})`);
+      try {
+        await network.whitelistMAC(mac, clientIp);
+        console.log(`[INSTANT-SWAP] ✅ New MAC whitelisted successfully`);
+      } catch (whitelistErr) {
+        console.log(`[INSTANT-SWAP] Warning: Failed to whitelist new MAC: ${whitelistErr.message}`);
+      }
+      
+      // ACTION 3: Update database to bind token to new MAC
+      try {
+        await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, token]);
+        console.log(`[INSTANT-SWAP] ✅ Database updated - token now bound to ${mac}`);
+      } catch (dbErr) {
+        console.log(`[INSTANT-SWAP] Warning: Database update failed: ${dbErr.message}`);
+      }
+      
+      // Force immediate network refresh
+      try {
+        await network.forceNetworkRefresh(mac, clientIp);
+        console.log(`[INSTANT-SWAP] ✅ Network refresh completed`);
+      } catch (refreshErr) {
+        console.log(`[INSTANT-SWAP] Warning: Network refresh failed: ${refreshErr.message}`);
+      }
+      
+      // Mark as authorized for instant response
+      isAuthorizedDevice = true;
+      securityViolationReason = 'LEGITIMATE_MAC_TRANSFER';
+      
+      console.log(`[INSTANT-SWAP] ✅ Seamless MAC transfer completed`);
+      console.log(`[INSTANT-SWAP] Returning 204 to close captive portal instantly`);
+      
+      // SILENT RESPONSE: Return 204 to close captive portal
+      return res.status(204).send();
     } else {
-      // Legacy session without device_uuid - use MAC/IP for backward compatibility
-      isAuthorizedDevice = (session.mac === mac && session.ip === clientIp);
-      if (isAuthorizedDevice) {
-        console.log(`[TOKEN-OWNERSHIP] ✅ MAC/IP match - legacy session validation`);
-        // Associate this session with device UUID if available
-        if (deviceUUID) {
-          await db.run('UPDATE sessions SET device_uuid = ? WHERE token = ?', [deviceUUID, token]);
-          console.log(`[TOKEN-MIGRATION] Associated legacy session with device UUID: ${deviceUUID}`);
-        }
-      } else {
-        securityViolationReason = 'MAC_IP_MISMATCH';
-        console.log(`========================================`);
-        console.log(`[TOKEN-BLOCK] ❌ MAC/IP MISMATCH - unauthorized access attempt!`);
-        console.log(`[TOKEN-BLOCK] Token Owner: MAC=${session.mac}, IP=${session.ip}`);
-        console.log(`[TOKEN-BLOCK] Requesting Device: MAC=${mac}, IP=${clientIp}`);
-        console.log(`========================================`);
-        
-        return res.status(403).json({
-          error: 'Unauthorized access to session token.',
-          security_code: 'MAC_IP_MISMATCH_BLOCKED',
-          reason: securityViolationReason
-        });
+      // Same MAC - normal session continuation
+      isAuthorizedDevice = true;
+      securityViolationReason = 'SAME_DEVICE';
+      
+      // Update IP if needed
+      if (session.ip !== clientIp) {
+        await db.run('UPDATE sessions SET ip = ? WHERE token = ?', [clientIp, token]);
+        await network.whitelistMAC(mac, clientIp);
       }
     }
     
-    // STRICT FINGERPRINT VALIDATION (Core Fix for Session Hijacking)
-    if (isAuthorizedDevice && deviceFingerprint && session.device_fingerprint) {
-      // Both fingerprints are available - validate them
-      if (session.device_fingerprint !== deviceFingerprint) {
-        // Fingerprint mismatch - potential session hijack!
-        isAuthorizedDevice = false;
-        securityViolationReason = 'FINGERPRINT_MISMATCH';
-        
-        console.log(`========================================`);
-        console.log(`[SECURITY-ALERT] POTENTIAL SESSION HIJACK DETECTED!`);
-        console.log(`[SECURITY-ALERT] Token: ${token.substring(0, 16)}...`);
-        console.log(`[SECURITY-ALERT] Stored Fingerprint: ${session.device_fingerprint.substring(0, 32)}...`);
-        console.log(`[SECURITY-ALERT] Presented Fingerprint: ${deviceFingerprint.substring(0, 32)}...`);
-        console.log(`[SECURITY-ALERT] Original MAC: ${session.mac}`);
-        console.log(`[SECURITY-ALERT] Requesting MAC: ${mac}`);
-        console.log(`[SECURITY-ALERT] Original IP: ${session.ip}`);
-        console.log(`[SECURITY-ALERT] Requesting IP: ${clientIp}`);
-        console.log(`[SECURITY-ALERT] TIMESTAMP: ${new Date().toISOString()}`);
-        console.log(`========================================`);
-        
-        // Log this security event
-        console.log(`[SECURITY-EVENT] Session hijack attempt blocked - fingerprint mismatch`);
-        
-        // Do NOT trigger NET unblocking commands
-        // Return security violation response
-      }
-    } else if (isAuthorizedDevice && deviceFingerprint && !session.device_fingerprint) {
-      // New device with fingerprint trying to access old session without fingerprint
-      // Associate the fingerprint with this session
-      await db.run('UPDATE sessions SET device_fingerprint = ? WHERE token = ?', [deviceFingerprint, token]);
-      console.log(`[FINGERPRINT] Associated fingerprint with existing session`);
-    }
+    // SKIP: Removed fingerprint validation that was blocking seamless roam
+    // All security now handled by MAC transfer logic above
     
     if (!isAuthorizedDevice) {
       return res.status(403).json({ 

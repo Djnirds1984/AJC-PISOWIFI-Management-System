@@ -1851,6 +1851,7 @@ app.get('/hotspot-detect.html', async (req, res) => {
             console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER: ${oldSession.mac} -> ${mac}`);
             return res.type('text/plain').send('Success');
           }
+        }
         } catch (e) {
           console.error(`[CAPTIVE-DETECT] Error:`, e.message);
         }

@@ -1280,22 +1280,45 @@ async function getMacFromIp(ip) {
   // Windows-specific MAC resolution
   if (process.platform === 'win32') {
     try {
-      // Use Windows arp command
+      // Use Windows arp command - try multiple approaches
       const { stdout } = await execPromise(`arp -a ${ip}`);
       // Output format: "  10.0.0.50            aa-bb-cc-dd-ee-ff     dynamic"
       const match = stdout.match(/([a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2})/);
       if (match && match[1]) {
         // Convert Windows format (aa-bb-cc-dd-ee-ff) to standard format (AA:BB:CC:DD:EE:FF)
-        return match[1].replace(/-/g, ':').toUpperCase();
+        const mac = match[1].replace(/-/g, ':').toUpperCase();
+        console.log(`[MAC-Resolve] Windows ARP found MAC for ${ip}: ${mac}`);
+        return mac;
       }
     } catch (e) {
       console.log(`[MAC-Resolve] Windows ARP failed for ${ip}:`, e.message);
+    }
+    
+    // Try alternative Windows method - netsh
+    try {
+      const { stdout } = await execPromise('netsh interface ipv4 show neighbors');
+      // Look for the IP in the output
+      const lines = stdout.split('\n');
+      for (const line of lines) {
+        if (line.includes(ip)) {
+          // Extract MAC from line like: "10.0.0.50        aa-bb-cc-dd-ee-ff     Dynamic"
+          const macMatch = line.match(/([a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2})/);
+          if (macMatch && macMatch[1]) {
+            const mac = macMatch[1].replace(/-/g, ':').toUpperCase();
+            console.log(`[MAC-Resolve] Windows netsh found MAC for ${ip}: ${mac}`);
+            return mac;
+          }
+        }
+      }
+    } catch (e) {
+      console.log(`[MAC-Resolve] Windows netsh failed for ${ip}:`, e.message);
     }
     
     // Fallback: Check Active Sessions in DB for Windows
     try {
       const session = await db.get('SELECT mac FROM sessions WHERE ip = ? AND remaining_seconds > 0', [ip]);
       if (session && session.mac) {
+        console.log(`[MAC-Resolve] DB Fallback found MAC for ${ip}: ${session.mac}`);
         return session.mac.toUpperCase();
       }
     } catch (e) {
@@ -1314,7 +1337,10 @@ async function getMacFromIp(ip) {
     const { stdout } = await execPromise(`ip neigh show ${ip}`);
     // Output: 10.0.0.5 dev wlan0 lladdr aa:bb:cc:dd:ee:ff REACHABLE
     const match = stdout.match(/lladdr\s+([a-fA-F0-9:]+)/);
-    if (match && match[1]) return match[1].toUpperCase();
+    if (match && match[1]) {
+      console.log(`[MAC-Resolve] ip neigh found MAC for ${ip}: ${match[1].toUpperCase()}`);
+      return match[1].toUpperCase();
+    }
   } catch (e) {}
 
   // 3. Fallback to /proc/net/arp
@@ -1325,7 +1351,8 @@ async function getMacFromIp(ip) {
       if (line.includes(ip)) {
         const parts = line.split(/\s+/);
         if (parts[3] && parts[3] !== '00:00:00:00:00:00') {
-           return parts[3].toUpperCase();
+          console.log(`[MAC-Resolve] /proc/net/arp found MAC for ${ip}: ${parts[3].toUpperCase()}`);
+          return parts[3].toUpperCase();
         }
       }
     }
@@ -1343,6 +1370,7 @@ async function getMacFromIp(ip) {
            const parts = line.split(' ');
            // Check for IP match (usually 3rd column)
            if (parts.length >= 3 && parts[2] === ip) {
+             console.log(`[MAC-Resolve] DHCP lease found MAC for ${ip}: ${parts[1].toUpperCase()}`);
              return parts[1].toUpperCase();
            }
         }
@@ -1356,12 +1384,14 @@ async function getMacFromIp(ip) {
   try {
     const session = await db.get('SELECT mac FROM sessions WHERE ip = ? AND remaining_seconds > 0', [ip]);
     if (session && session.mac) {
+      console.log(`[MAC-Resolve] DB Fallback found MAC for ${ip}: ${session.mac}`);
       return session.mac.toUpperCase();
     }
   } catch (e) {
     console.error(`[MAC-Resolve] DB Fallback error for ${ip}:`, e.message);
   }
 
+  console.log(`[MAC-Resolve] Could not resolve MAC for IP: ${ip}`);
   return null;
 }
 
@@ -1535,15 +1565,23 @@ app.get('/generate_204', async (req, res) => {
           const firstToken = transferableSessions[0].token;
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
           
-          if (oldSession && !oldSession.voucher_code) {
+          if (oldSession) {
             console.log(`[CAPTIVE-DETECT] FORCING transfer: ${oldSession.mac} -> ${mac}`);
             
             // Block old MAC
             await network.blockMAC(oldSession.mac, oldSession.ip);
-            await new Promise(r => setTimeout(r, 500));
+            // Increased delay to ensure old rules are completely cleared
+            await new Promise(r => setTimeout(r, 800));
             
             // Whitelist new MAC
             await network.whitelistMAC(mac, clientIp);
+            
+            // Force network refresh to ensure connection activates immediately
+            try {
+              await network.forceNetworkRefresh(mac, clientIp);
+            } catch (e) {
+              console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
+            }
             
             // Update session
             await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
@@ -1589,10 +1627,18 @@ app.get('/hotspot-detect.html', async (req, res) => {
           const firstToken = transferableSessions[0].token;
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
           
-          if (oldSession && !oldSession.voucher_code) {
+          if (oldSession) {
             await network.blockMAC(oldSession.mac, oldSession.ip);
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 800));
             await network.whitelistMAC(mac, clientIp);
+            
+            // Force network refresh
+            try {
+              await network.forceNetworkRefresh(mac, clientIp);
+            } catch (e) {
+              console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
+            }
+            
             await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
             console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER: ${oldSession.mac} -> ${mac}`);
             return res.type('text/plain').send('Success');
@@ -1628,10 +1674,18 @@ app.get('/ncsi.txt', async (req, res) => {
         try {
           const firstToken = transferableSessions[0].token;
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
-          if (oldSession && !oldSession.voucher_code) {
+          if (oldSession) {
             await network.blockMAC(oldSession.mac, oldSession.ip);
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 800));
             await network.whitelistMAC(mac, clientIp);
+            
+            // Force network refresh
+            try {
+              await network.forceNetworkRefresh(mac, clientIp);
+            } catch (e) {
+              console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
+            }
+            
             await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
             console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER: ${oldSession.mac} -> ${mac}`);
             return res.type('text/plain').send('Microsoft NCSI');
@@ -1667,10 +1721,18 @@ app.get('/connecttest.txt', async (req, res) => {
         try {
           const firstToken = transferableSessions[0].token;
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
-          if (oldSession && !oldSession.voucher_code) {
+          if (oldSession) {
             await network.blockMAC(oldSession.mac, oldSession.ip);
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 800));
             await network.whitelistMAC(mac, clientIp);
+            
+            // Force network refresh
+            try {
+              await network.forceNetworkRefresh(mac, clientIp);
+            } catch (e) {
+              console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
+            }
+            
             await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
             console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER: ${oldSession.mac} -> ${mac}`);
             return res.type('text/plain').send('Success');
@@ -1707,10 +1769,18 @@ app.get('/success.txt', async (req, res) => {
         try {
           const firstToken = transferableSessions[0].token;
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
-          if (oldSession && !oldSession.voucher_code) {
+          if (oldSession) {
             await network.blockMAC(oldSession.mac, oldSession.ip);
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 800));
             await network.whitelistMAC(mac, clientIp);
+            
+            // Force network refresh
+            try {
+              await network.forceNetworkRefresh(mac, clientIp);
+            } catch (e) {
+              console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
+            }
+            
             await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
             console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER: ${oldSession.mac} -> ${mac}`);
             return res.type('text/plain').send('Success');
@@ -1748,10 +1818,18 @@ app.get('/library/test/success.html', async (req, res) => {
         try {
           const firstToken = transferableSessions[0].token;
           const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
-          if (oldSession && !oldSession.voucher_code) {
+          if (oldSession) {
             await network.blockMAC(oldSession.mac, oldSession.ip);
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 800));
             await network.whitelistMAC(mac, clientIp);
+            
+            // Force network refresh
+            try {
+              await network.forceNetworkRefresh(mac, clientIp);
+            } catch (e) {
+              console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
+            }
+            
             await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
             console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER: ${oldSession.mac} -> ${mac}`);
             return res.type('text/plain').send('Success');
@@ -1902,11 +1980,9 @@ app.use(async (req, res, next) => {
                 }
               }
               
-              // Check if this is a voucher session (cannot transfer)
-              if (session.session_type === 'voucher' || session.voucher_code) {
-                console.log(`[PORTAL-REDIRECT] Voucher session detected - cannot transfer to different MAC`);
-                return next();
-              }
+              // Voucher sessions now allowed to transfer (same as coin sessions)
+              // Previously: if (session.session_type === 'voucher' || session.voucher_code) { return next(); }
+              console.log(`[PORTAL-REDIRECT] Session detected - allowing transfer for token ${firstToken.slice(0,8)}...`);
               
               // FORCE TRANSFER: Update session with new MAC and IP
               console.log(`[PORTAL-REDIRECT] FORCING session transfer: ${session.mac} -> ${mac}`);
@@ -2275,32 +2351,84 @@ app.post('/api/sessions/restore', async (req, res) => {
       }
     }
     
-    // VOUCHER SESSION PROTECTION: Voucher sessions are bound to specific MAC+IP
+    // VOUCHER SESSION LOGIC: Treat vouchers like coin sessions for roaming
+    // Voucher time is bound to session token, can transfer between MAC addresses
     if (session.session_type === 'voucher' || session.voucher_code) {
-      console.log(`[VOUCHER-RESTORE] Voucher session detected: ${session.voucher_code || 'mixed'}`);
+      console.log(`[VOUCHER-ROAM] Voucher session detected: ${session.voucher_code || 'mixed'} - allowing roaming transfer`);
       
-      // Voucher sessions can only be restored on the EXACT same MAC address
-      if (session.mac !== mac) {
-        console.log(`[VOUCHER-RESTORE] Voucher session MAC mismatch: ${session.mac} != ${mac} - BLOCKING transfer`);
-        return res.status(403).json({ 
-          error: 'Voucher sessions are device-specific and cannot be transferred to other devices.' 
+      // Same MAC, just update IP if needed
+      if (session.mac === mac) {
+        if (session.ip !== clientIp) {
+          console.log(`[VOUCHER-ROAM] Updating voucher session IP: ${session.ip} -> ${clientIp}`);
+          await db.run('UPDATE sessions SET ip = ? WHERE token = ?', [clientIp, token]);
+          await network.whitelistMAC(mac, clientIp);
+        }
+        return res.json({ 
+          success: true, 
+          remainingSeconds: session.remaining_seconds, 
+          isPaused: session.is_paused === 1,
+          sessionType: 'voucher',
+          message: 'Voucher session restored on same device'
         });
       }
       
-      // Same MAC, just update IP if needed (same device, different IP)
-      if (session.ip !== clientIp) {
-        console.log(`[VOUCHER-RESTORE] Updating voucher session IP: ${session.ip} -> ${clientIp}`);
-        await db.run('UPDATE sessions SET ip = ? WHERE token = ?', [clientIp, token]);
-        await network.whitelistMAC(mac, clientIp);
+      // Different MAC - allow transfer (voucher roaming)
+      console.log(`[VOUCHER-ROAM] Voucher session token ${token.slice(0,8)}... - transferring from ${session.mac} to ${mac}`);
+      
+      // Check if MAC sync is enabled
+      if (!isMacSyncEnabled) {
+        console.log(`[VOUCHER-ROAM] MAC sync disabled - blocking voucher transfer from ${session.mac} to ${mac}`);
+        return res.status(403).json({ error: 'MAC sync is disabled. Voucher session can only be used on the original device.' });
       }
       
-      return res.json({ 
+      // Check if the target MAC already has a different session
+      const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
+      let extraTime = 0;
+      let extraPaid = 0;
+      
+      if (targetSession) {
+        // Merge existing time from the target MAC if any
+        extraTime = targetSession.remaining_seconds;
+        extraPaid = targetSession.total_paid;
+        console.log(`[VOUCHER-ROAM] Merging existing session on ${mac}: +${extraTime}s, +₱${extraPaid}`);
+        await db.run('DELETE FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
+      }
+      
+      // Update session with new MAC and IP (session ID stays the same)
+      await db.run(
+        'UPDATE sessions SET mac = ?, ip = ?, remaining_seconds = ?, total_paid = ? WHERE token = ?',
+        [mac, clientIp, session.remaining_seconds + extraTime, session.total_paid + extraPaid, token]
+      );
+      
+      // Switch network access
+      console.log(`[VOUCHER-ROAM] Blocking old MAC: ${session.mac} (${session.ip})`);
+      await network.blockMAC(session.mac, session.ip); // Block old MAC
+      
+      // Add delay to ensure old rules are cleared
+      await new Promise(r => setTimeout(r, 500));
+      
+      console.log(`[VOUCHER-ROAM] Whitelisting new MAC: ${mac} (${clientIp})`);
+      await network.whitelistMAC(mac, clientIp); // Allow new MAC
+      
+      // Force network refresh to ensure connection activates immediately
+      try {
+        await network.forceNetworkRefresh(mac, clientIp);
+      } catch (e) {
+        console.log(`[VOUCHER-ROAM] Network refresh failed: ${e.message}`);
+      }
+      
+      // Log session transfer for audit
+      console.log(`[VOUCHER-ROAM] Voucher session transferred: ${session.mac} -> ${mac} (${session.remaining_seconds + extraTime}s remaining)`);
+      
+      res.json({ 
         success: true, 
-        remainingSeconds: session.remaining_seconds, 
+        migrated: true, 
+        remainingSeconds: session.remaining_seconds + extraTime, 
         isPaused: session.is_paused === 1,
         sessionType: 'voucher',
-        message: 'Voucher session restored on original device'
+        message: 'Voucher session transferred to new device. Internet access should activate within 10 seconds.'
       });
+      return;
     }
     
     // COIN SESSION LOGIC: Regular MAC sync behavior for coin-based sessions
@@ -2637,7 +2765,7 @@ app.post('/api/vouchers/activate', async (req, res) => {
       await db.run(`
         UPDATE sessions SET 
           remaining_seconds = ?, total_paid = ?, download_limit = ?, upload_limit = ?,
-          token = ?, token_expires_at = ?, voucher_code = ?, ip = ?
+          token = ?, token_expires_at = ?, voucher_code = ?, ip = ?, session_type = 'voucher'
         WHERE mac = ?
       `, [
         seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
@@ -2650,8 +2778,8 @@ app.post('/api/vouchers/activate', async (req, res) => {
       await db.run(`
         INSERT INTO sessions (
           mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, 
-          token, token_expires_at, voucher_code, connected_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+          token, token_expires_at, voucher_code, connected_at, session_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'voucher')
       `, [
         mac, clientIp, seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
         token, tokenExpiresAt, voucher.code
@@ -2670,7 +2798,7 @@ app.post('/api/vouchers/activate', async (req, res) => {
     // Whitelist device for internet access
     await network.whitelistMAC(mac, clientIp);
     
-    console.log(`[Voucher] Successfully activated voucher ${voucher.code} for MAC: ${mac}, IP: ${clientIp} - ${seconds}s, ₱${voucher.price}`);
+    console.log(`[Voucher] Successfully activated voucher ${voucher.code} for MAC: ${mac}, IP: ${clientIp} - ${seconds}s, ₱${voucher.price} - MAC SYNC ENABLED (ROAMING SUPPORTED)`);
     
     res.json({
       success: true,

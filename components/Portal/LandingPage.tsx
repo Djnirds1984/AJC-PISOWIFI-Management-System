@@ -5,7 +5,7 @@ import VoucherModal from './VoucherModal';
 import ChatWidget from './ChatWidget';
 import { apiClient } from '../../lib/api';
 import { getPortalConfig, fetchPortalConfig, PortalConfig, DEFAULT_PORTAL_CONFIG } from '../../lib/theme';
-import { getOrCreateDeviceUUID, attachDeviceHeaders, getDeviceFingerprint, attachDeviceFingerprintHeaders } from '../../lib/device-id';
+import { getOrCreateSessionId, attachSessionHeaders, isValidSessionId } from '../../lib/device-id';
 
 // Add refreshSessions prop to Props interface
 interface Props {
@@ -53,9 +53,9 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   };
 
   useEffect(() => {
-    // Initialize device UUID
-    const deviceUUID = getOrCreateDeviceUUID();
-    console.log(`[PORTAL] Device UUID initialized: ${deviceUUID}`);
+    // Initialize unique session ID immediately on page load (FIRST TIMER SUPPORT)
+    const sessionId = getOrCreateSessionId();
+    console.log(`[PORTAL] Session ID initialized for first-time user: ${sessionId.substring(0,8)}...`);
     
     // Load Portal Configuration
     const loadConfig = async () => {
@@ -83,8 +83,8 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     // Try to get real MAC in background without blocking UI
     const fetchWhoAmI = async () => {
       try {
-        // Add device UUID and fingerprint to API calls
-        const headers = attachDeviceFingerprintHeaders();
+        // Add session ID to API calls
+        const headers = attachSessionHeaders();
         const data = await apiClient.whoAmI(headers);
         if (data.mac && data.mac !== 'unknown') {
           setMyMac(data.mac);
@@ -140,22 +140,12 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     // Proactive session restoration check
     // If user has a session token but no active session, try to restore automatically
     const checkAndRestoreSession = async () => {
-      // Check device-specific token first
-      const deviceKey = `ajc_session_token_${myMac}`;
-      let sessionToken = localStorage.getItem(deviceKey);
+      // Check for stored session token using session ID
+      const sessionId = getOrCreateSessionId();
+      const storedToken = localStorage.getItem('pisowifi_stored_token');
       
-      // Fall back to legacy key if device-specific not found
-      if (!sessionToken) {
-        sessionToken = localStorage.getItem('ajc_session_token');
-        if (sessionToken) {
-          // Migrate to device-specific storage
-          console.log(`[Portal] Migrating legacy token to device-specific storage`);
-          localStorage.setItem(deviceKey, sessionToken);
-        }
-      }
-      
-      if (sessionToken && !mySession && onRestoreSession) {
-        console.log('[Portal] Detected device-specific session token without active session - attempting automatic restoration');
+      if (storedToken && !mySession && onRestoreSession) {
+        console.log(`[Portal] Detected stored session token for Session ID ${sessionId.substring(0,8)}... - attempting automatic restoration`);
         setTimeout(() => {
           onRestoreSession();
         }, 500); // Fast trigger
@@ -168,11 +158,11 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     
     // PERIODIC SESSION RESTORATION: Keep trying every 5 seconds if we have a token but no session
     const periodicRestoreCheck = setInterval(() => {
-      const sessionToken = localStorage.getItem('ajc_session_token');
-      if (sessionToken && !mySession && onRestoreSession) {
-        console.log('[Portal] Periodic check: Still have token but no session - attempting restoration');
+      const storedToken = localStorage.getItem('pisowifi_stored_token');
+      if (storedToken && !mySession && onRestoreSession) {
+        console.log('[Portal] Periodic check: Still have stored token but no session - attempting restoration');
         onRestoreSession();
-      } else if (mySession || !sessionToken) {
+      } else if (mySession || !storedToken) {
         // Stop checking if we have a session or no token
         clearInterval(periodicRestoreCheck);
       }

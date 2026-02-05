@@ -2925,13 +2925,13 @@ app.post('/api/sessions/start', async (req, res) => {
     });
   }
   
-  // Get device UUID from headers
-  const deviceUUID = req.headers['x-device-uuid'];
-  if (!deviceUUID) {
-    console.log(`[SESSION] Warning: No device UUID provided for MAC ${mac}`);
-    // Continue without device UUID for backward compatibility
+  // Get Session ID from headers (NEW SYSTEM)
+  const sessionId = req.headers['x-pisowifi-session-id'];
+  if (!sessionId) {
+    console.log(`[SESSION] Warning: No Session ID provided for MAC ${mac}`);
+    // Continue without Session ID for backward compatibility
   } else {
-    console.log(`[SESSION] Device UUID provided: ${deviceUUID} for MAC ${mac}`);
+    console.log(`[SESSION] Session ID provided: ${sessionId.substring(0,8)}... for MAC ${mac}`);
   }
       
   // Get device fingerprint from headers
@@ -3013,17 +3013,17 @@ app.post('/api/sessions/start', async (req, res) => {
     // Generate new token if no valid existing token
     if (!token) {
       token = crypto.randomBytes(16).toString('hex');
-      // Set token expiration to 3 days from now
-      tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+      // Set token expiration to 1 year from now
+      tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
     }
 
-    // Check for existing session with same device UUID
+    // Check for existing session with same Session ID
     let sessionQuery = 'SELECT * FROM sessions WHERE mac = ?';
     let queryParams = [mac];
     
-    if (deviceUUID) {
-      sessionQuery = 'SELECT * FROM sessions WHERE device_uuid = ?';
-      queryParams = [deviceUUID];
+    if (sessionId) {
+      sessionQuery = 'SELECT * FROM sessions WHERE session_id = ?';
+      queryParams = [sessionId];
     }
     
     const existingSessionByDevice = await db.get(sessionQuery, queryParams);
@@ -3031,35 +3031,33 @@ app.post('/api/sessions/start', async (req, res) => {
     if (existingSessionByDevice) {
       // Update existing session
       await db.run(
-        'UPDATE sessions SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?, token = ?, token_expires_at = ?, mac = ?, device_fingerprint = ? WHERE device_uuid = ?',
-        [seconds, pesos, clientIp, downloadLimit, uploadLimit, token, tokenExpiresAt, mac, deviceFingerprint, deviceUUID]
+        'UPDATE sessions SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?, token = ?, token_expires_at = ?, mac = ?, session_id = ? WHERE session_id = ?',
+        [seconds, pesos, clientIp, downloadLimit, uploadLimit, token, tokenExpiresAt, mac, sessionId, sessionId]
       );
-      console.log(`[SESSION] Updated existing session for device UUID: ${deviceUUID} with fingerprint`);
+      console.log(`[SESSION] Updated existing session for Session ID: ${sessionId.substring(0,8)}...`);
     } else {
       // Create new session
       await db.run(
-        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token, token_expires_at, device_uuid, device_fingerprint, connected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))',
-        [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, token, tokenExpiresAt, deviceUUID, deviceFingerprint]
+        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token, token_expires_at, session_id, connected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))',
+        [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, token, tokenExpiresAt, sessionId]
       );
-      console.log(`[SESSION] Created new session for device UUID: ${deviceUUID} with fingerprint`);
-            
-      // Register device hardware for ownership tracking
-      await registerDeviceHardware(mac, req.headers['x-hardware-id']);
+      console.log(`[SESSION] Created new session for Session ID: ${sessionId.substring(0,8)}...`);
     }
     
     // Whitelist the device in firewall
     await network.whitelistMAC(mac, clientIp);
     
     console.log(`========================================`);
-    console.log(`[DEVICE-TOKEN] COIN SESSION ACTIVATED`);
-    console.log(`[DEVICE-TOKEN] Device MAC: ${mac}`);
-    console.log(`[DEVICE-TOKEN] Device IP: ${clientIp}`);
-    console.log(`[DEVICE-TOKEN] Session Token: ${token}`);
-    console.log(`[DEVICE-TOKEN] Token Expiration: ${tokenExpiresAt}`);
-    console.log(`[DEVICE-TOKEN] Added Time: ${seconds} seconds (₱${pesos})`);
-    console.log(`[DEVICE-TOKEN] Download Limit: ${downloadLimit} Mbps`);
-    console.log(`[DEVICE-TOKEN] Upload Limit: ${uploadLimit} Mbps`);
-    console.log(`[DEVICE-TOKEN] Timestamp: ${new Date().toISOString()}`);
+    console.log(`[SESSION] COIN SESSION ACTIVATED`);
+    console.log(`[SESSION] Device MAC: ${mac}`);
+    console.log(`[SESSION] Device IP: ${clientIp}`);
+    console.log(`[SESSION] Session ID: ${sessionId || 'Not provided'}`);
+    console.log(`[SESSION] Session Token: ${token}`);
+    console.log(`[SESSION] Token Expiration: ${tokenExpiresAt}`);
+    console.log(`[SESSION] Added Time: ${seconds} seconds (₱${pesos})`);
+    console.log(`[SESSION] Download Limit: ${downloadLimit} Mbps`);
+    console.log(`[SESSION] Upload Limit: ${uploadLimit} Mbps`);
+    console.log(`[SESSION] Timestamp: ${new Date().toISOString()}`);
     console.log(`========================================`);
     
     coinSlotLocks.delete(slot);
@@ -3072,20 +3070,17 @@ app.post('/api/sessions/restore', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
   let mac = await getMacFromIp(clientIp);
   
-  // Get device UUID from headers
-  const deviceUUID = req.headers['x-device-uuid'];
+  // Get Session ID from headers (NEW SYSTEM)
+  const sessionId = req.headers['x-pisowifi-session-id'];
   
-  // Get device fingerprint from headers
-  const deviceFingerprint = req.headers['x-device-fingerprint'];
-  
-  console.log(`[MAC-SYNC] Session restore request: IP=${clientIp}, Token=${token?.slice(0,8)}..., Device UUID=${deviceUUID?.slice(0,8)}..., Fingerprint=${deviceFingerprint?.slice(0,16)}...`);
+  console.log(`[SESSION-RESTORE] Request: IP=${clientIp}, Token=${token?.slice(0,8)}..., Session ID=${sessionId?.slice(0,8)}...`);
   
   // Fallback: Generate temporary MAC if detection fails (Windows compatibility)
   if (!mac) {
     mac = `TEMP-${clientIp.replace(/\./g, '-')}-${Date.now().toString(36).slice(-4)}`;
-    console.log(`[MAC-SYNC] MAC detection failed for ${clientIp}, using temporary MAC: ${mac}`);
+    console.log(`[SESSION-RESTORE] MAC detection failed for ${clientIp}, using temporary MAC: ${mac}`);
   } else {
-    console.log(`[MAC-SYNC] MAC detected for ${clientIp}: ${mac}`);
+    console.log(`[SESSION-RESTORE] MAC detected for ${clientIp}: ${mac}`);
   }
   
   if (!token) return res.status(400).json({ error: 'Session token required' });
@@ -3102,8 +3097,17 @@ app.post('/api/sessions/restore', async (req, res) => {
       return res.status(404).json({ error: 'Session not found' });
     }
     
+    // NEW LOGIC: Bind session to this Session ID if not already bound
+    // This ensures each Session ID gets its own unique session binding
+    if (sessionId && session.session_id !== sessionId) {
+      console.log(`[SESSION-RESTORE] Binding session ${token.substring(0,8)}... to Session ID ${sessionId.substring(0,8)}...`);
+      
+      // Update session to bind to this Session ID
+      await db.run('UPDATE sessions SET session_id = ? WHERE token = ?', [sessionId, token]);
+      console.log(`[SESSION-RESTORE] ✅ Session now bound to Session ID: ${sessionId}`);
+    }
+    
     // CRITICAL SECURITY CHECK: Verify requesting device matches token owner
-    // REMOVED: Hardware validation that was blocking seamless roam
     // NEW: Direct MAC transfer logic for instant connectivity
     let isAuthorizedDevice = false;
     let securityViolationReason = '';
@@ -3112,6 +3116,7 @@ app.post('/api/sessions/restore', async (req, res) => {
     if (session.mac !== mac) {
       console.log(`[INSTANT-SWAP] MAC transfer detected: ${session.mac} -> ${mac}`);
       console.log(`[INSTANT-SWAP] Token: ${token.substring(0,8)}...`);
+      console.log(`[INSTANT-SWAP] Session ID: ${sessionId?.substring(0,8)}...`);
       
       // ACTION 1: Immediately revoke DNS access for Original MAC
       console.log(`[INSTANT-SWAP] 🔥 Blocking old MAC: ${session.mac} (${session.ip})`);
@@ -3168,9 +3173,6 @@ app.post('/api/sessions/restore', async (req, res) => {
       }
     }
     
-    // SKIP: Removed fingerprint validation that was blocking seamless roam
-    // All security now handled by MAC transfer logic above
-    
     if (!isAuthorizedDevice) {
       return res.status(403).json({ 
         error: 'Security violation: This session token belongs to a different device.',
@@ -3180,21 +3182,16 @@ app.post('/api/sessions/restore', async (req, res) => {
     }
     
     console.log(`========================================`);
-    console.log(`[DEVICE-TOKEN] SESSION RESTORE REQUEST`);
-    console.log(`[DEVICE-TOKEN] Requesting Device MAC: ${mac}`);
-    console.log(`[DEVICE-TOKEN] Requesting Device IP: ${clientIp}`);
-    console.log(`[DEVICE-TOKEN] Session Token: ${token}`);
-    console.log(`[DEVICE-TOKEN] Token Owner MAC: ${session.mac}`);
-    console.log(`[DEVICE-TOKEN] Token Owner IP: ${session.ip}`);
-    console.log(`[DEVICE-TOKEN] Session Type: ${session.session_type || 'coin'}`);
-    console.log(`[DEVICE-TOKEN] Remaining Time: ${session.remaining_seconds} seconds`);
-    console.log(`[DEVICE-TOKEN] Token Status: ${session.token_expires_at ? 'Valid' : 'No expiration set'}`);
-    console.log(`[DEVICE-TOKEN] TIMESTAMP: ${new Date().toISOString()}`);
-    console.log(`[SECURITY-INVESTIGATION] Token Access Analysis:`);
-    console.log(`[SECURITY-INVESTIGATION] Request Source: ${req.headers['user-agent'] || 'Unknown'}`);
-    console.log(`[SECURITY-INVESTIGATION] Request Origin: ${req.headers['origin'] || 'Direct'}`);
-    console.log(`[SECURITY-INVESTIGATION] Referrer: ${req.headers['referer'] || 'None'}`);
-    console.log(`[SECURITY-INVESTIGATION] Device Fingerprint: ${mac}_${clientIp}`);
+    console.log(`[SESSION-RESTORE] SESSION RESTORE REQUEST`);
+    console.log(`[SESSION-RESTORE] Requesting Device MAC: ${mac}`);
+    console.log(`[SESSION-RESTORE] Requesting Device IP: ${clientIp}`);
+    console.log(`[SESSION-RESTORE] Session Token: ${token}`);
+    console.log(`[SESSION-RESTORE] Session ID: ${sessionId || 'Not provided'}`);
+    console.log(`[SESSION-RESTORE] Token Owner MAC: ${session.mac}`);
+    console.log(`[SESSION-RESTORE] Token Owner IP: ${session.ip}`);
+    console.log(`[SESSION-RESTORE] Session Type: ${session.session_type || 'coin'}`);
+    console.log(`[SESSION-RESTORE] Remaining Time: ${session.remaining_seconds} seconds`);
+    console.log(`[SESSION-RESTORE] TIMESTAMP: ${new Date().toISOString()}`);
     console.log(`========================================`);
     
     // Check if token has expired (3-day expiration)
@@ -3571,33 +3568,25 @@ app.post('/api/vouchers/activate', async (req, res) => {
       return res.status(400).json({ error: 'Could not identify your device. Please try reconnecting.' });
     }
     
-    // Get device UUID from headers
-    const deviceUUID = req.headers['x-device-uuid'];
-    
-    // Get device fingerprint from headers
-    const deviceFingerprint = req.headers['x-device-fingerprint'];
-    if (!deviceUUID) {
-      console.log(`[Voucher] Warning: No device UUID provided for MAC ${mac}`);
-      // Continue without device UUID for backward compatibility
+    // Get Session ID from headers (NEW SYSTEM)
+    const sessionId = req.headers['x-pisowifi-session-id'];
+    if (!sessionId) {
+      console.log(`[Voucher] Warning: No Session ID provided for MAC ${mac}`);
+      // Continue without Session ID for backward compatibility
     } else {
-      console.log(`[Voucher] Device UUID provided: ${deviceUUID} for MAC ${mac}`);
-    }
-    if (!deviceFingerprint) {
-      console.log(`[Voucher] Warning: No device fingerprint provided for MAC ${mac}`);
-    } else {
-      console.log(`[Voucher] Device fingerprint provided for MAC ${mac}`);
+      console.log(`[Voucher] Session ID provided: ${sessionId.substring(0,8)}... for MAC ${mac}`);
     }
     
     console.log(`[Voucher] Device identified: ${mac} (${clientIp})`);
     
     // Check if this device already has an active voucher session
-    // First check by device UUID if available, fall back to MAC
+    // First check by Session ID if available, fall back to MAC
     let existingVoucherSession;
-    if (deviceUUID) {
+    if (sessionId) {
       existingVoucherSession = await db.get(`
         SELECT * FROM sessions 
-        WHERE device_uuid = ? AND remaining_seconds > 0 AND voucher_code IS NOT NULL
-      `, [deviceUUID]);
+        WHERE session_id = ? AND remaining_seconds > 0 AND voucher_code IS NOT NULL
+      `, [sessionId]);
     } else {
       existingVoucherSession = await db.get(`
         SELECT * FROM sessions 
@@ -3606,7 +3595,7 @@ app.post('/api/vouchers/activate', async (req, res) => {
     }
     
     if (existingVoucherSession) {
-      console.log(`[Voucher] Device ${deviceUUID || mac} already has active voucher: ${existingVoucherSession.voucher_code}`);
+      console.log(`[Voucher] Device with Session ID ${sessionId?.substring(0,8) || mac} already has active voucher: ${existingVoucherSession.voucher_code}`);
       return res.status(400).json({ 
         error: `This device already has an active voucher (${existingVoucherSession.voucher_code}). Please wait for it to expire before using another voucher.` 
       });
@@ -3636,18 +3625,18 @@ app.post('/api/vouchers/activate', async (req, res) => {
     console.log(`[Voucher] Valid voucher found: ${voucher.code} (${voucher.minutes} minutes, ₱${voucher.price})`);
     
     // VOUCHER DEVICE BINDING SECURITY: Prevent cross-device usage
-    if (voucher.used_by_device_uuid && deviceUUID) {
+    if (voucher.used_by_session_id && sessionId) {
       // Check if voucher was already used by a different device
-      if (voucher.used_by_device_uuid !== deviceUUID) {
-        console.log(`[SECURITY-BLOCK] Voucher ${voucher.code} already used by different device!`);
-        console.log(`[SECURITY-BLOCK] Original device: ${voucher.used_by_device_uuid}`);
-        console.log(`[SECURITY-BLOCK] Requesting device: ${deviceUUID}`);
+      if (voucher.used_by_session_id !== sessionId) {
+        console.log(`[SECURITY-BLOCK] Voucher ${voucher.code} already used by different Session ID!`);
+        console.log(`[SECURITY-BLOCK] Original Session ID: ${voucher.used_by_session_id}`);
+        console.log(`[SECURITY-BLOCK] Requesting Session ID: ${sessionId}`);
         return res.status(403).json({ 
           error: 'This voucher has already been used on a different device.' 
         });
       } else {
-        console.log(`[Voucher] Device ${deviceUUID} reusing its own voucher ${voucher.code}`);
-        // Allow reuse by same device (could be MAC change scenario)
+        console.log(`[Voucher] Session ID ${sessionId} reusing its own voucher ${voucher.code}`);
+        // Allow reuse by same Session ID (could be MAC change scenario)
       }
     }
     
@@ -3683,24 +3672,16 @@ app.post('/api/vouchers/activate', async (req, res) => {
       console.log(`[SECURITY] Generated unique token after collision check`);
     }
     
-    const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+    const tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(); // 1 year
     const seconds = voucher.minutes * 60;
     
-    // Check for existing session with same device UUID
+    // Check for existing session with same Session ID
     let sessionQuery = 'SELECT * FROM sessions WHERE mac = ?';
     let queryParams = [mac];
     
-    if (deviceUUID) {
-      sessionQuery = 'SELECT * FROM sessions WHERE device_uuid = ?';
-      queryParams = [deviceUUID];
-      
-      // For backward compatibility, also check if this MAC already has a session without device_uuid
-      const macSessionWithoutUUID = await db.get('SELECT * FROM sessions WHERE mac = ? AND (device_uuid IS NULL OR device_uuid = "")', [mac]);
-      if (macSessionWithoutUUID) {
-        // Migrate this session to use device UUID
-        await db.run('UPDATE sessions SET device_uuid = ? WHERE mac = ? AND (device_uuid IS NULL OR device_uuid = "")', [deviceUUID, mac]);
-        console.log(`[BACKWARD-COMPAT] Migrated session ${mac} to use device UUID: ${deviceUUID}`);
-      }
+    if (sessionId) {
+      sessionQuery = 'SELECT * FROM sessions WHERE session_id = ?';
+      queryParams = [sessionId];
     }
     
     const existingSession = await db.get(sessionQuery, queryParams);
@@ -3708,43 +3689,43 @@ app.post('/api/vouchers/activate', async (req, res) => {
     if (existingSession) {
       // If existing session has voucher, don't allow another voucher
       if (existingSession.voucher_code) {
-        console.log(`[Voucher] Device ${deviceUUID || mac} already has active voucher: ${existingSession.voucher_code}`);
+        console.log(`[Voucher] Device with Session ID ${sessionId?.substring(0,8) || mac} already has active voucher: ${existingSession.voucher_code}`);
         return res.status(400).json({ 
           error: `This device already has an active voucher (${existingSession.voucher_code}). Please wait for it to expire before using another voucher.` 
         });
       }
       
       // For coin sessions, log that we're replacing with voucher
-      console.log(`[Voucher] Replacing existing coin session with voucher for device: ${deviceUUID || mac}`);
+      console.log(`[Voucher] Replacing existing coin session with voucher for Session ID: ${sessionId?.substring(0,8) || mac}`);
       
       // Replace existing coin session with voucher session
       await db.run(`
         UPDATE sessions SET 
           remaining_seconds = ?, total_paid = ?, download_limit = ?, upload_limit = ?,
-          token = ?, token_expires_at = ?, voucher_code = ?, ip = ?, session_type = 'voucher', mac = ?
-        WHERE device_uuid = ?
+          token = ?, token_expires_at = ?, voucher_code = ?, ip = ?, session_type = 'voucher', mac = ?, session_id = ?
+        WHERE session_id = ?
       `, [
         seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
-        token, tokenExpiresAt, voucher.code, clientIp, mac, deviceUUID
+        token, tokenExpiresAt, voucher.code, clientIp, mac, sessionId, sessionId
       ]);
       
-      console.log(`[Voucher] Updated existing session for device ${deviceUUID || mac} with voucher ${voucher.code}`);
+      console.log(`[Voucher] Updated existing session for Session ID ${sessionId?.substring(0,8) || mac} with voucher ${voucher.code}`);
     } else {
-      // Create new voucher session with device UUID and fingerprint
+      // Create new voucher session with Session ID
       await db.run(`
         INSERT INTO sessions (
           mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, 
-          token, token_expires_at, voucher_code, connected_at, session_type, device_uuid, device_fingerprint
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'voucher', ?, ?)
+          token, token_expires_at, voucher_code, connected_at, session_type, session_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'voucher', ?)
       `, [
         mac, clientIp, seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
-        token, tokenExpiresAt, voucher.code, deviceUUID, deviceFingerprint
+        token, tokenExpiresAt, voucher.code, sessionId
       ]);
       
-      console.log(`[Voucher] Created new voucher session for device ${deviceUUID || mac} with UNIQUE token and fingerprint`);
+      console.log(`[Voucher] Created new voucher session for Session ID ${sessionId?.substring(0,8) || mac} with UNIQUE token`);
     }
     
-    // Mark voucher as used and bind to device
+    // Mark voucher as used and bind to Session ID
     let updateQuery = `
       UPDATE vouchers 
       SET status = 'used', used_at = datetime('now'), used_by_mac = ?, used_by_ip = ?
@@ -3752,15 +3733,15 @@ app.post('/api/vouchers/activate', async (req, res) => {
     `;
     let updateParams = [mac, clientIp, voucher.id];
     
-    // Add device UUID binding if available
-    if (deviceUUID) {
+    // Add Session ID binding if available
+    if (sessionId) {
       updateQuery = `
         UPDATE vouchers 
-        SET status = 'used', used_at = datetime('now'), used_by_mac = ?, used_by_ip = ?, used_by_device_uuid = ?
+        SET status = 'used', used_at = datetime('now'), used_by_mac = ?, used_by_ip = ?, used_by_session_id = ?
         WHERE id = ?
       `;
-      updateParams = [mac, clientIp, deviceUUID, voucher.id];
-      console.log(`[Voucher] Binding voucher ${voucher.code} to device UUID: ${deviceUUID}`);
+      updateParams = [mac, clientIp, sessionId, voucher.id];
+      console.log(`[Voucher] Binding voucher ${voucher.code} to Session ID: ${sessionId.substring(0,8)}...`);
     }
     
     await db.run(updateQuery, updateParams);
@@ -3769,18 +3750,15 @@ app.post('/api/vouchers/activate', async (req, res) => {
     await network.whitelistMAC(mac, clientIp);
     
     console.log(`========================================`);
-    console.log(`[DEVICE-TOKEN] NEW VOUCHER SESSION ACTIVATED`);
-    console.log(`[DEVICE-TOKEN] Device MAC: ${mac}`);
-    console.log(`[DEVICE-TOKEN] Device IP: ${clientIp}`);
-    console.log(`[DEVICE-TOKEN] Voucher Code: ${voucher.code}`);
-    console.log(`[DEVICE-TOKEN] Session Token: ${token}`);
-    console.log(`[DEVICE-TOKEN] Token Expiration: ${tokenExpiresAt}`);
-    console.log(`[DEVICE-TOKEN] Session Time: ${seconds} seconds (₱${voucher.price})`);
-    console.log(`[DEVICE-TOKEN] TIMESTAMP: ${new Date().toISOString()}`);
-    console.log(`[SECURITY-INVESTIGATION] Token Generation Details:`);
-    console.log(`[SECURITY-INVESTIGATION] Token Entropy Sources: MAC=${mac}, IP=${clientIp}, Time=${timestamp}`);
-    console.log(`[SECURITY-INVESTIGATION] Voucher Code Used: ${voucher.code}`);
-    console.log(`[SECURITY-INVESTIGATION] Device Signature: ${deviceSignature.substring(0, 32)}...`);
+    console.log(`[VOUCHER] NEW VOUCHER SESSION ACTIVATED`);
+    console.log(`[VOUCHER] Device MAC: ${mac}`);
+    console.log(`[VOUCHER] Device IP: ${clientIp}`);
+    console.log(`[VOUCHER] Session ID: ${sessionId || 'Not provided'}`);
+    console.log(`[VOUCHER] Voucher Code: ${voucher.code}`);
+    console.log(`[VOUCHER] Session Token: ${token}`);
+    console.log(`[VOUCHER] Token Expiration: ${tokenExpiresAt}`);
+    console.log(`[VOUCHER] Session Time: ${seconds} seconds (₱${voucher.price})`);
+    console.log(`[VOUCHER] TIMESTAMP: ${new Date().toISOString()}`);
     console.log(`========================================`);
     
     res.json({
@@ -5947,13 +5925,13 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
           newSessionValues.push(uploadLimit !== undefined ? uploadLimit : updatedDevice.upload_limit);
         }
         
-        // Ensure session has token and 3-day expiration for MAC sync
-        if (!session.token) {
+        // Ensure session has token, session_id, and 1-year expiration for MAC sync
+        if (!session.token || !session.session_id) {
           const sessionToken = crypto.randomBytes(32).toString('hex');
-          const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(); // 3 days
-          newSessionUpdates.push('token = ?', 'token_expires_at = ?');
-          newSessionValues.push(sessionToken, tokenExpiresAt);
-          console.log(`[ADMIN] Generated session token for ${updatedDevice.mac}: ${sessionToken} (expires: ${tokenExpiresAt})`);
+          const tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(); // 1 year
+          newSessionUpdates.push('token = ?', 'token_expires_at = ?', 'session_id = ?');
+          newSessionValues.push(sessionToken, tokenExpiresAt, sessionToken);
+          console.log(`[ADMIN] Generated session token/session_id for ${updatedDevice.mac}: ${sessionToken.substring(0,8)}... (expires in 1 year)`);
         }
         
         newSessionValues.push(updatedDevice.mac);
@@ -5961,12 +5939,12 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
         
         console.log(`[ADMIN] Updated session for ${updatedDevice.mac}: time=${sessionTime}s, DL=${downloadLimit || updatedDevice.download_limit}, UL=${uploadLimit || updatedDevice.upload_limit}`);
       } else {
-        // Create new session with token and 3-day expiration
+        // Create new session with token, session_id, and 1-year expiration
         const sessionToken = crypto.randomBytes(32).toString('hex');
-        const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(); // 3 days
+        const tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(); // 1 year
         
         await db.run(
-          'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, download_limit, upload_limit, token, token_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, download_limit, upload_limit, token, token_expires_at, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
             updatedDevice.mac, 
             updatedDevice.ip, 
@@ -5976,14 +5954,15 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
             downloadLimit !== undefined ? downloadLimit : updatedDevice.download_limit,
             uploadLimit !== undefined ? uploadLimit : updatedDevice.upload_limit,
             sessionToken,
-            tokenExpiresAt
+            tokenExpiresAt,
+            sessionToken
           ]
         );
         
         // Register device hardware for ownership tracking
         await registerDeviceHardware(updatedDevice.mac, 'admin_created');
         
-        console.log(`[ADMIN] Created new session for ${updatedDevice.mac}: ${sessionToken} (${sessionTime}s, expires: ${tokenExpiresAt})`);
+        console.log(`[ADMIN] Created new session with Session ID for ${updatedDevice.mac}: ${sessionToken.substring(0,8)}... (${sessionTime}s, expires in 1 year)`);
       }
     }
     
@@ -6057,31 +6036,31 @@ app.post('/api/devices/:id/connect', requireAdmin, async (req, res) => {
       const updates = ['remaining_seconds = remaining_seconds + ?', 'ip = ?'];
       const values = [sessionTime, device.ip];
       
-      // Ensure session has token and 3-day expiration for MAC sync
-      if (!existingSession.token) {
+      // Ensure session has token, session_id, and 3-day expiration for MAC sync
+      if (!existingSession.token || !existingSession.session_id) {
         const sessionToken = crypto.randomBytes(32).toString('hex');
-        const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(); // 3 days
-        updates.push('token = ?', 'token_expires_at = ?');
-        values.push(sessionToken, tokenExpiresAt);
-        console.log(`[ADMIN] Generated session token for existing session ${device.mac}: ${sessionToken}`);
+        const tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(); // 1 year
+        updates.push('token = ?', 'token_expires_at = ?', 'session_id = ?');
+        values.push(sessionToken, tokenExpiresAt, sessionToken);
+        console.log(`[ADMIN] Generated session token/session_id for existing session ${device.mac}: ${sessionToken.substring(0,8)}...`);
       }
       
       values.push(device.mac);
       await db.run(`UPDATE sessions SET ${updates.join(', ')} WHERE mac = ?`, values);
     } else {
-      // Create new session with token and 3-day expiration
+      // Create new session with token, session_id, and 1-year expiration
       const sessionToken = crypto.randomBytes(32).toString('hex');
-      const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(); // 3 days
+      const tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(); // 1 year
       
       await db.run(
-        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, token, token_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [device.mac, device.ip, sessionTime, 0, Date.now(), sessionToken, tokenExpiresAt]
+        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, token, token_expires_at, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [device.mac, device.ip, sessionTime, 0, Date.now(), sessionToken, tokenExpiresAt, sessionToken]
       );
       
       // Register device hardware for ownership tracking
       await registerDeviceHardware(device.mac, 'admin_created');
       
-      console.log(`[ADMIN] Created new session for ${device.mac}: ${sessionToken} (${sessionTime}s)`);
+      console.log(`[ADMIN] Created new session with Session ID for ${device.mac}: ${sessionToken.substring(0,8)}... (${sessionTime}s, expires in 1 year)`);
     }
     
     res.json({ success: true, sessionTime });

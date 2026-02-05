@@ -210,8 +210,8 @@ export const apiClient = {
     return handleResponse(res);
   },
 
-  async whoAmI(): Promise<{ ip: string; mac: string; canInsertCoin?: boolean; isRevoked?: boolean }> {
-    const res = await fetch(`${API_BASE}/whoami`);
+  async whoAmI(customHeaders: HeadersInit = {}): Promise<{ ip: string; mac: string; canInsertCoin?: boolean; isRevoked?: boolean }> {
+    const res = await fetch(`${API_BASE}/whoami`, { headers: getHeaders(customHeaders) });
     return handleResponse(res);
   },
 

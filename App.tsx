@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminTab, UserSession, Rate, WifiDevice } from './types';
+import { attachDeviceHeaders } from './lib/device-id';
 import LandingPage from './components/Portal/LandingPage';
 import SystemDashboard from './components/Admin/SystemDashboard';
 import InterfacesList from './components/Admin/InterfacesList';
@@ -226,9 +227,14 @@ const App: React.FC = () => {
     
     if (sessionToken) {
       try {
+        // Add device UUID to restore request
+        const headers = attachDeviceHeaders({
+          'Content-Type': 'application/json'
+        });
+        
         const res = await fetch('/api/sessions/restore', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({ token: sessionToken })
         });
         

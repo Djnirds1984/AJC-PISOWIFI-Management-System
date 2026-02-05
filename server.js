@@ -16,6 +16,7 @@ const crypto = require('crypto');
 const multer = require('multer');
 const edgeSync = require('./lib/edge-sync');
 const zerotier = require('./lib/zerotier');
+const { deviceFingerprint, sessionSecurity, checkRateLimit, isDeviceBlocked } = require('./lib/security');
 const AdmZip = require('adm-zip');
 
 // IP Validation Helper Function
@@ -2307,6 +2308,25 @@ app.post('/api/sessions/start', async (req, res) => {
     console.error(`[AUTH] Failed to resolve MAC for IP: ${clientIp}`);
     return res.status(400).json({ error: 'Could not identify your device MAC. Please try reconnecting.' });
   }
+  
+  // Apply rate limiting for session creation
+  const rateLimitKey = `session_${clientIp}_${mac}`;
+  const rateLimit = checkRateLimit(rateLimitKey, 10, 60000); // 10 requests per minute
+  if (!rateLimit.allowed) {
+    console.log(`[SECURITY] Rate limit exceeded for session creation from ${mac}/${clientIp}`);
+    return res.status(429).json({ 
+      error: `Too many session requests. Please try again in ${rateLimit.retryAfter} seconds.` 
+    });
+  }
+  
+  // Get device UUID from headers
+  const deviceUUID = req.headers['x-device-uuid'];
+  if (!deviceUUID) {
+    console.log(`[SESSION] Warning: No device UUID provided for MAC ${mac}`);
+    // Continue without device UUID for backward compatibility
+  } else {
+    console.log(`[SESSION] Device UUID provided: ${deviceUUID} for MAC ${mac}`);
+  }
 
   cleanupExpiredCoinSlotLocks();
   const slot = normalizeCoinSlot(requestedSlot);
@@ -2383,10 +2403,32 @@ app.post('/api/sessions/start', async (req, res) => {
       tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
     }
 
-    await db.run(
-      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token, token_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?, token = ?, token_expires_at = ?',
-      [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, token, tokenExpiresAt, seconds, pesos, clientIp, downloadLimit, uploadLimit, token, tokenExpiresAt]
-    );
+    // Check for existing session with same device UUID
+    let sessionQuery = 'SELECT * FROM sessions WHERE mac = ?';
+    let queryParams = [mac];
+    
+    if (deviceUUID) {
+      sessionQuery = 'SELECT * FROM sessions WHERE device_uuid = ?';
+      queryParams = [deviceUUID];
+    }
+    
+    const existingSessionByDevice = await db.get(sessionQuery, queryParams);
+    
+    if (existingSessionByDevice) {
+      // Update existing session
+      await db.run(
+        'UPDATE sessions SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?, token = ?, token_expires_at = ?, mac = ? WHERE device_uuid = ?',
+        [seconds, pesos, clientIp, downloadLimit, uploadLimit, token, tokenExpiresAt, mac, deviceUUID]
+      );
+      console.log(`[SESSION] Updated existing session for device UUID: ${deviceUUID}`);
+    } else {
+      // Create new session
+      await db.run(
+        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token, token_expires_at, device_uuid, connected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))',
+        [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, token, tokenExpiresAt, deviceUUID]
+      );
+      console.log(`[SESSION] Created new session for device UUID: ${deviceUUID}`);
+    }
     
     // Whitelist the device in firewall
     await network.whitelistMAC(mac, clientIp);
@@ -2413,7 +2455,10 @@ app.post('/api/sessions/restore', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
   let mac = await getMacFromIp(clientIp);
   
-  console.log(`[MAC-SYNC] Session restore request: IP=${clientIp}, Token=${token?.slice(0,8)}...`);
+  // Get device UUID from headers
+  const deviceUUID = req.headers['x-device-uuid'];
+  
+  console.log(`[MAC-SYNC] Session restore request: IP=${clientIp}, Token=${token?.slice(0,8)}..., Device UUID=${deviceUUID?.slice(0,8)}...`);
   
   // Fallback: Generate temporary MAC if detection fails (Windows compatibility)
   if (!mac) {
@@ -2438,17 +2483,52 @@ app.post('/api/sessions/restore', async (req, res) => {
     }
     
     // CRITICAL SECURITY CHECK: Verify requesting device matches token owner
-    if (session.mac !== mac || session.ip !== clientIp) {
-      console.log(`========================================`);
-      console.log(`[SECURITY-BLOCK] TOKEN ACCESS VIOLATION DETECTED!`);
-      console.log(`[SECURITY-BLOCK] Token Owner: MAC=${session.mac}, IP=${session.ip}`);
-      console.log(`[SECURITY-BLOCK] Requesting Device: MAC=${mac}, IP=${clientIp}`);
-      console.log(`[SECURITY-BLOCK] Token: ${token.substring(0, 16)}...`);
-      console.log(`[SECURITY-BLOCK] Session Type: ${session.session_type || 'unknown'}`);
-      console.log(`[SECURITY-BLOCK] TIMESTAMP: ${new Date().toISOString()}`);
-      console.log(`[SECURITY-BLOCK] ACTION: BLOCKING unauthorized access`);
-      console.log(`========================================`);
-      
+    // First check device UUID if available, fall back to MAC comparison
+    let isAuthorizedDevice = false;
+    
+    if (deviceUUID && session.device_uuid) {
+      // Use device UUID for authorization
+      isAuthorizedDevice = session.device_uuid === deviceUUID;
+      if (!isAuthorizedDevice) {
+        console.log(`========================================`);
+        console.log(`[SECURITY-BLOCK] DEVICE UUID ACCESS VIOLATION DETECTED!`);
+        console.log(`[SECURITY-BLOCK] Token Owner Device UUID: ${session.device_uuid}`);
+        console.log(`[SECURITY-BLOCK] Requesting Device UUID: ${deviceUUID}`);
+        console.log(`[SECURITY-BLOCK] Token Owner MAC: ${session.mac}`);
+        console.log(`[SECURITY-BLOCK] Requesting MAC: ${mac}`);
+        console.log(`========================================`);
+      }
+    } else if (session.device_uuid) {
+      // Session has device_uuid but request doesn't - backward compatibility
+      // Allow if MAC matches (device without UUID support accessing migrated session)
+      isAuthorizedDevice = (session.mac === mac && session.ip === clientIp);
+      if (isAuthorizedDevice) {
+        console.log(`[BACKWARD-COMPAT] Allowing access to device UUID session via MAC for ${mac}`);
+        // Optionally migrate this session to associate with the device
+        if (deviceUUID) {
+          await db.run('UPDATE sessions SET device_uuid = ? WHERE token = ?', [deviceUUID, token]);
+          console.log(`[BACKWARD-COMPAT] Associated session with device UUID: ${deviceUUID}`);
+        }
+      } else {
+        console.log(`========================================`);
+        console.log(`[SECURITY-BLOCK] MAC/IP ACCESS VIOLATION DETECTED!`);
+        console.log(`[SECURITY-BLOCK] Token Owner: MAC=${session.mac}, IP=${session.ip}`);
+        console.log(`[SECURITY-BLOCK] Requesting Device: MAC=${mac}, IP=${clientIp}`);
+        console.log(`========================================`);
+      }
+    } else {
+      // Fall back to MAC-based authorization for backward compatibility
+      isAuthorizedDevice = (session.mac === mac && session.ip === clientIp);
+      if (!isAuthorizedDevice) {
+        console.log(`========================================`);
+        console.log(`[SECURITY-BLOCK] MAC/IP ACCESS VIOLATION DETECTED!`);
+        console.log(`[SECURITY-BLOCK] Token Owner: MAC=${session.mac}, IP=${session.ip}`);
+        console.log(`[SECURITY-BLOCK] Requesting Device: MAC=${mac}, IP=${clientIp}`);
+        console.log(`========================================`);
+      }
+    }
+    
+    if (!isAuthorizedDevice) {
       return res.status(403).json({ 
         error: 'Security violation: This session token belongs to a different device.',
         security_code: 'DEVICE_MISMATCH_BLOCKED'
@@ -2822,6 +2902,16 @@ app.post('/api/vouchers/activate', async (req, res) => {
     const { code } = req.body;
     const clientIp = req.ip.replace('::ffff:', '');
     
+    // Apply rate limiting
+    const rateLimitKey = `voucher_${clientIp}`;
+    const rateLimit = checkRateLimit(rateLimitKey, 5, 300000); // 5 requests per 5 minutes
+    if (!rateLimit.allowed) {
+      console.log(`[SECURITY] Rate limit exceeded for voucher activation from IP: ${clientIp}`);
+      return res.status(429).json({ 
+        error: `Too many voucher activation attempts. Please try again in ${rateLimit.retryAfter} seconds.` 
+      });
+    }
+    
     if (!code || !code.trim()) {
       return res.status(400).json({ error: 'Voucher code is required' });
     }
@@ -2837,16 +2927,34 @@ app.post('/api/vouchers/activate', async (req, res) => {
       return res.status(400).json({ error: 'Could not identify your device. Please try reconnecting.' });
     }
     
+    // Get device UUID from headers
+    const deviceUUID = req.headers['x-device-uuid'];
+    if (!deviceUUID) {
+      console.log(`[Voucher] Warning: No device UUID provided for MAC ${mac}`);
+      // Continue without device UUID for backward compatibility
+    } else {
+      console.log(`[Voucher] Device UUID provided: ${deviceUUID} for MAC ${mac}`);
+    }
+    
     console.log(`[Voucher] Device identified: ${mac} (${clientIp})`);
     
     // Check if this device already has an active voucher session
-    const existingVoucherSession = await db.get(`
-      SELECT * FROM sessions 
-      WHERE mac = ? AND remaining_seconds > 0 AND voucher_code IS NOT NULL
-    `, [mac]);
+    // First check by device UUID if available, fall back to MAC
+    let existingVoucherSession;
+    if (deviceUUID) {
+      existingVoucherSession = await db.get(`
+        SELECT * FROM sessions 
+        WHERE device_uuid = ? AND remaining_seconds > 0 AND voucher_code IS NOT NULL
+      `, [deviceUUID]);
+    } else {
+      existingVoucherSession = await db.get(`
+        SELECT * FROM sessions 
+        WHERE mac = ? AND remaining_seconds > 0 AND voucher_code IS NOT NULL
+      `, [mac]);
+    }
     
     if (existingVoucherSession) {
-      console.log(`[Voucher] MAC ${mac} already has active voucher: ${existingVoucherSession.voucher_code}`);
+      console.log(`[Voucher] Device ${deviceUUID || mac} already has active voucher: ${existingVoucherSession.voucher_code}`);
       return res.status(400).json({ 
         error: `This device already has an active voucher (${existingVoucherSession.voucher_code}). Please wait for it to expire before using another voucher.` 
       });
@@ -2874,6 +2982,22 @@ app.post('/api/vouchers/activate', async (req, res) => {
     }
     
     console.log(`[Voucher] Valid voucher found: ${voucher.code} (${voucher.minutes} minutes, ₱${voucher.price})`);
+    
+    // VOUCHER DEVICE BINDING SECURITY: Prevent cross-device usage
+    if (voucher.used_by_device_uuid && deviceUUID) {
+      // Check if voucher was already used by a different device
+      if (voucher.used_by_device_uuid !== deviceUUID) {
+        console.log(`[SECURITY-BLOCK] Voucher ${voucher.code} already used by different device!`);
+        console.log(`[SECURITY-BLOCK] Original device: ${voucher.used_by_device_uuid}`);
+        console.log(`[SECURITY-BLOCK] Requesting device: ${deviceUUID}`);
+        return res.status(403).json({ 
+          error: 'This voucher has already been used on a different device.' 
+        });
+      } else {
+        console.log(`[Voucher] Device ${deviceUUID} reusing its own voucher ${voucher.code}`);
+        // Allow reuse by same device (could be MAC change scenario)
+      }
+    }
     
     // Generate ABSOLUTELY UNIQUE session token for this specific device ONLY
     // Include device fingerprint to ensure tokens are device-specific
@@ -2910,54 +3034,84 @@ app.post('/api/vouchers/activate', async (req, res) => {
     const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
     const seconds = voucher.minutes * 60;
     
-    // Check if MAC already has any session (voucher or coin)
-    const existingSession = await db.get('SELECT * FROM sessions WHERE mac = ?', [mac]);
+    // Check for existing session with same device UUID
+    let sessionQuery = 'SELECT * FROM sessions WHERE mac = ?';
+    let queryParams = [mac];
+    
+    if (deviceUUID) {
+      sessionQuery = 'SELECT * FROM sessions WHERE device_uuid = ?';
+      queryParams = [deviceUUID];
+      
+      // For backward compatibility, also check if this MAC already has a session without device_uuid
+      const macSessionWithoutUUID = await db.get('SELECT * FROM sessions WHERE mac = ? AND (device_uuid IS NULL OR device_uuid = "")', [mac]);
+      if (macSessionWithoutUUID) {
+        // Migrate this session to use device UUID
+        await db.run('UPDATE sessions SET device_uuid = ? WHERE mac = ? AND (device_uuid IS NULL OR device_uuid = "")', [deviceUUID, mac]);
+        console.log(`[BACKWARD-COMPAT] Migrated session ${mac} to use device UUID: ${deviceUUID}`);
+      }
+    }
+    
+    const existingSession = await db.get(sessionQuery, queryParams);
     
     if (existingSession) {
       // If existing session has voucher, don't allow another voucher
       if (existingSession.voucher_code) {
-        console.log(`[Voucher] MAC ${mac} already has active voucher: ${existingSession.voucher_code}`);
+        console.log(`[Voucher] Device ${deviceUUID || mac} already has active voucher: ${existingSession.voucher_code}`);
         return res.status(400).json({ 
           error: `This device already has an active voucher (${existingSession.voucher_code}). Please wait for it to expire before using another voucher.` 
         });
       }
       
       // For coin sessions, log that we're replacing with voucher
-      console.log(`[Voucher] Replacing existing coin session with voucher for MAC: ${mac}`);
+      console.log(`[Voucher] Replacing existing coin session with voucher for device: ${deviceUUID || mac}`);
       
       // Replace existing coin session with voucher session
       await db.run(`
         UPDATE sessions SET 
           remaining_seconds = ?, total_paid = ?, download_limit = ?, upload_limit = ?,
-          token = ?, token_expires_at = ?, voucher_code = ?, ip = ?, session_type = 'voucher'
-        WHERE mac = ?
+          token = ?, token_expires_at = ?, voucher_code = ?, ip = ?, session_type = 'voucher', mac = ?
+        WHERE device_uuid = ?
       `, [
         seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
-        token, tokenExpiresAt, voucher.code, clientIp, mac
+        token, tokenExpiresAt, voucher.code, clientIp, mac, deviceUUID
       ]);
       
-      console.log(`[Voucher] Updated existing session for ${mac} with voucher ${voucher.code}`);
+      console.log(`[Voucher] Updated existing session for device ${deviceUUID || mac} with voucher ${voucher.code}`);
     } else {
-      // Create new voucher session (using MAC as primary key)
+      // Create new voucher session with device UUID
       await db.run(`
         INSERT INTO sessions (
           mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, 
-          token, token_expires_at, voucher_code, connected_at, session_type
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'voucher')
+          token, token_expires_at, voucher_code, connected_at, session_type, device_uuid
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'voucher', ?)
       `, [
         mac, clientIp, seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
-        token, tokenExpiresAt, voucher.code
+        token, tokenExpiresAt, voucher.code, deviceUUID
       ]);
       
-      console.log(`[Voucher] Created new voucher session for ${mac} with UNIQUE token`);
+      console.log(`[Voucher] Created new voucher session for device ${deviceUUID || mac} with UNIQUE token`);
     }
     
-    // Mark voucher as used (without session_id since sessions table doesn't have id column)
-    await db.run(`
+    // Mark voucher as used and bind to device
+    let updateQuery = `
       UPDATE vouchers 
       SET status = 'used', used_at = datetime('now'), used_by_mac = ?, used_by_ip = ?
       WHERE id = ?
-    `, [mac, clientIp, voucher.id]);
+    `;
+    let updateParams = [mac, clientIp, voucher.id];
+    
+    // Add device UUID binding if available
+    if (deviceUUID) {
+      updateQuery = `
+        UPDATE vouchers 
+        SET status = 'used', used_at = datetime('now'), used_by_mac = ?, used_by_ip = ?, used_by_device_uuid = ?
+        WHERE id = ?
+      `;
+      updateParams = [mac, clientIp, deviceUUID, voucher.id];
+      console.log(`[Voucher] Binding voucher ${voucher.code} to device UUID: ${deviceUUID}`);
+    }
+    
+    await db.run(updateQuery, updateParams);
     
     // Whitelist device for internet access
     await network.whitelistMAC(mac, clientIp);

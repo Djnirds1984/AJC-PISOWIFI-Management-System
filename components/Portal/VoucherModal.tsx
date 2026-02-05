@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { attachDeviceHeaders } from '../../lib/device-id';
 
 interface VoucherModalProps {
   isOpen: boolean;
@@ -21,11 +22,14 @@ const VoucherModal: React.FC<VoucherModalProps> = ({ isOpen, onClose, onVoucherA
     setError(null);
 
     try {
+      // Add device UUID to request headers
+      const headers = attachDeviceHeaders({
+        'Content-Type': 'application/json',
+      });
+      
       const response = await fetch('/api/vouchers/activate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({ code: voucherCode.trim() }),
       });
 

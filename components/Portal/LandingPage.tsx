@@ -5,6 +5,7 @@ import VoucherModal from './VoucherModal';
 import ChatWidget from './ChatWidget';
 import { apiClient } from '../../lib/api';
 import { getPortalConfig, fetchPortalConfig, PortalConfig, DEFAULT_PORTAL_CONFIG } from '../../lib/theme';
+import { getOrCreateDeviceUUID, attachDeviceHeaders } from '../../lib/device-id';
 
 // Add refreshSessions prop to Props interface
 interface Props {
@@ -52,6 +53,10 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   };
 
   useEffect(() => {
+    // Initialize device UUID
+    const deviceUUID = getOrCreateDeviceUUID();
+    console.log(`[PORTAL] Device UUID initialized: ${deviceUUID}`);
+    
     // Load Portal Configuration
     const loadConfig = async () => {
       const cfg = await fetchPortalConfig();
@@ -78,7 +83,9 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     // Try to get real MAC in background without blocking UI
     const fetchWhoAmI = async () => {
       try {
-        const data = await apiClient.whoAmI();
+        // Add device UUID to API calls
+        const headers = attachDeviceHeaders();
+        const data = await apiClient.whoAmI(headers);
         if (data.mac && data.mac !== 'unknown') {
           setMyMac(data.mac);
         }

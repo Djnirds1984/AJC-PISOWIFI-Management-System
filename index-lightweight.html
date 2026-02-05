@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AJC PisoWiFi - Lightweight</title>
+    <meta name="description" content="AJC PisoWiFi Management System - Ultra-fast lightweight interface">
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="/dist/bundle-lightweight.js" as="script">
+    
+    <!-- Minimal inline critical CSS -->
+    <style>
+        /* Critical CSS for initial load */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: #f9fafb;
+            color: #111827;
+            line-height: 1.5;
+        }
+        #root { min-height: 100vh; }
+        
+        /* Loading spinner */
+        .initial-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .spinner {
+            width: 2rem;
+            height: 2rem;
+            border: 2px solid #e5e7eb;
+            border-top: 2px solid #0066cc;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading-text {
+            color: #0066cc;
+            font-weight: 600;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <!-- Initial loading state -->
+        <div class="initial-loading">
+            <div class="spinner"></div>
+            <div class="loading-text">AJC Core Loading...</div>
+        </div>
+    </div>
+    
+    <!-- Load the lightweight bundle -->
+    <script type="module" src="/dist/bundle-lightweight.js"></script>
+    
+    <!-- Remove loading state once app loads -->
+    <script>
+        // Remove initial loading once React takes over
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const loading = document.querySelector('.initial-loading');
+                if (loading && document.querySelector('[data-reactroot]')) {
+                    loading.remove();
+                }
+            }, 100);
+        });
+    </script>
+</body>
+</html>

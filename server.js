@@ -18,6 +18,13 @@ const edgeSync = require('./lib/edge-sync');
 const zerotier = require('./lib/zerotier');
 const AdmZip = require('adm-zip');
 
+// IP Validation Helper Function
+const isValidIp = (ip) => {
+  if (!ip || ip === 'AUTO' || ip === 'unknown') return false;
+  const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+  return ipv4Regex.test(ip);
+};
+
 // PREVENT PROCESS TERMINATION ON TERMINAL DISCONNECT
 process.on('SIGHUP', () => {
   console.log('[SYSTEM] Received SIGHUP. Ignoring to prevent process termination on disconnect.');

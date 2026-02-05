@@ -2197,7 +2197,7 @@ app.use(async (req, res, next) => {
   
   if (mac) {
     // FIRST: Check if this MAC already has an active session
-    const directSession = await db.get('SELECT mac, ip, remaining_seconds FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    const directSession = await db.get('SELECT mac, ip, remaining_seconds, session_id FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
     
     if (directSession) {
       // If IP has changed, update the whitelist rule
@@ -2232,39 +2232,70 @@ app.use(async (req, res, next) => {
       
       return next();
     } else {
-      // SECOND: No direct session found - check for transferable sessions
-      console.log(`[PORTAL-REDIRECT] New MAC detected: ${mac} (${clientIp}) - checking for transferable sessions...`);
+      // SECOND: No direct session found - check for session ID conflicts
+      console.log(`[PORTAL-REDIRECT] New MAC detected: ${mac} (${clientIp}) - checking for session ID conflicts...`);
       
-      // Check if there are any sessions that could be transferred to this device
-      // SIMPLE APPROACH: Only allow transfers when requesting device presents valid session token
+      // Check if there are any sessions with the same Session ID but different MAC
+      const presentedSessionId = req.headers['x-session-id'];
+      
+      if (presentedSessionId) {
+        // Device claims to have a specific Session ID - verify it matches the MAC
+        const sessionById = await db.get(
+          'SELECT session_id, mac as original_mac, remaining_seconds, session_type, voucher_code, is_transfer_allowed FROM sessions WHERE session_id = ? AND remaining_seconds > 0',
+          [presentedSessionId]
+        );
+        
+        if (sessionById) {
+          if (sessionById.original_mac !== mac) {
+            // Session ID exists but MAC doesn't match - check transfer permission
+            if (sessionById.is_transfer_allowed === 1) {
+              console.log(`[PORTAL-REDIRECT] Session ID ${presentedSessionId.substring(0,8)}... transfer allowed from ${sessionById.original_mac} to ${mac}`);
+              // Allow transfer - fall through to transfer logic below
+            } else {
+              console.log(`[SECURITY] Session ID ${presentedSessionId.substring(0,8)}... MAC mismatch - DENIED (original: ${sessionById.original_mac}, current: ${mac})`);
+              // Deny access - serve portal
+              return res.sendFile(path.join(__dirname, 'index.html'));
+            }
+          } else {
+            console.log(`[PORTAL-REDIRECT] Session ID ${presentedSessionId.substring(0,8)}... MAC matches - proceeding with session`);
+            // MAC matches - proceed normally
+          }
+        }
+      }
+      
+      // Check for transferable sessions (legacy token-based approach)
       const presentedToken = req.headers['x-session-token'];
-      
       let transferableSessions = [];
       
       if (presentedToken) {
         // Device claims to have a session token - verify it
         const session = await db.get(
-          'SELECT token, session_id, mac as original_mac, remaining_seconds, session_type, voucher_code FROM sessions WHERE token = ? AND remaining_seconds > 0 AND token_expires_at > datetime("now")',
+          'SELECT token, session_id, mac as original_mac, remaining_seconds, session_type, voucher_code, is_transfer_allowed FROM sessions WHERE token = ? AND remaining_seconds > 0 AND token_expires_at > datetime("now")',
           [presentedToken]
         );
         
         if (session && session.original_mac !== mac) {
-          // Valid session token from different MAC - this is legitimate roaming!
-          transferableSessions = [session];
-          console.log(`[PORTAL-REDIRECT] Valid session token presented for roaming: ${presentedToken.substring(0,8)}...`);
+          // Valid session token from different MAC - check transfer permission
+          if (session.is_transfer_allowed === 1) {
+            transferableSessions = [session];
+            console.log(`[PORTAL-REDIRECT] Valid session token presented for roaming: ${presentedToken.substring(0,8)}...`);
+          } else {
+            console.log(`[SECURITY] Session token ${presentedToken.substring(0,8)}... transfer DENIED - no transfer permission`);
+          }
         }
       }
       
       // Fallback: Check for orphaned sessions (no token presented)
       if (transferableSessions.length === 0) {
         const orphanedSessions = await db.all(
-          `SELECT token, session_id, mac as original_mac, remaining_seconds, session_type, voucher_code
+          `SELECT token, session_id, mac as original_mac, remaining_seconds, session_type, voucher_code, is_transfer_allowed
            FROM sessions 
            WHERE remaining_seconds > 0 
              AND token_expires_at > datetime("now") 
              AND mac != ? 
              AND session_type = ? 
              AND voucher_code IS NULL
+             AND is_transfer_allowed = 1
            LIMIT 5`,
           [mac, 'coin']
         );

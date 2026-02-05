@@ -137,8 +137,9 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
       }
     };
 
-    // Proactive session restoration check
+    // DISABLED: Proactive session restoration check
     // If user has a session token but no active session, try to restore automatically
+    /*
     const checkAndRestoreSession = async () => {
       // Check for stored session token using session ID
       const sessionId = getOrCreateSessionId();
@@ -154,9 +155,15 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     
     // Run both checks immediately
     checkServerSessionHints();
-    checkAndRestoreSession();
+    // checkAndRestoreSession(); // DISABLED
+    */
     
-    // PERIODIC SESSION RESTORATION: Keep trying every 5 seconds if we have a token but no session
+    // Run server session hints check only
+    checkServerSessionHints();
+    
+    // DISABLED: PERIODIC SESSION RESTORATION to prevent persistent session issues
+    // Keep trying every 5 seconds if we have a token but no session
+    /*
     const periodicRestoreCheck = setInterval(() => {
       const storedToken = localStorage.getItem('pisowifi_stored_token');
       if (storedToken && !mySession && onRestoreSession) {
@@ -172,6 +179,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     return () => {
       clearInterval(periodicRestoreCheck);
     };
+    */
   }, []);
 
   const mySession = sessions.find(s => s.mac === myMac);

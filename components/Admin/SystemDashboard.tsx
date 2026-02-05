@@ -402,145 +402,148 @@ const SystemDashboard: React.FC = () => {
       </div>
 
       <div className="p-4 space-y-4">
-        {/* System Info Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-lg">ℹ️</span>
-            <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">System Info</h2>
-          </div>
-          
-          {systemInfo && (
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-gray-600 mb-1">Device Model</p>
-                <p className="font-medium text-gray-900">{systemInfo.deviceModel}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-gray-600 mb-1">System</p>
-                <p className="font-medium text-gray-900">{systemInfo.system}</p>
-              </div>
-              
-              <div>
-                <p className="text-gray-600 mb-1">CPU Temp</p>
-                <p className="font-medium text-gray-900">{systemInfo.cpuTemp.toFixed(1)}°C</p>
-              </div>
-              <div className="text-right">
-                <p className="text-gray-600 mb-1">CPU Load</p>
-                <p className="font-medium text-gray-900">{systemInfo.cpuLoad.toFixed(1)}%</p>
-              </div>
-              
-              <div>
-                <p className="text-gray-600 mb-1">RAM Usage</p>
-                <p className="font-medium text-gray-900">
-                  {formatBytes(systemInfo.ramUsage.used)} / {formatBytes(systemInfo.ramUsage.total)}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-gray-600 mb-1">Storage</p>
-                <p className="font-medium text-gray-900">
-                  Used: {formatBytes(systemInfo.storage.used)} / Total: {formatBytes(systemInfo.storage.total)}
-                </p>
-              </div>
-              
-              <div className="col-span-2">
-                <p className="text-gray-600 mb-1">Uptime</p>
-                <p className="font-medium text-gray-900">{formatUptime(systemInfo.uptime)}</p>
-              </div>
+        {/* Top Row: System Info + CPU Usage Side by Side */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* System Info Card - Made Smaller */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-base">ℹ️</span>
+              <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wide">System Info</h2>
             </div>
-          )}
-        </div>
-
-        {/* CPU Usage Card - Made Smaller */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-lg">⚙️</span>
-            <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">CPU Usage</h2>
-          </div>
-          
-          {systemInfo && (
-            <div className="space-y-2">
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs font-medium text-gray-600">AVG</span>
-                  <span className="text-xs font-medium text-gray-900">{systemInfo.cpuLoad.toFixed(1)}%</span>
+            
+            {systemInfo && (
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Device:</span>
+                  <span className="font-medium text-gray-900">{systemInfo.deviceModel}</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-1.5">
-                  <div 
-                    className={`h-1.5 rounded-full transition-all duration-300 ${getCpuColor(systemInfo.cpuLoad)}`}
-                    style={{ width: `${Math.min(systemInfo.cpuLoad, 100)}%` }}
-                  ></div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">System:</span>
+                  <span className="font-medium text-gray-900">{systemInfo.system}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">CPU Temp:</span>
+                  <span className="font-medium text-gray-900">{systemInfo.cpuTemp.toFixed(1)}°C</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">CPU Load:</span>
+                  <span className="font-medium text-gray-900">{systemInfo.cpuLoad.toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">RAM:</span>
+                  <span className="font-medium text-gray-900">
+                    {formatBytes(systemInfo.ramUsage.used)} / {formatBytes(systemInfo.ramUsage.total)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Storage:</span>
+                  <span className="font-medium text-gray-900">
+                    {formatBytes(systemInfo.storage.used)} / {formatBytes(systemInfo.storage.total)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Uptime:</span>
+                  <span className="font-medium text-gray-900">{formatUptime(systemInfo.uptime)}</span>
                 </div>
               </div>
-              
-              {/* Show only first 4 cores to save space */}
-              {systemInfo.cpuCores.slice(0, 4).map((usage, index) => (
-                <div key={index}>
+            )}
+          </div>
+
+          {/* CPU Usage Card */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-base">⚙️</span>
+              <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wide">CPU Usage</h2>
+            </div>
+            
+            {systemInfo && (
+              <div className="space-y-2">
+                <div>
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs font-medium text-gray-600">CPU {index + 1}</span>
-                    <span className="text-xs font-medium text-gray-900">{usage.toFixed(1)}%</span>
+                    <span className="text-xs font-medium text-gray-600">AVG</span>
+                    <span className="text-xs font-medium text-gray-900">{systemInfo.cpuLoad.toFixed(1)}%</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-1">
+                  <div className="w-full bg-gray-200 rounded-full h-1.5">
                     <div 
-                      className={`h-1 rounded-full transition-all duration-300 ${getCpuColor(usage)}`}
-                      style={{ width: `${Math.min(usage, 100)}%` }}
+                      className={`h-1.5 rounded-full transition-all duration-300 ${getCpuColor(systemInfo.cpuLoad)}`}
+                      style={{ width: `${Math.min(systemInfo.cpuLoad, 100)}%` }}
                     ></div>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+                
+                {/* Show only first 2 cores to save space in smaller card */}
+                {systemInfo.cpuCores.slice(0, 2).map((usage, index) => (
+                  <div key={index}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-xs font-medium text-gray-600">CPU {index + 1}</span>
+                      <span className="text-xs font-medium text-gray-900">{usage.toFixed(1)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-1">
+                      <div 
+                        className={`h-1 rounded-full transition-all duration-300 ${getCpuColor(usage)}`}
+                        style={{ width: `${Math.min(usage, 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Network Traffic Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">📊</span>
-              <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Network Interfaces</h2>
+        {/* Second Row: Network Interfaces + Clients Status Side by Side */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Network Traffic Card */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-base">📊</span>
+                <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Network Interfaces</h2>
+              </div>
+              
+              {/* Interface Dropdown */}
+              <select 
+                value={selectedInterface} 
+                onChange={(e) => setSelectedInterface(e.target.value)}
+                className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {availableInterfaces.map(iface => (
+                  <option key={iface} value={iface}>{iface}</option>
+                ))}
+              </select>
             </div>
             
-            {/* Interface Dropdown */}
-            <select 
-              value={selectedInterface} 
-              onChange={(e) => setSelectedInterface(e.target.value)}
-              className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {availableInterfaces.map(iface => (
-                <option key={iface} value={iface}>{iface}</option>
-              ))}
-            </select>
+            {renderTrafficGraph()}
           </div>
-          
-          {renderTrafficGraph()}
-        </div>
 
-        {/* Clients Status Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-lg">👥</span>
-            <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Clients Status</h2>
-          </div>
-          
-          {clientsStatus && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center p-3 bg-green-50 rounded-lg">
-                <p className="text-2xl font-bold text-green-600">{clientsStatus.online}</p>
-                <p className="text-xs text-green-700 font-medium">Online Now</p>
-              </div>
-              <div className="text-center p-3 bg-blue-50 rounded-lg">
-                <p className="text-2xl font-bold text-blue-600">{clientsStatus.total}</p>
-                <p className="text-xs text-blue-700 font-medium">Total Devices</p>
-              </div>
-              <div className="text-center p-3 bg-purple-50 rounded-lg">
-                <p className="text-2xl font-bold text-purple-600">{clientsStatus.activeVouchers}</p>
-                <p className="text-xs text-purple-700 font-medium">Active Vouchers</p>
-              </div>
-              <div className="text-center p-3 bg-yellow-50 rounded-lg">
-                <p className="text-2xl font-bold text-yellow-600">{clientsStatus.activeCoin}</p>
-                <p className="text-xs text-yellow-700 font-medium">Coin Sessions</p>
-              </div>
+          {/* Clients Status Card */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-base">👥</span>
+              <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Clients Status</h2>
             </div>
-          )}
+            
+            {clientsStatus && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="text-center p-2 bg-green-50 rounded-lg">
+                  <p className="text-xl font-bold text-green-600">{clientsStatus.online}</p>
+                  <p className="text-xs text-green-700 font-medium">Online</p>
+                </div>
+                <div className="text-center p-2 bg-blue-50 rounded-lg">
+                  <p className="text-xl font-bold text-blue-600">{clientsStatus.total}</p>
+                  <p className="text-xs text-blue-700 font-medium">Total</p>
+                </div>
+                <div className="text-center p-2 bg-purple-50 rounded-lg">
+                  <p className="text-xl font-bold text-purple-600">{clientsStatus.activeVouchers}</p>
+                  <p className="text-xs text-purple-700 font-medium">Vouchers</p>
+                </div>
+                <div className="text-center p-2 bg-yellow-50 rounded-lg">
+                  <p className="text-xl font-bold text-yellow-600">{clientsStatus.activeCoin}</p>
+                  <p className="text-xs text-yellow-700 font-medium">Coins</p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Quick Actions */}

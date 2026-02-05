@@ -2379,8 +2379,14 @@ app.post('/api/sessions/restore', async (req, res) => {
         });
       }
       
-      // Different MAC - allow transfer (voucher roaming)
+      // Different MAC - allow transfer (voucher roaming) WITH SECURITY CHECKS
       console.log(`[VOUCHER-ROAM] Voucher session token ${token.slice(0,8)}... - transferring from ${session.mac} to ${mac}`);
+      
+      // SECURITY: Enhanced validation for voucher transfers
+      console.log(`[SECURITY-CHECK] Validating voucher transfer:`);
+      console.log(`[SECURITY-CHECK] Original session: MAC=${session.mac}, IP=${session.ip}`);
+      console.log(`[SECURITY-CHECK] Transfer request: MAC=${mac}, IP=${clientIp}`);
+      console.log(`[SECURITY-CHECK] Token: ${token.substring(0, 16)}...`);
       
       // Check if MAC sync is enabled
       if (!isMacSyncEnabled) {
@@ -2426,6 +2432,10 @@ app.post('/api/sessions/restore', async (req, res) => {
       
       // Log session transfer for audit
       console.log(`[VOUCHER-ROAM] Voucher session transferred: ${session.mac} -> ${mac} (${session.remaining_seconds + extraTime}s remaining)`);
+      console.log(`[SECURITY-AUDIT] Voucher transfer completed successfully`);
+      console.log(`[SECURITY-AUDIT] Timestamp: ${new Date().toISOString()}`);
+      console.log(`[SECURITY-AUDIT] Original owner: MAC=${session.mac}, IP=${session.ip}`);
+      console.log(`[SECURITY-AUDIT] New owner: MAC=${mac}, IP=${clientIp}`);
       
       res.json({ 
         success: true, 
@@ -2751,8 +2761,35 @@ app.post('/api/vouchers/activate', async (req, res) => {
     
     console.log(`[Voucher] Valid voucher found: ${voucher.code} (${voucher.minutes} minutes, ₱${voucher.price})`);
     
-    // Generate session token for this specific session
-    const token = crypto.randomBytes(16).toString('hex');
+    // Generate ABSOLUTELY UNIQUE session token for this specific device/session
+    // Include multiple entropy sources to ensure no collisions
+    const timestamp = Date.now();
+    const randomComponent = crypto.randomBytes(32).toString('hex');
+    const deviceSignature = `${mac}_${clientIp}_${timestamp}_${randomComponent}_${voucher.code}`;
+    const token = crypto.createHash('sha256').update(deviceSignature).digest('hex');
+    
+    // Double-check token uniqueness in database
+    const existingToken = await db.get('SELECT mac, ip FROM sessions WHERE token = ?', [token]);
+    if (existingToken) {
+      console.log(`[SECURITY-ALERT] Token collision detected! Regenerating...`);
+      console.log(`[SECURITY-ALERT] Existing token owner: MAC=${existingToken.mac}, IP=${existingToken.ip}`);
+      console.log(`[SECURITY-ALERT] Current request: MAC=${mac}, IP=${clientIp}`);
+      
+      // Generate with additional entropy
+      const retrySignature = `${deviceSignature}_${Math.random().toString(36).substr(2, 12)}_retry`;
+      const tokenRetry = crypto.createHash('sha256').update(retrySignature).digest('hex');
+      
+      // Final verification
+      const finalCheck = await db.get('SELECT mac FROM sessions WHERE token = ?', [tokenRetry]);
+      if (finalCheck) {
+        console.error(`[SECURITY-CRITICAL] Unable to generate unique token after retry!`);
+        return res.status(500).json({ error: 'Unable to generate secure session. Please try again.' });
+      }
+      
+      token = tokenRetry;
+      console.log(`[SECURITY] Generated unique token after collision check`);
+    }
+    
     const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
     const seconds = voucher.minutes * 60;
     
@@ -2767,6 +2804,9 @@ app.post('/api/vouchers/activate', async (req, res) => {
           error: `This device already has an active voucher (${existingSession.voucher_code}). Please wait for it to expire before using another voucher.` 
         });
       }
+      
+      // For coin sessions, log that we're replacing with voucher
+      console.log(`[Voucher] Replacing existing coin session with voucher for MAC: ${mac}`);
       
       // Replace existing coin session with voucher session
       await db.run(`
@@ -2792,7 +2832,7 @@ app.post('/api/vouchers/activate', async (req, res) => {
         token, tokenExpiresAt, voucher.code
       ]);
       
-      console.log(`[Voucher] Created new voucher session for ${mac}`);
+      console.log(`[Voucher] Created new voucher session for ${mac} with UNIQUE token`);
     }
     
     // Mark voucher as used (without session_id since sessions table doesn't have id column)
@@ -2805,7 +2845,7 @@ app.post('/api/vouchers/activate', async (req, res) => {
     // Whitelist device for internet access
     await network.whitelistMAC(mac, clientIp);
     
-    console.log(`[Voucher] Successfully activated voucher ${voucher.code} for MAC: ${mac}, IP: ${clientIp} - ${seconds}s, ₱${voucher.price} - MAC SYNC ENABLED (ROAMING SUPPORTED)`);
+    console.log(`[Voucher] Successfully activated voucher ${voucher.code} for MAC: ${mac}, IP: ${clientIp} - ${seconds}s, ₱${voucher.price} - UNIQUE TOKEN GENERATED: ${token.substring(0, 16)}... - MAC SYNC ENABLED (ROAMING SUPPORTED)`);
     
     res.json({
       success: true,

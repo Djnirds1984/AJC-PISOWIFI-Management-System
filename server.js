@@ -1717,8 +1717,8 @@ app.get('/generate_204', async (req, res) => {
     } else {
       // Check for transferable sessions and FORCE transfer
       const transferableSessions = await db.all(
-        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
-        [mac]
+        'SELECT token, mac as original_mac, remaining_seconds, session_type, voucher_code FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? AND session_type != ? AND voucher_code IS NULL LIMIT 1',
+        [mac, 'voucher']
       );
       
       if (transferableSessions.length > 0) {
@@ -1731,6 +1731,8 @@ app.get('/generate_204', async (req, res) => {
           console.log(`[DEVICE-TOKEN] Session Token: ${sess.token}`);
           console.log(`[DEVICE-TOKEN] Original MAC: ${sess.original_mac}`);
           console.log(`[DEVICE-TOKEN] Remaining Time: ${sess.remaining_seconds} seconds`);
+          console.log(`[DEVICE-TOKEN] Session Type: ${sess.session_type || 'coin'}`);
+          console.log(`[DEVICE-TOKEN] Voucher Code: ${sess.voucher_code || 'NONE'}`);
           console.log(`[DEVICE-TOKEN] Target MAC: ${mac}`);
           console.log(`[DEVICE-TOKEN] Timestamp: ${new Date().toISOString()}`);
           console.log(`========================================`);

@@ -1416,8 +1416,37 @@ async function getMacFromIp(ip) {
 //   }
 // }, 5 * 60 * 1000);
 
-// Background scanner for new client connections and automatic session restoration
-// DISABLED: Auto-scanning is CPU-intensive and unnecessary with token-based session system
+// Periodic token audit - log all active sessions every 5 minutes
+setInterval(async () => {
+  try {
+    const activeSessions = await db.all(
+      'SELECT mac, ip, token, remaining_seconds, session_type, token_expires_at FROM sessions WHERE remaining_seconds > 0 ORDER BY mac'
+    );
+    
+    if (activeSessions.length > 0) {
+      console.log(`\n========================================`);
+      console.log(`[TOKEN-AUDIT] ACTIVE SESSIONS REPORT`);
+      console.log(`[TOKEN-AUDIT] Total Active Sessions: ${activeSessions.length}`);
+      console.log(`[TOKEN-AUDIT] Report Time: ${new Date().toISOString()}`);
+      console.log(`========================================`);
+      
+      activeSessions.forEach((session, index) => {
+        console.log(`[TOKEN-AUDIT] Session #${index + 1}:`);
+        console.log(`  MAC: ${session.mac}`);
+        console.log(`  IP: ${session.ip}`);
+        console.log(`  Token: ${session.token}`);
+        console.log(`  Type: ${session.session_type || 'coin'}`);
+        console.log(`  Time Left: ${session.remaining_seconds} seconds`);
+        console.log(`  Expires: ${session.token_expires_at || 'Never'}`);
+        console.log(`  ---`);
+      });
+      
+      console.log(`========================================\n`);
+    }
+  } catch (err) {
+    console.error('[TOKEN-AUDIT] Failed to generate session report:', err.message);
+  }
+}, 5 * 60 * 1000); // Every 5 minutes
 // The system now waits for devices to communicate through the captive portal instead
 async function scanForNewClients() {
   // This function is disabled to save CPU resources
@@ -1566,6 +1595,18 @@ app.get('/generate_204', async (req, res) => {
       
       if (transferableSessions.length > 0) {
         console.log(`[CAPTIVE-DETECT] New MAC ${mac} with transferable sessions - FORCING session transfer`);
+        
+        // Log all transferable session tokens
+        transferableSessions.forEach((sess, index) => {
+          console.log(`========================================`);
+          console.log(`[DEVICE-TOKEN] CAPTIVE PORTAL TRANSFERABLE SESSION #${index + 1}`);
+          console.log(`[DEVICE-TOKEN] Session Token: ${sess.token}`);
+          console.log(`[DEVICE-TOKEN] Original MAC: ${sess.original_mac}`);
+          console.log(`[DEVICE-TOKEN] Remaining Time: ${sess.remaining_seconds} seconds`);
+          console.log(`[DEVICE-TOKEN] Target MAC: ${mac}`);
+          console.log(`[DEVICE-TOKEN] Timestamp: ${new Date().toISOString()}`);
+          console.log(`========================================`);
+        });
         
         // FORCE TRANSFER IMMEDIATELY
         try {
@@ -2316,7 +2357,17 @@ app.post('/api/sessions/start', async (req, res) => {
     // Whitelist the device in firewall
     await network.whitelistMAC(mac, clientIp);
     
-    console.log(`[AUTH] Session started for ${mac} (${clientIp}) - ${seconds}s, ₱${pesos}, Limits: ${downloadLimit}/${uploadLimit} Mbps`);
+    console.log(`========================================`);
+    console.log(`[DEVICE-TOKEN] COIN SESSION ACTIVATED`);
+    console.log(`[DEVICE-TOKEN] Device MAC: ${mac}`);
+    console.log(`[DEVICE-TOKEN] Device IP: ${clientIp}`);
+    console.log(`[DEVICE-TOKEN] Session Token: ${token}`);
+    console.log(`[DEVICE-TOKEN] Token Expiration: ${tokenExpiresAt}`);
+    console.log(`[DEVICE-TOKEN] Added Time: ${seconds} seconds (₱${pesos})`);
+    console.log(`[DEVICE-TOKEN] Download Limit: ${downloadLimit} Mbps`);
+    console.log(`[DEVICE-TOKEN] Upload Limit: ${uploadLimit} Mbps`);
+    console.log(`[DEVICE-TOKEN] Timestamp: ${new Date().toISOString()}`);
+    console.log(`========================================`);
     
     coinSlotLocks.delete(slot);
     res.json({ success: true, mac, token, message: 'Internet access granted. Please refresh your browser or wait a moment for connection to activate.' });
@@ -2347,7 +2398,23 @@ app.post('/api/sessions/restore', async (req, res) => {
     
     // Find session by token (session ID-based approach)
     const session = await db.get('SELECT * FROM sessions WHERE token = ?', [token]);
-    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (!session) {
+      console.log(`[SESSION-RESTORE] Token not found: ${token.substring(0, 16)}...`);
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    console.log(`========================================`);
+    console.log(`[DEVICE-TOKEN] SESSION RESTORE REQUEST`);
+    console.log(`[DEVICE-TOKEN] Requesting Device MAC: ${mac}`);
+    console.log(`[DEVICE-TOKEN] Requesting Device IP: ${clientIp}`);
+    console.log(`[DEVICE-TOKEN] Session Token: ${token}`);
+    console.log(`[DEVICE-TOKEN] Token Owner MAC: ${session.mac}`);
+    console.log(`[DEVICE-TOKEN] Token Owner IP: ${session.ip}`);
+    console.log(`[DEVICE-TOKEN] Session Type: ${session.session_type || 'coin'}`);
+    console.log(`[DEVICE-TOKEN] Remaining Time: ${session.remaining_seconds} seconds`);
+    console.log(`[DEVICE-TOKEN] Token Status: ${session.token_expires_at ? 'Valid' : 'No expiration set'}`);
+    console.log(`[DEVICE-TOKEN] Timestamp: ${new Date().toISOString()}`);
+    console.log(`========================================`);
     
     // Check if token has expired (3-day expiration)
     if (session.token_expires_at) {
@@ -2845,7 +2912,16 @@ app.post('/api/vouchers/activate', async (req, res) => {
     // Whitelist device for internet access
     await network.whitelistMAC(mac, clientIp);
     
-    console.log(`[Voucher] Successfully activated voucher ${voucher.code} for MAC: ${mac}, IP: ${clientIp} - ${seconds}s, ₱${voucher.price} - UNIQUE TOKEN GENERATED: ${token.substring(0, 16)}... - MAC SYNC ENABLED (ROAMING SUPPORTED)`);
+    console.log(`========================================`);
+    console.log(`[DEVICE-TOKEN] NEW VOUCHER SESSION ACTIVATED`);
+    console.log(`[DEVICE-TOKEN] Device MAC: ${mac}`);
+    console.log(`[DEVICE-TOKEN] Device IP: ${clientIp}`);
+    console.log(`[DEVICE-TOKEN] Voucher Code: ${voucher.code}`);
+    console.log(`[DEVICE-TOKEN] Session Token: ${token}`);
+    console.log(`[DEVICE-TOKEN] Token Expiration: ${tokenExpiresAt}`);
+    console.log(`[DEVICE-TOKEN] Session Time: ${seconds} seconds (₱${voucher.price})`);
+    console.log(`[DEVICE-TOKEN] Timestamp: ${new Date().toISOString()}`);
+    console.log(`========================================`);
     
     res.json({
       success: true,

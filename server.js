@@ -1281,6 +1281,99 @@ let systemHardwareId = null;
   }
 })();
 
+// Helper function to determine if two fingerprints likely belong to the same device
+function isLikelySameDevice(fingerprint1, fingerprint2) {
+  // If exact match, definitely same device
+  if (fingerprint1 === fingerprint2) return true;
+  
+  // For roaming scenarios, be more permissive but still secure
+  try {
+    const decoded1 = atob(fingerprint1);
+    const decoded2 = atob(fingerprint2);
+    
+    // Extract hardware ID (most reliable persistent identifier)
+    const hwIdRegex = /(HW-[a-zA-Z0-9]+)/g;
+    const hwIds1 = decoded1.match(hwIdRegex) || [];
+    const hwIds2 = decoded2.match(hwIdRegex) || [];
+    
+    // If both have hardware IDs and they match, it's the same device
+    if (hwIds1.length > 0 && hwIds2.length > 0) {
+      const match = hwIds1.some(id1 => hwIds2.includes(id1));
+      if (match) {
+        console.log(`[ROAMING-ALLOW] Same hardware ID detected: ${hwIds1.find(id => hwIds2.includes(id))}`);
+        return true;
+      }
+    }
+    
+    // Check screen dimensions (allow reasonable variation for responsive design)
+    const screenRegex = /(\d+)/g;
+    const screens1 = (decoded1.match(screenRegex) || []).map(Number);
+    const screens2 = (decoded2.match(screenRegex) || []).map(Number);
+    
+    // Look for similar screen dimensions
+    const hasSimilarScreens = screens1.some(s1 => 
+      screens2.some(s2 => s1 > 0 && s2 > 0 && Math.abs(s1 - s2) <= 200)
+    );
+    
+    if (hasSimilarScreens && screens1.length > 0 && screens2.length > 0) {
+      console.log(`[ROAMING-ALLOW] Similar screen dimensions detected`);
+      return true;
+    }
+    
+    // Last resort: partial string similarity (at least 70% similar)
+    const similarity = calculateStringSimilarity(decoded1, decoded2);
+    if (similarity >= 0.7) {
+      console.log(`[ROAMING-ALLOW] High string similarity detected: ${(similarity * 100).toFixed(1)}%`);
+      return true;
+    }
+    
+    return false;
+  } catch (e) {
+    console.log(`[ROAMING-CHECK] Error comparing fingerprints: ${e.message}`);
+    return false;
+  }
+}
+
+// Helper function to calculate string similarity
+function calculateStringSimilarity(str1, str2) {
+  const longer = str1.length > str2.length ? str1 : str2;
+  const shorter = str1.length > str2.length ? str2 : str1;
+  
+  if (longer.length === 0) return 1.0;
+  
+  const editDistance = levenshteinDistance(longer, shorter);
+  return (longer.length - editDistance) / longer.length;
+}
+
+// Levenshtein distance algorithm for string similarity
+function levenshteinDistance(str1, str2) {
+  const matrix = [];
+  
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
+  
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
+  
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1      // deletion
+        );
+      }
+    }
+  }
+  
+  return matrix[str2.length][str1.length];
+}
+
 // Helper: Get MAC from IP using ARP table and DHCP leases
 async function getMacFromIp(ip) {
   if (ip === '::1' || ip === '127.0.0.1' || !ip) return null;
@@ -1676,12 +1769,20 @@ app.get('/generate_204', async (req, res) => {
                 console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
               }
             }
-            // Method B: Fingerprint match (fallback)
+            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
             else if (presentedFingerprint && oldSession.device_fingerprint) {
+              // Check for exact match first (ideal case)
               if (presentedFingerprint === oldSession.device_fingerprint) {
                 isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Fingerprint match confirmed`);
+                validationMethod = 'FINGERPRINT_EXACT_MATCH';
+                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
+              } 
+              // Check for relaxed match (same device, minor differences allowed for roaming)
+              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
+                isLegitimateTransfer = true;
+                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
+                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
+                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
               } else {
                 console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
                 console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
@@ -1812,12 +1913,20 @@ app.get('/hotspot-detect.html', async (req, res) => {
                 console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
               }
             }
-            // Method B: Fingerprint match (fallback)
+            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
             else if (presentedFingerprint && oldSession.device_fingerprint) {
+              // Check for exact match first (ideal case)
               if (presentedFingerprint === oldSession.device_fingerprint) {
                 isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Fingerprint match confirmed`);
+                validationMethod = 'FINGERPRINT_EXACT_MATCH';
+                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
+              } 
+              // Check for relaxed match (same device, minor differences allowed for roaming)
+              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
+                isLegitimateTransfer = true;
+                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
+                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
+                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
               } else {
                 console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
                 console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
@@ -1912,12 +2021,20 @@ app.get('/ncsi.txt', async (req, res) => {
                 console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
               }
             }
-            // Method B: Fingerprint match (fallback)
+            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
             else if (presentedFingerprint && oldSession.device_fingerprint) {
+              // Check for exact match first (ideal case)
               if (presentedFingerprint === oldSession.device_fingerprint) {
                 isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Fingerprint match confirmed`);
+                validationMethod = 'FINGERPRINT_EXACT_MATCH';
+                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
+              } 
+              // Check for relaxed match (same device, minor differences allowed for roaming)
+              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
+                isLegitimateTransfer = true;
+                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
+                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
+                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
               } else {
                 console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
                 console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
@@ -2047,12 +2164,20 @@ app.get('/connecttest.txt', async (req, res) => {
                 console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
               }
             }
-            // Method B: Fingerprint match (fallback)
+            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
             else if (presentedFingerprint && oldSession.device_fingerprint) {
+              // Check for exact match first (ideal case)
               if (presentedFingerprint === oldSession.device_fingerprint) {
                 isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Fingerprint match confirmed`);
+                validationMethod = 'FINGERPRINT_EXACT_MATCH';
+                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
+              } 
+              // Check for relaxed match (same device, minor differences allowed for roaming)
+              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
+                isLegitimateTransfer = true;
+                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
+                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
+                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
               } else {
                 console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
                 console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
@@ -2183,12 +2308,20 @@ app.get('/success.txt', async (req, res) => {
                 console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
               }
             }
-            // Method B: Fingerprint match (fallback)
+            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
             else if (presentedFingerprint && oldSession.device_fingerprint) {
+              // Check for exact match first (ideal case)
               if (presentedFingerprint === oldSession.device_fingerprint) {
                 isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Fingerprint match confirmed`);
+                validationMethod = 'FINGERPRINT_EXACT_MATCH';
+                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
+              } 
+              // Check for relaxed match (same device, minor differences allowed for roaming)
+              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
+                isLegitimateTransfer = true;
+                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
+                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
+                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
               } else {
                 console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
                 console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
@@ -2320,12 +2453,20 @@ app.get('/library/test/success.html', async (req, res) => {
                 console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
               }
             }
-            // Method B: Fingerprint match (fallback)
+            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
             else if (presentedFingerprint && oldSession.device_fingerprint) {
+              // Check for exact match first (ideal case)
               if (presentedFingerprint === oldSession.device_fingerprint) {
                 isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Fingerprint match confirmed`);
+                validationMethod = 'FINGERPRINT_EXACT_MATCH';
+                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
+              } 
+              // Check for relaxed match (same device, minor differences allowed for roaming)
+              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
+                isLegitimateTransfer = true;
+                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
+                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
+                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
               } else {
                 console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
                 console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
@@ -2931,48 +3072,69 @@ app.post('/api/sessions/restore', async (req, res) => {
     let isAuthorizedDevice = false;
     let securityViolationReason = '';
     
+    // ENFORCE STRICT DEVICE-BOUND TOKEN OWNERSHIP (Fix shared token bug)
     if (deviceUUID && session.device_uuid) {
-      // Use device UUID for authorization
-      isAuthorizedDevice = session.device_uuid === deviceUUID;
-      if (!isAuthorizedDevice) {
+      // PRIMARY CHECK: Device UUID must match exactly
+      if (session.device_uuid === deviceUUID) {
+        isAuthorizedDevice = true;
+        console.log(`[TOKEN-OWNERSHIP] ✅ Device UUID match - legitimate session owner`);
+        console.log(`[TOKEN-OWNERSHIP] Device: ${deviceUUID} owns token ${token.substring(0,8)}...`);
+      } else {
+        // DIFFERENT DEVICE - BLOCK ACCESS COMPLETELY
         securityViolationReason = 'DEVICE_UUID_MISMATCH';
         console.log(`========================================`);
-        console.log(`[SECURITY-BLOCK] DEVICE UUID ACCESS VIOLATION DETECTED!`);
-        console.log(`[SECURITY-BLOCK] Token Owner Device UUID: ${session.device_uuid}`);
-        console.log(`[SECURITY-BLOCK] Requesting Device UUID: ${deviceUUID}`);
-        console.log(`[SECURITY-BLOCK] Token Owner MAC: ${session.mac}`);
-        console.log(`[SECURITY-BLOCK] Requesting MAC: ${mac}`);
+        console.log(`[TOKEN-BLOCK] ❌ DEVICE UUID MISMATCH - SHARED TOKEN ATTEMPT!`);
+        console.log(`[TOKEN-BLOCK] Token Owner Device UUID: ${session.device_uuid}`);
+        console.log(`[TOKEN-BLOCK] Requesting Device UUID: ${deviceUUID}`);
+        console.log(`[TOKEN-BLOCK] BLOCKING ACCESS - Different device detected`);
         console.log(`========================================`);
+        
+        // Return 403 error to prevent session restoration by different device
+        return res.status(403).json({
+          error: 'This session token belongs to a different device.',
+          security_code: 'DEVICE_MISMATCH_BLOCKED',
+          reason: securityViolationReason
+        });
       }
     } else if (session.device_uuid) {
-      // Session has device_uuid but request doesn't - backward compatibility
-      // Allow if MAC matches (device without UUID support accessing migrated session)
+      // Session has device_uuid but request doesn't have one
+      // This should rarely happen - reject for security
+      securityViolationReason = 'MISSING_DEVICE_UUID';
+      console.log(`========================================`);
+      console.log(`[TOKEN-BLOCK] ❌ MISSING DEVICE UUID - Security violation!`);
+      console.log(`[TOKEN-BLOCK] Session requires device UUID: ${session.device_uuid}`);
+      console.log(`[TOKEN-BLOCK] Request missing device UUID`);
+      console.log(`[TOKEN-BLOCK] BLOCKING ACCESS - Incomplete device identification`);
+      console.log(`========================================`);
+      
+      return res.status(403).json({
+        error: 'Device identification required for this session.',
+        security_code: 'MISSING_DEVICE_UUID_BLOCKED',
+        reason: securityViolationReason
+      });
+    } else {
+      // Legacy session without device_uuid - use MAC/IP for backward compatibility
       isAuthorizedDevice = (session.mac === mac && session.ip === clientIp);
       if (isAuthorizedDevice) {
-        console.log(`[BACKWARD-COMPAT] Allowing access to device UUID session via MAC for ${mac}`);
-        // Optionally migrate this session to associate with the device
+        console.log(`[TOKEN-OWNERSHIP] ✅ MAC/IP match - legacy session validation`);
+        // Associate this session with device UUID if available
         if (deviceUUID) {
           await db.run('UPDATE sessions SET device_uuid = ? WHERE token = ?', [deviceUUID, token]);
-          console.log(`[BACKWARD-COMPAT] Associated session with device UUID: ${deviceUUID}`);
+          console.log(`[TOKEN-MIGRATION] Associated legacy session with device UUID: ${deviceUUID}`);
         }
       } else {
-        securityViolationReason = 'MAC_IP_MISMATCH_BACKWARD_COMPAT';
-        console.log(`========================================`);
-        console.log(`[SECURITY-BLOCK] MAC/IP ACCESS VIOLATION DETECTED!`);
-        console.log(`[SECURITY-BLOCK] Token Owner: MAC=${session.mac}, IP=${session.ip}`);
-        console.log(`[SECURITY-BLOCK] Requesting Device: MAC=${mac}, IP=${clientIp}`);
-        console.log(`========================================`);
-      }
-    } else {
-      // Fall back to MAC-based authorization for backward compatibility
-      isAuthorizedDevice = (session.mac === mac && session.ip === clientIp);
-      if (!isAuthorizedDevice) {
         securityViolationReason = 'MAC_IP_MISMATCH';
         console.log(`========================================`);
-        console.log(`[SECURITY-BLOCK] MAC/IP ACCESS VIOLATION DETECTED!`);
-        console.log(`[SECURITY-BLOCK] Token Owner: MAC=${session.mac}, IP=${session.ip}`);
-        console.log(`[SECURITY-BLOCK] Requesting Device: MAC=${mac}, IP=${clientIp}`);
+        console.log(`[TOKEN-BLOCK] ❌ MAC/IP MISMATCH - unauthorized access attempt!`);
+        console.log(`[TOKEN-BLOCK] Token Owner: MAC=${session.mac}, IP=${session.ip}`);
+        console.log(`[TOKEN-BLOCK] Requesting Device: MAC=${mac}, IP=${clientIp}`);
         console.log(`========================================`);
+        
+        return res.status(403).json({
+          error: 'Unauthorized access to session token.',
+          security_code: 'MAC_IP_MISMATCH_BLOCKED',
+          reason: securityViolationReason
+        });
       }
     }
     

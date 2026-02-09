@@ -317,3 +317,77 @@ export interface RealtimeVendorUpdate {
   old_record?: VendorMachine | SalesLog;
 }
 
+// ============================================
+// VOUCHER SYSTEM TYPES
+// ============================================
+
+export interface Voucher {
+  id: number;
+  code: string;
+  amount: number;
+  time_minutes: number;
+  created_at: string;
+  used_at: string | null;
+  used_by_mac: string | null;
+  used_by_ip: string | null;
+  is_used: 0 | 1;
+  created_by: string;
+}
+
+export interface VoucherGenerationRequest {
+  amount: number;
+  time_minutes: number;
+  count: number;
+}
+
+export interface VoucherActivationRequest {
+  code: string;
+}
+
+export interface VoucherActivationResponse {
+  success: boolean;
+  mac: string;
+  token: string;
+  time_minutes: number;
+  amount: number;
+  message: string;
+  error?: string;
+}
+
+// ============================================
+// VOUCHER SYSTEM TYPES
+// ============================================
+
+export interface Voucher {
+  id: number;
+  code: string;
+  amount: number;
+  time_minutes: number;
+  created_at: string;
+  used_at: string | null;
+  used_by_mac: string | null;
+  used_by_ip: string | null;
+  is_used: 0 | 1;
+  created_by: string;
+}
+
+export interface VoucherGenerationRequest {
+  amount: number;
+  time_minutes: number;
+  count: number;
+}
+
+export interface VoucherActivationRequest {
+  code: string;
+}
+
+export interface VoucherActivationResponse {
+  success: boolean;
+  mac: string;
+  token: string;
+  time_minutes: number;
+  amount: number;
+  message: string;
+  error?: string;
+}
+

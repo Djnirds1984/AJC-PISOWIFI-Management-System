@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { voucherService } from '../../lib/voucher-service';
 
 interface VoucherActivationProps {
   onVoucherActivate: (voucherCode: string) => void;
@@ -7,12 +8,27 @@ interface VoucherActivationProps {
 
 const VoucherActivation: React.FC<VoucherActivationProps> = ({ onVoucherActivate, loading }) => {
   const [voucherCode, setVoucherCode] = useState<string>('');
+  const [error, setError] = useState<string>('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (voucherCode.trim()) {
-      onVoucherActivate(voucherCode.trim());
+    
+    // Clear previous errors
+    setError('');
+    
+    // Validate input
+    if (!voucherCode.trim()) {
+      setError('Please enter a voucher code');
+      return;
     }
+    
+    if (!voucherService.validateVoucherCode(voucherCode)) {
+      setError('Invalid voucher code format');
+      return;
+    }
+    
+    // Call the parent handler
+    onVoucherActivate(voucherCode.trim());
   };
 
   return (
@@ -30,8 +46,17 @@ const VoucherActivation: React.FC<VoucherActivationProps> = ({ onVoucherActivate
             type="text"
             id="voucherCode"
             value={voucherCode}
-            onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+            onChange={(e) => {
+              setVoucherCode(e.target.value);
+              // Clear error when user types
+              if (error) setError('');
+            }}
             placeholder="Enter your voucher code"
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && !loading) {
+                handleSubmit(e as any);
+              }
+            }}
             className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
             disabled={loading}
           />
@@ -56,8 +81,15 @@ const VoucherActivation: React.FC<VoucherActivationProps> = ({ onVoucherActivate
         </button>
       </form>
       
+      {error && (
+        <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-red-700 text-sm">{error}</p>
+        </div>
+      )}
+      
       <div className="mt-4 text-xs text-gray-500">
         <p>Voucher codes are provided by the administrator. Contact them to purchase a voucher.</p>
+        <p className="mt-1">Tip: Voucher codes are usually 6-12 characters long and contain letters and numbers.</p>
       </div>
     </div>
   );

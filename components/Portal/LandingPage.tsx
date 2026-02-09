@@ -5,6 +5,7 @@ import ChatWidget from './ChatWidget';
 import VoucherActivation from './VoucherActivation';
 import { apiClient } from '../../lib/api';
 import { getPortalConfig, fetchPortalConfig, PortalConfig, DEFAULT_PORTAL_CONFIG } from '../../lib/theme';
+import { voucherService } from '../../lib/voucher-service';
 
 // Add refreshSessions prop to Props interface
 interface Props {
@@ -200,18 +201,12 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
   const handleVoucherActivate = async (voucherCode: string) => {
     setIsVoucherLoading(true);
     try {
-      const response = await fetch('/api/vouchers/activate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ code: voucherCode })
-      });
-      
-      const data = await response.json();
+      // Use the voucher service for activation
+      const data = await voucherService.activateVoucher(voucherCode);
       
       if (data.success) {
-        alert('✅ ' + data.message);
+        // Show success message
+        const successMessage = data.message || 'Voucher activated successfully!';
         
         // Save the token for session restoration
         if (data.token) {
@@ -223,17 +218,20 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
           refreshSessions();
         }
         
+        // Show success feedback
+        alert('✅ ' + successMessage);
+        
         // Try to help the connection by forcing a page reload after a short delay
         setTimeout(() => {
           if (window.location.pathname === '/') {
             window.location.reload();
           }
         }, 2000);
-      } else {
-        alert('❌ Failed to activate voucher: ' + data.error);
       }
     } catch (error) {
-      alert('❌ Network error activating voucher: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      // Show error feedback
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert('❌ Failed to activate voucher: ' + errorMessage);
     } finally {
       setIsVoucherLoading(false);
     }

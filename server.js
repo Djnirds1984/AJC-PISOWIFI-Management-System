@@ -3931,20 +3931,41 @@ server.listen(80, '0.0.0.0', async () => {
     try {
       const { amount, time_minutes, count = 1 } = req.body;
       
-      if (!amount || !time_minutes) {
-        return res.status(400).json({ error: 'Amount and time_minutes are required' });
+      // Validation
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: 'Amount must be a positive number' });
       }
       
-      if (count > 100) {
-        return res.status(400).json({ error: 'Cannot generate more than 100 vouchers at once' });
+      if (!time_minutes || time_minutes <= 0) {
+        return res.status(400).json({ error: 'Time minutes must be a positive number' });
+      }
+      
+      if (!count || count <= 0 || count > 100) {
+        return res.status(400).json({ error: 'Count must be between 1 and 100' });
       }
       
       const vouchers = [];
       const adminUser = req.adminUser || 'admin';
       
+      // Generate unique voucher codes
+      const generatedCodes = new Set();
+      
       for (let i = 0; i < count; i++) {
-        // Generate unique voucher code
-        const code = `V${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+        let code;
+        let attempts = 0;
+        const maxAttempts = 10;
+        
+        // Ensure unique code generation
+        do {
+          code = `V${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+          attempts++;
+          
+          if (attempts > maxAttempts) {
+            throw new Error('Failed to generate unique voucher codes after maximum attempts');
+          }
+        } while (generatedCodes.has(code));
+        
+        generatedCodes.add(code);
         
         await db.run(
           'INSERT INTO vouchers (code, amount, time_minutes, created_by) VALUES (?, ?, ?, ?)',
@@ -3959,10 +3980,18 @@ server.listen(80, '0.0.0.0', async () => {
         });
       }
       
-      res.json({ success: true, vouchers, message: `Generated ${count} voucher(s)` });
+      res.status(201).json({ 
+        success: true, 
+        vouchers, 
+        message: `Successfully generated ${count} voucher(s)`,
+        count: vouchers.length
+      });
     } catch (err) {
       console.error('[VOUCHER] Generate error:', err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ 
+        error: 'Failed to generate vouchers',
+        message: err.message 
+      });
     }
   });
   
@@ -4003,18 +4032,28 @@ server.listen(80, '0.0.0.0', async () => {
       const clientIp = req.ip.replace('::ffff:', '');
       const mac = await getMacFromIp(clientIp);
       
-      if (!code) {
-        return res.status(400).json({ error: 'Voucher code is required' });
+      // Validation
+      if (!code || typeof code !== 'string') {
+        return res.status(400).json({ 
+          error: 'Voucher code is required',
+          message: 'Please provide a valid voucher code'
+        });
       }
       
       if (!mac) {
-        return res.status(400).json({ error: 'Could not identify your device' });
+        return res.status(400).json({ 
+          error: 'Device identification failed',
+          message: 'Could not identify your device. Please try again or contact support.'
+        });
       }
       
       // Find unused voucher
-      const voucher = await db.get('SELECT * FROM vouchers WHERE code = ? AND is_used = 0', [code.toUpperCase()]);
+      const voucher = await db.get('SELECT * FROM vouchers WHERE code = ? AND is_used = 0', [code.toUpperCase().trim()]);
       if (!voucher) {
-        return res.status(404).json({ error: 'Invalid or already used voucher code' });
+        return res.status(404).json({ 
+          error: 'Invalid voucher',
+          message: 'Invalid or already used voucher code. Please check the code and try again.'
+        });
       }
       
       // Calculate session time in seconds
@@ -4042,17 +4081,20 @@ server.listen(80, '0.0.0.0', async () => {
       
       console.log(`[VOUCHER] Voucher ${code} activated for ${mac} (${clientIp}) - ${seconds}s, ₱${amount}`);
       
-      res.json({ 
+      res.status(200).json({ 
         success: true, 
         mac, 
         token, 
         time_minutes: voucher.time_minutes,
         amount: voucher.amount,
-        message: 'Internet access granted via voucher. Please refresh your browser or wait a moment for connection to activate.' 
+        message: 'Internet access granted! Your session will start shortly. Please refresh your browser if connection is not established.'
       });
     } catch (err) {
       console.error('[VOUCHER] Activation error:', err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ 
+        error: 'Activation failed',
+        message: 'An error occurred while activating your voucher. Please try again or contact support.'
+      });
     }
   });
   

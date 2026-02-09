@@ -1,23 +1,13 @@
 import React, { useState, useEffect } from 'react';
-
-interface Voucher {
-  id: number;
-  code: string;
-  amount: number;
-  time_minutes: number;
-  created_at: string;
-  used_at: string | null;
-  used_by_mac: string | null;
-  used_by_ip: string | null;
-  is_used: number;
-  created_by: string;
-}
+import { Voucher, VoucherGenerationRequest } from '../../types';
 
 const VoucherManager: React.FC = () => {
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [filteredVouchers, setFilteredVouchers] = useState<Voucher[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [showGenerateModal, setShowGenerateModal] = useState<boolean>(false);
+  const [filter, setFilter] = useState<'all' | 'used' | 'unused'>('all');
   
   // Form states
   const [amount, setAmount] = useState<number>(10);
@@ -52,6 +42,30 @@ const VoucherManager: React.FC = () => {
     fetchVouchers();
   }, []);
   
+  useEffect(() => {
+    // Apply filtering
+    if (filter === 'all') {
+      setFilteredVouchers(vouchers);
+    } else if (filter === 'used') {
+      setFilteredVouchers(vouchers.filter(v => v.is_used === 1));
+    } else {
+      setFilteredVouchers(vouchers.filter(v => v.is_used === 0));
+    }
+  }, [vouchers, filter]);
+  
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    // Simple toast implementation
+    const toast = document.createElement('div');
+    toast.className = `fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg text-white font-medium ${type === 'success' ? 'bg-green-500' : 'bg-red-500'} animate-fade-in`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+      toast.classList.add('animate-fade-out');
+      setTimeout(() => document.body.removeChild(toast), 300);
+    }, 3000);
+  };
+  
   const handleGenerateVouchers = async () => {
     try {
       const response = await fetch('/api/vouchers/generate', {
@@ -78,9 +92,9 @@ const VoucherManager: React.FC = () => {
       setShowGenerateModal(false);
       fetchVouchers();
       
-      alert(`Successfully generated ${data.vouchers.length} voucher(s)!`);
+      showToast(`Successfully generated ${data.vouchers.length} voucher(s)!`, 'success');
     } catch (err: any) {
-      alert('Error generating vouchers: ' + err.message);
+      showToast(`Error: ${err.message}`, 'error');
     }
   };
   
@@ -103,9 +117,9 @@ const VoucherManager: React.FC = () => {
       }
       
       fetchVouchers();
-      alert('Voucher deleted successfully!');
+      showToast('Voucher deleted successfully!', 'success');
     } catch (err: any) {
-      alert('Error deleting voucher: ' + err.message);
+      showToast(`Error: ${err.message}`, 'error');
     }
   };
   
@@ -114,9 +128,36 @@ const VoucherManager: React.FC = () => {
     return new Date(dateString).toLocaleString();
   };
   
+  const exportVouchers = () => {
+    const csvContent = [
+      ['Code', 'Amount', 'Time (min)', 'Created By', 'Status', 'Created At', 'Used At', 'Used By MAC', 'Used By IP'],
+      ...filteredVouchers.map(voucher => [
+        voucher.code,
+        `₱${voucher.amount}`,
+        voucher.time_minutes.toString(),
+        voucher.created_by,
+        voucher.is_used === 1 ? 'Used' : 'Unused',
+        new Date(voucher.created_at).toLocaleString(),
+        voucher.used_at ? new Date(voucher.used_at).toLocaleString() : 'Not used',
+        voucher.used_by_mac || 'N/A',
+        voucher.used_by_ip || 'N/A'
+      ])
+    ].map(row => row.join(',')).join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vouchers-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    showToast('Vouchers exported successfully!', 'success');
+  };
+  
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    alert('Copied to clipboard!');
+    showToast('Copied to clipboard!', 'success');
   };
   
   return (
@@ -126,12 +167,23 @@ const VoucherManager: React.FC = () => {
           <h2 className="text-2xl font-bold text-slate-900">Voucher Management</h2>
           <p className="text-slate-600 mt-1">Manage internet access vouchers</p>
         </div>
-        <button 
-          onClick={() => setShowGenerateModal(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors"
-        >
-          Generate Vouchers
-        </button>
+        <div className="flex gap-3">
+          <button 
+            onClick={exportVouchers}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+            Export
+          </button>
+          <button 
+            onClick={() => setShowGenerateModal(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors"
+          >
+            Generate Vouchers
+          </button>
+        </div>
       </div>
       
       {error && (
@@ -139,6 +191,37 @@ const VoucherManager: React.FC = () => {
           {error}
         </div>
       )}
+      
+      {/* Filter Controls */}
+      <div className="flex flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-slate-700">Filter:</span>
+          <div className="flex rounded-lg border border-slate-300 overflow-hidden">
+            <button
+              onClick={() => setFilter('all')}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${filter === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
+            >
+              All ({vouchers.length})
+            </button>
+            <button
+              onClick={() => setFilter('unused')}
+              className={`px-4 py-2 text-sm font-medium transition-colors border-l border-slate-300 ${filter === 'unused' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
+            >
+              Unused ({vouchers.filter(v => v.is_used === 0).length})
+            </button>
+            <button
+              onClick={() => setFilter('used')}
+              className={`px-4 py-2 text-sm font-medium transition-colors border-l border-slate-300 ${filter === 'used' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
+            >
+              Used ({vouchers.filter(v => v.is_used === 1).length})
+            </button>
+          </div>
+        </div>
+        
+        <div className="text-sm text-slate-600 ml-auto">
+          Showing {filteredVouchers.length} of {vouchers.length} vouchers
+        </div>
+      </div>
       
       {loading ? (
         <div className="flex justify-center items-center h-32">
@@ -160,14 +243,14 @@ const VoucherManager: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {vouchers.length === 0 ? (
+                {filteredVouchers.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-8 px-4 text-center text-slate-500">
-                      No vouchers found. Generate some to get started.
+                      No vouchers found. {filter === 'all' ? 'Generate some to get started.' : `No ${filter} vouchers found.`}
                     </td>
                   </tr>
                 ) : (
-                  vouchers.map((voucher) => (
+                  filteredVouchers.map((voucher) => (
                     <tr key={voucher.id} className="hover:bg-slate-50">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
@@ -187,8 +270,8 @@ const VoucherManager: React.FC = () => {
                       <td className="py-3 px-4">{voucher.time_minutes}</td>
                       <td className="py-3 px-4">{voucher.created_by}</td>
                       <td className="py-3 px-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${voucher.is_used ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
-                          {voucher.is_used ? 'Used' : 'Unused'}
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${voucher.is_used === 1 ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                          {voucher.is_used === 1 ? 'Used' : 'Unused'}
                         </span>
                       </td>
                       <td className="py-3 px-4">
@@ -201,7 +284,7 @@ const VoucherManager: React.FC = () => {
                         )}
                       </td>
                       <td className="py-3 px-4">
-                        {!voucher.is_used && (
+                        {voucher.is_used === 0 && (
                           <button
                             onClick={() => handleDeleteVoucher(voucher.id)}
                             className="text-red-600 hover:text-red-800 text-sm font-medium"

@@ -95,7 +95,10 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     }
   }, []);
 
-  const mySession = sessions.find(s => s.mac === myMac);
+  const sessionToken = typeof window !== 'undefined' ? localStorage.getItem('ajc_session_token') : null;
+  const mySession = sessionToken 
+    ? sessions.find(s => s.token === sessionToken) 
+    : sessions.find(s => s.mac === myMac);
 
   useEffect(() => {
     let interval: any = null;

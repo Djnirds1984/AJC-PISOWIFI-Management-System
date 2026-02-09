@@ -51,6 +51,23 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     return id;
   };
 
+  const setCookie = (name: string, value: string, days: number) => {
+    const d = new Date();
+    d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
+    document.cookie = name + '=' + value + ';expires=' + d.toUTCString() + ';path=/;SameSite=Lax';
+  };
+
+  const getCookie = (name: string): string | null => {
+    const nameEQ = name + '=';
+    const ca = document.cookie.split(';');
+    for (let i = 0; i < ca.length; i++) {
+      let c = ca[i];
+      while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+      if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+    }
+    return null;
+  };
+
   useEffect(() => {
     // Load Portal Configuration
     const loadConfig = async () => {
@@ -73,6 +90,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     // Set fallback ID immediately so UI can render
     const fallbackId = getFallbackId();
     setMyMac(fallbackId);
+    setCookie('ajc_client_id', fallbackId, 365);
     setIsMacLoading(false);
 
     // Try to get real MAC in background without blocking UI
@@ -95,7 +113,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
     }
   }, []);
 
-  const sessionToken = typeof window !== 'undefined' ? localStorage.getItem('ajc_session_token') : null;
+  const sessionToken = typeof window !== 'undefined' ? (getCookie('ajc_session_token') || localStorage.getItem('ajc_session_token')) : null;
   const mySession = sessionToken 
     ? sessions.find(s => s.token === sessionToken) 
     : sessions.find(s => s.mac === myMac);

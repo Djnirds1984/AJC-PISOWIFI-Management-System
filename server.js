@@ -40,6 +40,21 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+function getCookie(req, name) {
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return null;
+  const parts = cookieHeader.split(';').map(s => s.trim());
+  for (const part of parts) {
+    const eq = part.indexOf('=');
+    if (eq > -1) {
+      const k = part.substring(0, eq);
+      const v = part.substring(eq + 1);
+      if (k === name) return v;
+    }
+  }
+  return null;
+}
+
 // DEBUG LOGGING MIDDLEWARE
 app.use(express.json()); // Ensure JSON body parsing is early
 app.post('/api/debug/log', (req, res) => {
@@ -1521,12 +1536,18 @@ app.post('/api/sessions/start', async (req, res) => {
     });
     
     coinSlotLocks.delete(slot);
+    try {
+      res.cookie('ajc_session_token', token, { path: '/', maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'lax' });
+    } catch (e) {}
     res.json({ success: true, mac, token, message: 'Internet access granted. Please refresh your browser or wait a moment for connection to activate.' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/sessions/restore', async (req, res) => {
-  const { token } = req.body;
+  let token = req.body.token;
+  if (!token) {
+    token = getCookie(req, 'ajc_session_token');
+  }
   const clientIp = req.ip.replace('::ffff:', '');
   const mac = await getMacFromIp(clientIp);
   
@@ -1572,6 +1593,9 @@ app.post('/api/sessions/restore', async (req, res) => {
     await network.blockMAC(session.mac, session.ip); // Block old
     await network.whitelistMAC(mac, clientIp); // Allow new
     
+    try {
+      res.cookie('ajc_session_token', token, { path: '/', maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'lax' });
+    } catch (e) {}
     res.json({ success: true, migrated: true, remainingSeconds: session.remaining_seconds + extraTime, isPaused: session.is_paused === 1 });
   } catch (err) { 
     console.error('[AUTH] Restore error:', err);
@@ -4023,6 +4047,9 @@ app.post('/api/vouchers/activate', async (req, res) => {
     
     console.log(`[VOUCHER] Voucher ${code} activated for ${mac} (${clientIp}) - ${seconds}s, ₱${amount}`);
     
+    try {
+      res.cookie('ajc_session_token', token, { path: '/', maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'lax' });
+    } catch (e) {}
     res.status(200).json({ 
       success: true, 
       mac, 

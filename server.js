@@ -3867,6 +3867,222 @@ async function bootupRestore(isRestricted = false) {
   console.log('[AJC] System Restoration Complete.');
 }
 
+// VOUCHER API ENDPOINTS
+// Generate new vouchers (admin only)
+app.post('/api/vouchers/generate', requireAdmin, async (req, res) => {
+  try {
+    const { amount, time_minutes, count = 1 } = req.body;
+    
+    // Validation
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: 'Amount must be a positive number' });
+    }
+    
+    if (!time_minutes || time_minutes <= 0) {
+      return res.status(400).json({ error: 'Time minutes must be a positive number' });
+    }
+    
+    if (!count || count <= 0 || count > 100) {
+      return res.status(400).json({ error: 'Count must be between 1 and 100' });
+    }
+    
+    const vouchers = [];
+    const adminUser = req.adminUser || 'admin';
+    
+    // Generate unique voucher codes
+    const generatedCodes = new Set();
+    
+    for (let i = 0; i < count; i++) {
+      let code;
+      let attempts = 0;
+      const maxAttempts = 10;
+      
+      // Ensure unique code generation
+      do {
+        code = `V${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+        attempts++;
+        
+        if (attempts > maxAttempts) {
+          throw new Error('Failed to generate unique voucher codes after maximum attempts');
+        }
+      } while (generatedCodes.has(code));
+      
+      generatedCodes.add(code);
+      
+      await db.run(
+        'INSERT INTO vouchers (code, amount, time_minutes, created_by) VALUES (?, ?, ?, ?)',
+        [code, amount, time_minutes, adminUser]
+      );
+      
+      vouchers.push({
+        code,
+        amount,
+        time_minutes,
+        created_at: new Date().toISOString()
+      });
+    }
+    
+    res.status(201).json({ 
+      success: true, 
+      vouchers, 
+      message: `Successfully generated ${count} voucher(s)`,
+      count: vouchers.length
+    });
+  } catch (err) {
+    console.error('[VOUCHER] Generate error:', err);
+    res.status(500).json({ 
+      error: 'Failed to generate vouchers',
+      message: err.message 
+    });
+  }
+});
+
+// Get all vouchers (admin only)
+app.get('/api/vouchers', async (req, res) => {
+  try {
+    const vouchers = await db.all(
+      'SELECT id, code, amount, time_minutes, created_at, used_at, used_by_mac, used_by_ip, is_used, created_by FROM vouchers ORDER BY created_at DESC'
+    );
+    res.json(vouchers);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete voucher (admin only)
+app.delete('/api/vouchers/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Check if voucher exists and is unused
+    const voucher = await db.get('SELECT * FROM vouchers WHERE id = ? AND is_used = 0', [id]);
+    if (!voucher) {
+      return res.status(404).json({ error: 'Voucher not found or already used' });
+    }
+    
+    await db.run('DELETE FROM vouchers WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Voucher deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Activate voucher (public endpoint)
+app.post('/api/vouchers/activate', async (req, res) => {
+  try {
+    const { code } = req.body;
+    const clientIp = req.ip.replace('::ffff:', '');
+    const mac = await getMacFromIp(clientIp);
+    
+    // Validation
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ 
+        error: 'Voucher code is required',
+        message: 'Please provide a valid voucher code'
+      });
+    }
+    
+    if (!mac) {
+      return res.status(400).json({ 
+        error: 'Device identification failed',
+        message: 'Could not identify your device. Please try again or contact support.'
+      });
+    }
+    
+    // Find unused voucher
+    const voucher = await db.get('SELECT * FROM vouchers WHERE code = ? AND is_used = 0', [code.toUpperCase().trim()]);
+    if (!voucher) {
+      return res.status(404).json({ 
+        error: 'Invalid voucher',
+        message: 'Invalid or already used voucher code. Please check the code and try again.'
+      });
+    }
+    
+    // Calculate session time in seconds
+    const seconds = voucher.time_minutes * 60;
+    const amount = voucher.amount;
+    
+    // Get existing token or generate new one
+    const existingSession = await db.get('SELECT token FROM sessions WHERE mac = ?', [mac]);
+    const token = existingSession && existingSession.token ? existingSession.token : crypto.randomBytes(16).toString('hex');
+    
+    // Start session - no speed limits for vouchers
+    await db.run(
+      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, token) VALUES (?, ?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, token = ?',
+      [mac, clientIp, seconds, amount, token, seconds, amount, clientIp, token]
+    );
+    
+    // Whitelist the device in firewall
+    await network.whitelistMAC(mac, clientIp);
+    
+    // Mark voucher as used
+    await db.run(
+      'UPDATE vouchers SET is_used = 1, used_at = CURRENT_TIMESTAMP, used_by_mac = ?, used_by_ip = ? WHERE id = ?',
+      [mac, clientIp, voucher.id]
+    );
+    
+    console.log(`[VOUCHER] Voucher ${code} activated for ${mac} (${clientIp}) - ${seconds}s, ₱${amount}`);
+    
+    res.status(200).json({ 
+      success: true, 
+      mac, 
+      token, 
+      time_minutes: voucher.time_minutes,
+      amount: voucher.amount,
+      message: 'Internet access granted! Your session will start shortly. Please refresh your browser if connection is not established.'
+    });
+  } catch (err) {
+    console.error('[VOUCHER] Activation error:', err);
+    res.status(500).json({ 
+      error: 'Activation failed',
+      message: 'An error occurred while activating your voucher. Please try again or contact support.'
+    });
+  }
+});
+
+// Start Background Timers
+setInterval(async () => {
+  try {
+    const expired = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds <= 0');
+    for (const s of expired) {
+      await network.blockMAC(s.mac, s.ip);
+      await db.run('DELETE FROM sessions WHERE mac = ?', [s.mac]);
+    }
+    await db.run('UPDATE sessions SET remaining_seconds = remaining_seconds - 1 WHERE remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)');
+  } catch (e) { console.error(e); }
+}, 1000);
+
+setInterval(async () => {
+  try {
+    const inactiveSessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds <= 0');
+    for (const session of inactiveSessions) {
+      await network.removeSpeedLimit(session.mac, session.ip);
+    }
+    const activeSessions = await db.all('SELECT ip FROM sessions WHERE remaining_seconds > 0');
+    const activeIPs = new Set(activeSessions.map(s => s.ip));
+    const { stdout: interfacesOutput } = await execPromise(`ip link show | grep -E "eth|wlan|br|vlan" | awk '{print $2}' | sed 's/:$//'`).catch(() => ({ stdout: '' }));
+    const interfaces = interfacesOutput.trim().split('\n').filter(i => i);
+    for (const iface of interfaces) {
+      try {
+        const { stdout: downloadFilters } = await execPromise(`tc filter show dev ${iface} parent 1:0 2>/dev/null || echo ""`).catch(() => ({ stdout: '' }));
+        const downloadIPs = downloadFilters.match(/\d+\.\d+\.\d+\.\d+/g) || [];
+        for (const ip of downloadIPs) {
+          if (!activeIPs.has(ip)) {
+            await execPromise(`tc filter del dev ${iface} parent 1:0 protocol ip prio 1 u32 match ip dst ${ip} 2>/dev/null || true`).catch(() => {});
+          }
+        }
+        const { stdout: uploadFilters } = await execPromise(`tc filter show dev ${iface} parent ffff: 2>/dev/null || echo ""`).catch(() => ({ stdout: '' }));
+        const uploadIPs = uploadFilters.match(/\d+\.\d+\.\d+\.\d+/g) || [];
+        for (const ip of uploadIPs) {
+          if (!activeIPs.has(ip)) {
+            await execPromise(`tc filter del dev ${iface} parent ffff: protocol ip prio 1 u32 match ip src ${ip} 2>/dev/null || true`).catch(() => {});
+          }
+        }
+      } catch (e) {}
+    }
+  } catch (e) { console.error('[CLEANUP] Periodic TC cleanup error:', e.message); }
+}, 30000);
+
 server.listen(80, '0.0.0.0', async () => {
   console.log('[AJC] System Engine Online @ Port 80');
   try {
@@ -3920,221 +4136,8 @@ server.listen(80, '0.0.0.0', async () => {
     console.warn('[EdgeSync] Cloud sync disabled - MACHINE_ID or VENDOR_ID not set in .env');
   }
 
-  // VOUCHER API ENDPOINTS
-  // Generate new vouchers (admin only)
-  app.post('/api/vouchers/generate', requireAdmin, async (req, res) => {
-    try {
-      const { amount, time_minutes, count = 1 } = req.body;
-      
-      // Validation
-      if (!amount || amount <= 0) {
-        return res.status(400).json({ error: 'Amount must be a positive number' });
-      }
-      
-      if (!time_minutes || time_minutes <= 0) {
-        return res.status(400).json({ error: 'Time minutes must be a positive number' });
-      }
-      
-      if (!count || count <= 0 || count > 100) {
-        return res.status(400).json({ error: 'Count must be between 1 and 100' });
-      }
-      
-      const vouchers = [];
-      const adminUser = req.adminUser || 'admin';
-      
-      // Generate unique voucher codes
-      const generatedCodes = new Set();
-      
-      for (let i = 0; i < count; i++) {
-        let code;
-        let attempts = 0;
-        const maxAttempts = 10;
-        
-        // Ensure unique code generation
-        do {
-          code = `V${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-          attempts++;
-          
-          if (attempts > maxAttempts) {
-            throw new Error('Failed to generate unique voucher codes after maximum attempts');
-          }
-        } while (generatedCodes.has(code));
-        
-        generatedCodes.add(code);
-        
-        await db.run(
-          'INSERT INTO vouchers (code, amount, time_minutes, created_by) VALUES (?, ?, ?, ?)',
-          [code, amount, time_minutes, adminUser]
-        );
-        
-        vouchers.push({
-          code,
-          amount,
-          time_minutes,
-          created_at: new Date().toISOString()
-        });
-      }
-      
-      res.status(201).json({ 
-        success: true, 
-        vouchers, 
-        message: `Successfully generated ${count} voucher(s)`,
-        count: vouchers.length
-      });
-    } catch (err) {
-      console.error('[VOUCHER] Generate error:', err);
-      res.status(500).json({ 
-        error: 'Failed to generate vouchers',
-        message: err.message 
-      });
-    }
-  });
-  
-  // Get all vouchers (admin only)
-  app.get('/api/vouchers', async (req, res) => {
-    try {
-      const vouchers = await db.all(
-        'SELECT id, code, amount, time_minutes, created_at, used_at, used_by_mac, used_by_ip, is_used, created_by FROM vouchers ORDER BY created_at DESC'
-      );
-      res.json(vouchers);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  
-  // Delete voucher (admin only)
-  app.delete('/api/vouchers/:id', requireAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      // Check if voucher exists and is unused
-      const voucher = await db.get('SELECT * FROM vouchers WHERE id = ? AND is_used = 0', [id]);
-      if (!voucher) {
-        return res.status(404).json({ error: 'Voucher not found or already used' });
-      }
-      
-      await db.run('DELETE FROM vouchers WHERE id = ?', [id]);
-      res.json({ success: true, message: 'Voucher deleted successfully' });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  
-  // Activate voucher (public endpoint)
-  app.post('/api/vouchers/activate', async (req, res) => {
-    try {
-      const { code } = req.body;
-      const clientIp = req.ip.replace('::ffff:', '');
-      const mac = await getMacFromIp(clientIp);
-      
-      // Validation
-      if (!code || typeof code !== 'string') {
-        return res.status(400).json({ 
-          error: 'Voucher code is required',
-          message: 'Please provide a valid voucher code'
-        });
-      }
-      
-      if (!mac) {
-        return res.status(400).json({ 
-          error: 'Device identification failed',
-          message: 'Could not identify your device. Please try again or contact support.'
-        });
-      }
-      
-      // Find unused voucher
-      const voucher = await db.get('SELECT * FROM vouchers WHERE code = ? AND is_used = 0', [code.toUpperCase().trim()]);
-      if (!voucher) {
-        return res.status(404).json({ 
-          error: 'Invalid voucher',
-          message: 'Invalid or already used voucher code. Please check the code and try again.'
-        });
-      }
-      
-      // Calculate session time in seconds
-      const seconds = voucher.time_minutes * 60;
-      const amount = voucher.amount;
-      
-      // Get existing token or generate new one
-      const existingSession = await db.get('SELECT token FROM sessions WHERE mac = ?', [mac]);
-      const token = existingSession && existingSession.token ? existingSession.token : crypto.randomBytes(16).toString('hex');
-      
-      // Start session - no speed limits for vouchers
-      await db.run(
-        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, token) VALUES (?, ?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, token = ?',
-        [mac, clientIp, seconds, amount, token, seconds, amount, clientIp, token]
-      );
-      
-      // Whitelist the device in firewall
-      await network.whitelistMAC(mac, clientIp);
-      
-      // Mark voucher as used
-      await db.run(
-        'UPDATE vouchers SET is_used = 1, used_at = CURRENT_TIMESTAMP, used_by_mac = ?, used_by_ip = ? WHERE id = ?',
-        [mac, clientIp, voucher.id]
-      );
-      
-      console.log(`[VOUCHER] Voucher ${code} activated for ${mac} (${clientIp}) - ${seconds}s, ₱${amount}`);
-      
-      res.status(200).json({ 
-        success: true, 
-        mac, 
-        token, 
-        time_minutes: voucher.time_minutes,
-        amount: voucher.amount,
-        message: 'Internet access granted! Your session will start shortly. Please refresh your browser if connection is not established.'
-      });
-    } catch (err) {
-      console.error('[VOUCHER] Activation error:', err);
-      res.status(500).json({ 
-        error: 'Activation failed',
-        message: 'An error occurred while activating your voucher. Please try again or contact support.'
-      });
-    }
-  });
-  
-  // Start Background Timers only after DB is initialized
-  setInterval(async () => {
-    try {
-      const expired = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds <= 0');
-      for (const s of expired) {
-        await network.blockMAC(s.mac, s.ip);
-        await db.run('DELETE FROM sessions WHERE mac = ?', [s.mac]);
-      }
-      await db.run('UPDATE sessions SET remaining_seconds = remaining_seconds - 1 WHERE remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)');
-    } catch (e) { console.error(e); }
-  }, 1000);
+  // Voucher APIs and Timers moved to top level
 
-  setInterval(async () => {
-    try {
-      const inactiveSessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds <= 0');
-      for (const session of inactiveSessions) {
-        await network.removeSpeedLimit(session.mac, session.ip);
-      }
-      const activeSessions = await db.all('SELECT ip FROM sessions WHERE remaining_seconds > 0');
-      const activeIPs = new Set(activeSessions.map(s => s.ip));
-      const { stdout: interfacesOutput } = await execPromise(`ip link show | grep -E "eth|wlan|br|vlan" | awk '{print $2}' | sed 's/:$//'`).catch(() => ({ stdout: '' }));
-      const interfaces = interfacesOutput.trim().split('\n').filter(i => i);
-      for (const iface of interfaces) {
-        try {
-          const { stdout: downloadFilters } = await execPromise(`tc filter show dev ${iface} parent 1:0 2>/dev/null || echo ""`).catch(() => ({ stdout: '' }));
-          const downloadIPs = downloadFilters.match(/\d+\.\d+\.\d+\.\d+/g) || [];
-          for (const ip of downloadIPs) {
-            if (!activeIPs.has(ip)) {
-              await execPromise(`tc filter del dev ${iface} parent 1:0 protocol ip prio 1 u32 match ip dst ${ip} 2>/dev/null || true`).catch(() => {});
-            }
-          }
-          const { stdout: uploadFilters } = await execPromise(`tc filter show dev ${iface} parent ffff: 2>/dev/null || echo ""`).catch(() => ({ stdout: '' }));
-          const uploadIPs = uploadFilters.match(/\d+\.\d+\.\d+\.\d+/g) || [];
-          for (const ip of uploadIPs) {
-            if (!activeIPs.has(ip)) {
-              await execPromise(`tc filter del dev ${iface} parent ffff: protocol ip prio 1 u32 match ip src ${ip} 2>/dev/null || true`).catch(() => {});
-            }
-          }
-        } catch (e) {}
-      }
-    } catch (e) { console.error('[CLEANUP] Periodic TC cleanup error:', e.message); }
-  }, 30000);
   
   // Always call bootupRestore but pass revocation status if needed
   // We can fetch it inside bootupRestore or pass it

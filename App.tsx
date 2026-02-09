@@ -16,6 +16,7 @@ import { MyMachines } from './components/Admin/MyMachines';
 import BandwidthManager from './components/Admin/BandwidthManager';
 import MultiWanSettings from './components/Admin/MultiWanSettings';
 import ChatManager from './components/Admin/ChatManager';
+import VoucherManager from './components/Admin/VoucherManager';
 import { apiClient } from './lib/api';
 import { initAdminTheme, setAdminTheme } from './lib/theme';
 
@@ -334,6 +335,7 @@ const App: React.FC = () => {
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.MultiWan} onClick={() => setActiveTab(AdminTab.MultiWan)} icon="🔀" label="Multi-WAN" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Chat} onClick={() => setActiveTab(AdminTab.Chat)} icon="💬" label="Chat" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Machines} onClick={() => setActiveTab(AdminTab.Machines)} icon="🤖" label="Machines" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Vouchers} onClick={() => setActiveTab(AdminTab.Vouchers)} icon="🎟️" label="Vouchers" collapsed={!sidebarOpen} />
                 <SidebarItem active={activeTab === AdminTab.System} onClick={() => setActiveTab(AdminTab.System)} icon="⚙️" label="System" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Updater} onClick={() => setActiveTab(AdminTab.Updater)} icon="🚀" label="Updater" collapsed={!sidebarOpen} />
               </nav>
@@ -402,6 +404,7 @@ const App: React.FC = () => {
                   {activeTab === AdminTab.MultiWan && <MultiWanSettings />}
                   {activeTab === AdminTab.Chat && <ChatManager />}
                   {activeTab === AdminTab.Machines && <MyMachines />}
+                  {activeTab === AdminTab.Vouchers && <VoucherManager />}
                   {activeTab === AdminTab.System && <SystemSettings />}
                   {activeTab === AdminTab.Updater && <SystemUpdater />}
                 </div>

@@ -1363,7 +1363,8 @@ app.get('/api/whoami', async (req, res) => {
       const shouldLog = !last || (now - last) > UNAUTH_LOG_TTL_MS;
       if (shouldLog && (!session || !session.remaining_seconds || session.remaining_seconds <= 0)) {
         unauthSeen.set(mac, now);
-        console.log(`[AUTH] Device with no active time detected: MAC=${mac} | IP=${clientIp}`);
+        const token = getCookie(req, 'ajc_session_token');
+        console.log(`[AUTH] Device with no active time detected: MAC=${mac} | Session ID=${token || 'NONE'}`);
       }
     }
   } catch (e) {}

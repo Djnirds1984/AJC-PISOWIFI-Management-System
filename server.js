@@ -1444,10 +1444,11 @@ app.post('/api/coinslot/reserve', async (req, res) => {
   if (!mac && clientIp === '127.0.0.1') mac = 'DEV-LOCALHOST';
   if (!mac) return res.status(400).json({ success: false, error: 'Could not identify your device MAC.' });
 
+  const token = getSessionToken(req);
   const now = Date.now();
   const existing = coinSlotLocks.get(slot);
   if (existing && existing.expiresAt > now) {
-    if (existing.ownerMac === mac) {
+    if (existing.ownerMac === mac || (token && existing.ownerToken === token)) {
       existing.expiresAt = now + COINSLOT_LOCK_TTL_MS;
       return res.json({ success: true, slot, lockId: existing.lockId, expiresAt: existing.expiresAt });
     }
@@ -1462,7 +1463,7 @@ app.post('/api/coinslot/reserve', async (req, res) => {
 
   const lockId = crypto.randomBytes(16).toString('hex');
   const expiresAt = now + COINSLOT_LOCK_TTL_MS;
-  coinSlotLocks.set(slot, { lockId, ownerMac: mac, ownerIp: clientIp, createdAt: now, expiresAt });
+  coinSlotLocks.set(slot, { lockId, ownerMac: mac, ownerIp: clientIp, ownerToken: token || null, createdAt: now, expiresAt });
   res.json({ success: true, slot, lockId, expiresAt });
 });
 
@@ -1481,8 +1482,9 @@ app.post('/api/coinslot/heartbeat', async (req, res) => {
   if (!mac && clientIp === '127.0.0.1') mac = 'DEV-LOCALHOST';
   if (!mac) return res.status(400).json({ success: false, error: 'Could not identify your device MAC.' });
 
+  const token = getSessionToken(req);
   const existing = coinSlotLocks.get(slot);
-  if (!existing || existing.lockId !== lockId || existing.ownerMac !== mac) {
+  if (!existing || existing.lockId !== lockId || (existing.ownerMac !== mac && (!token || existing.ownerToken !== token))) {
     return res.status(409).json({ success: false, code: 'COINSLOT_NOT_OWNED', error: 'Coinslot reservation expired.' });
   }
 
@@ -1578,20 +1580,58 @@ app.post('/api/sessions/start', async (req, res) => {
     const uploadLimit = rate ? (rate.upload_limit || 0) : 0;
     const seconds = minutes * 60;
 
-    // Get existing token or generate new one
-    const existingSession = await db.get('SELECT token FROM sessions WHERE mac = ?', [mac]);
-    const token = existingSession && existingSession.token ? existingSession.token : crypto.randomBytes(16).toString('hex');
+    const requestedToken = getSessionToken(req);
+    let tokenToUse = requestedToken || null;
+    let migratedOldMac = null;
+    let migratedOldIp = null;
 
-    await db.run(
-      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?, token = ?',
-      [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, token, seconds, pesos, clientIp, downloadLimit, uploadLimit, token]
-    );
+    if (requestedToken) {
+      const sessionByToken = await db.get('SELECT * FROM sessions WHERE token = ?', [requestedToken]);
+      if (sessionByToken) {
+        if (sessionByToken.mac === mac) {
+          await db.run(
+            'UPDATE sessions SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ? WHERE token = ?',
+            [seconds, pesos, clientIp, downloadLimit, uploadLimit, requestedToken]
+          );
+          tokenToUse = requestedToken;
+        } else {
+          const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ?', [mac]);
+          let extraTime = 0;
+          let extraPaid = 0;
+          if (targetSession) {
+            extraTime = targetSession.remaining_seconds || 0;
+            extraPaid = targetSession.total_paid || 0;
+            await db.run('DELETE FROM sessions WHERE mac = ?', [mac]);
+          }
+          await db.run('DELETE FROM sessions WHERE mac = ?', [sessionByToken.mac]);
+          await db.run(
+            'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, download_limit, upload_limit, token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [mac, clientIp, (sessionByToken.remaining_seconds || 0) + extraTime + seconds, (sessionByToken.total_paid || 0) + extraPaid + pesos, sessionByToken.connected_at, downloadLimit, uploadLimit, requestedToken]
+          );
+          migratedOldMac = sessionByToken.mac;
+          migratedOldIp = sessionByToken.ip;
+          tokenToUse = requestedToken;
+        }
+      }
+    }
+
+    if (!tokenToUse) {
+      const existingSession = await db.get('SELECT token FROM sessions WHERE mac = ?', [mac]);
+      tokenToUse = (existingSession && existingSession.token) ? existingSession.token : crypto.randomBytes(16).toString('hex');
+      await db.run(
+        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?, token = ?',
+        [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, tokenToUse, seconds, pesos, clientIp, downloadLimit, uploadLimit, tokenToUse]
+      );
+    }
     
     // Whitelist the device in firewall
     await network.whitelistMAC(mac, clientIp);
+    if (migratedOldMac && migratedOldIp) {
+      await network.blockMAC(migratedOldMac, migratedOldIp);
+    }
     
     console.log(`[AUTH] Session started for ${mac} (${clientIp}) - ${seconds}s, ₱${pesos}, Limits: ${downloadLimit}/${uploadLimit} Mbps`);
-    console.log(`[AUTH] New user connected: MAC=${mac} | Session ID=${token}`);
+    console.log(`[AUTH] New user connected: MAC=${mac} | Session ID=${tokenToUse}`);
     
     // Sync sale to cloud (non-blocking)
     syncSaleToCloud({
@@ -1605,9 +1645,9 @@ app.post('/api/sessions/start', async (req, res) => {
     
     coinSlotLocks.delete(slot);
     try {
-      res.cookie('ajc_session_token', token, { path: '/', maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'lax' });
+      res.cookie('ajc_session_token', tokenToUse, { path: '/', maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'lax' });
     } catch (e) {}
-    res.json({ success: true, mac, token, message: 'Internet access granted. Please refresh your browser or wait a moment for connection to activate.' });
+    res.json({ success: true, mac, token: tokenToUse, message: 'Internet access granted. Please refresh your browser or wait a moment for connection to activate.' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

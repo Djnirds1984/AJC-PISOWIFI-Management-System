@@ -97,6 +97,21 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
 
   const mySession = sessions.find(s => s.mac === myMac);
 
+  useEffect(() => {
+    let interval: any = null;
+    if (onRestoreSession) {
+      interval = setInterval(() => {
+        const token = localStorage.getItem('ajc_session_token');
+        if (token && !mySession) {
+          onRestoreSession();
+        }
+      }, 5000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [onRestoreSession, mySession]);
+
   const handleOpenModal = async (e: React.MouseEvent) => {
     e.preventDefault();
     setSlotError(null);

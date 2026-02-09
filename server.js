@@ -45,6 +45,18 @@ const unauthSeen = new Map();
 const AUTO_RESTORE_TTL_MS = 10 * 1000;
 const autoRestoreSeen = new Map();
 
+function getSessionToken(req) {
+  const headerToken = req.headers['x-session-token'];
+  if (typeof headerToken === 'string' && headerToken.trim()) return headerToken.trim();
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const t = authHeader.split(' ')[1];
+    if (t && t.trim()) return t.trim();
+  }
+  const cookieToken = getCookie(req, 'ajc_session_token');
+  return cookieToken || null;
+}
+
 function getCookie(req, name) {
   const cookieHeader = req.headers.cookie;
   if (!cookieHeader) return null;
@@ -1363,13 +1375,13 @@ app.get('/api/whoami', async (req, res) => {
       const shouldLog = !last || (now - last) > UNAUTH_LOG_TTL_MS;
       if (shouldLog && (!session || !session.remaining_seconds || session.remaining_seconds <= 0)) {
         unauthSeen.set(mac, now);
-        const token = getCookie(req, 'ajc_session_token');
+        const token = getSessionToken(req);
         console.log(`[AUTH] Device with no active time detected: MAC=${mac} | Session ID=${token || 'NONE'}`);
       }
     }
   } catch (e) {}
   try {
-    const token = getCookie(req, 'ajc_session_token');
+    const token = getSessionToken(req);
     if (token) {
       const now = Date.now();
       const last = autoRestoreSeen.get(token);
@@ -1600,10 +1612,7 @@ app.post('/api/sessions/start', async (req, res) => {
 });
 
 app.post('/api/sessions/restore', async (req, res) => {
-  let token = req.body.token;
-  if (!token) {
-    token = getCookie(req, 'ajc_session_token');
-  }
+  let token = req.body.token || getSessionToken(req);
   const clientIp = req.ip.replace('::ffff:', '');
   let mac = await getMacFromIp(clientIp);
   if (!mac) {

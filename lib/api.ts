@@ -12,6 +12,12 @@ const getHeaders = (customHeaders: HeadersInit = {}) => {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  const userToken = (typeof document !== 'undefined')
+    ? (document.cookie.split(';').map(s => s.trim()).find(c => c.startsWith('ajc_session_token='))?.split('=')[1] || localStorage.getItem('ajc_session_token'))
+    : localStorage.getItem('ajc_session_token');
+  if (userToken) {
+    headers['X-Session-Token'] = userToken;
+  }
   return headers;
 };
 
@@ -149,7 +155,7 @@ export const apiClient = {
   },
 
   async whoAmI(): Promise<{ ip: string; mac: string; canInsertCoin?: boolean; isRevoked?: boolean }> {
-    const res = await fetch(`${API_BASE}/whoami`);
+    const res = await fetch(`${API_BASE}/whoami`, { headers: getHeaders() });
     return handleResponse(res);
   },
 

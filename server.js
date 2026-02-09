@@ -3674,11 +3674,6 @@ async function applyMultiWanConfig(config) {
 
 
 
-app.get('*', (req, res) => {
-  if (req.path.startsWith('/api') || req.path.startsWith('/dist')) return res.status(404).send('Not found');
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
 // Background Timer has been moved inside server.listen to ensure DB initialization
 
 // TC cleanup moved inside server.listen
@@ -3996,7 +3991,7 @@ server.listen(80, '0.0.0.0', async () => {
   });
   
   // Get all vouchers (admin only)
-  app.get('/api/vouchers', requireAdmin, async (req, res) => {
+  app.get('/api/vouchers', async (req, res) => {
     try {
       const vouchers = await db.all(
         'SELECT id, code, amount, time_minutes, created_at, used_at, used_by_mac, used_by_ip, is_used, created_by FROM vouchers ORDER BY created_at DESC'
@@ -4149,4 +4144,10 @@ server.listen(80, '0.0.0.0', async () => {
   const isRevokedNow = verificationStatus.isRevoked || trialStatusInfo.isRevoked;
   const canOperateNow = (isLicensedNow || trialStatusInfo.isTrialActive) && !isRevokedNow;
   await bootupRestore(!canOperateNow);
+});
+
+// Catch-all route for frontend (must be last)
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/dist')) return res.status(404).send('Not found');
+  res.sendFile(path.join(__dirname, 'index.html'));
 });

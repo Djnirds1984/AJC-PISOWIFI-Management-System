@@ -126,7 +126,7 @@ const LandingPage: React.FC<Props> = ({ rates, sessions, onSessionStart, refresh
         if (token && !mySession) {
           onRestoreSession();
         }
-      }, 5000);
+      }, 2000);
     }
     return () => {
       if (interval) clearInterval(interval);

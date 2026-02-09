@@ -1524,6 +1524,7 @@ app.post('/api/sessions/start', async (req, res) => {
     await network.whitelistMAC(mac, clientIp);
     
     console.log(`[AUTH] Session started for ${mac} (${clientIp}) - ${seconds}s, ₱${pesos}, Limits: ${downloadLimit}/${uploadLimit} Mbps`);
+    console.log(`[AUTH] New user connected: MAC=${mac} | Session ID=${token}`);
     
     // Sync sale to cloud (non-blocking)
     syncSaleToCloud({
@@ -1549,7 +1550,14 @@ app.post('/api/sessions/restore', async (req, res) => {
     token = getCookie(req, 'ajc_session_token');
   }
   const clientIp = req.ip.replace('::ffff:', '');
-  const mac = await getMacFromIp(clientIp);
+  let mac = await getMacFromIp(clientIp);
+  if (!mac) {
+    for (let i = 0; i < 5 && !mac; i++) {
+      try { await execPromise(`ping -c 1 -W 1 ${clientIp}`); } catch (e) {}
+      await new Promise(r => setTimeout(r, 400));
+      mac = await getMacFromIp(clientIp);
+    }
+  }
   
   if (!token || !mac) return res.status(400).json({ error: 'Invalid request' });
 
@@ -1596,6 +1604,7 @@ app.post('/api/sessions/restore', async (req, res) => {
     try {
       res.cookie('ajc_session_token', token, { path: '/', maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'lax' });
     } catch (e) {}
+    console.log(`[AUTH] User session restored on new MAC: MAC=${mac} | Session ID=${token}`);
     res.json({ success: true, migrated: true, remainingSeconds: session.remaining_seconds + extraTime, isPaused: session.is_paused === 1 });
   } catch (err) { 
     console.error('[AUTH] Restore error:', err);
@@ -4046,6 +4055,11 @@ app.post('/api/vouchers/activate', async (req, res) => {
     );
     
     console.log(`[VOUCHER] Voucher ${code} activated for ${mac} (${clientIp}) - ${seconds}s, ₱${amount}`);
+    
+    const afterSession = await db.get('SELECT remaining_seconds FROM sessions WHERE mac = ?', [mac]);
+    const totalSeconds = afterSession?.remaining_seconds || seconds;
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    console.log(`[VOUCHER] Total time now: ${totalMinutes}m (${totalSeconds}s) | Session ID: ${token}`);
     
     try {
       res.cookie('ajc_session_token', token, { path: '/', maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'lax' });

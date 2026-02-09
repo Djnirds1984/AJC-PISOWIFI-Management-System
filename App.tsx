@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AdminTab, UserSession, Rate, WifiDevice } from './types';
-import { attachDeviceHeaders, attachDeviceFingerprintHeaders } from './lib/device-id';
 import LandingPage from './components/Portal/LandingPage';
-import SystemDashboard from './components/Admin/SystemDashboard';
-import InterfacesList from './components/Admin/InterfacesList';
+import Analytics from './components/Admin/Analytics';
 import RatesManager from './components/Admin/RatesManager';
-import VoucherManager from './components/Admin/VoucherManager';
 import NetworkSettings from './components/Admin/NetworkSettings';
 import HardwareManager from './components/Admin/HardwareManager';
 import SystemUpdater from './components/Admin/SystemUpdater';
@@ -19,7 +16,6 @@ import { MyMachines } from './components/Admin/MyMachines';
 import BandwidthManager from './components/Admin/BandwidthManager';
 import MultiWanSettings from './components/Admin/MultiWanSettings';
 import ChatManager from './components/Admin/ChatManager';
-import ZeroTierManager from './components/Admin/ZeroTierManager';
 import { apiClient } from './lib/api';
 import { initAdminTheme, setAdminTheme } from './lib/theme';
 
@@ -33,7 +29,7 @@ const App: React.FC = () => {
 
   const [isAdmin, setIsAdmin] = useState(isCurrentlyAdminPath());
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [activeTab, setActiveTab] = useState<AdminTab>(AdminTab.Dashboard);
+  const [activeTab, setActiveTab] = useState<AdminTab>(AdminTab.Analytics);
   const [licenseStatus, setLicenseStatus] = useState<{ isLicensed: boolean, isRevoked: boolean, canOperate: boolean }>({ isLicensed: true, isRevoked: false, canOperate: true });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rates, setRates] = useState<Rate[]>([]);
@@ -76,8 +72,7 @@ const App: React.FC = () => {
   useEffect(() => {
     // Initialize theme based on current mode
     if (isCurrentlyAdminPath()) {
-      // Set to light minimal theme for admin
-      setAdminTheme('light_minimal');
+      initAdminTheme();
     } else {
       // Ensure portal always uses default theme (or specific portal theme logic)
       setAdminTheme('default');
@@ -89,7 +84,7 @@ const App: React.FC = () => {
       setIsAdmin(isNowAdmin);
       
       if (isNowAdmin) {
-        setAdminTheme('light_minimal');
+        initAdminTheme();
       } else {
         setAdminTheme('default');
       }
@@ -223,22 +218,13 @@ const App: React.FC = () => {
   // Check for existing session token and try to restore (Fix for randomized MACs/SSID switching)
   const restoreSession = async (retries = 5) => {
     const sessionToken = localStorage.getItem('ajc_session_token');
-    console.log(`[Session] Attempting to restore session, token: ${sessionToken ? sessionToken.slice(0,8) + '...' : 'none'}, retries: ${retries}`);
-    
     if (sessionToken) {
       try {
-        // Add device UUID and fingerprint to restore request
-        const headers = attachDeviceFingerprintHeaders({
-          'Content-Type': 'application/json'
-        });
-        
         const res = await fetch('/api/sessions/restore', {
           method: 'POST',
-          headers,
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: sessionToken })
         });
-        
-        console.log(`[Session] Restore response: ${res.status} ${res.statusText}`);
         
         // If 400 (Bad Request), it likely means MAC resolution failed temporarily. Retry.
         if (res.status === 400 && retries > 0) {
@@ -248,57 +234,16 @@ const App: React.FC = () => {
         }
 
         const data = await res.json();
-        console.log(`[Session] Restore data:`, data);
-        
         if (data.success) {
           console.log('Session restored successfully');
           if (data.migrated) {
             console.log('Session migrated to new network info');
-            
-            // Show user feedback for successful migration
-            if (data.message) {
-              // Create a temporary notification
-              const notification = document.createElement('div');
-              notification.style.cssText = `
-                position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-                background: #10b981; color: white; padding: 12px 24px;
-                border-radius: 8px; font-weight: bold; z-index: 9999;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                font-size: 14px; text-align: center;
-              `;
-              notification.textContent = '✅ ' + data.message;
-              document.body.appendChild(notification);
-              
-              // Remove notification after 5 seconds
-              setTimeout(() => {
-                if (notification.parentNode) {
-                  notification.parentNode.removeChild(notification);
-                }
-              }, 5000);
-            }
-            
-            // Test internet connectivity after session migration
-            setTimeout(async () => {
-              try {
-                console.log('[Session] Testing internet connectivity after migration...');
-                await fetch('http://connectivitycheck.gstatic.com/generate_204', { 
-                  mode: 'no-cors',
-                  cache: 'no-cache'
-                });
-                console.log('[Session] Internet connectivity test passed');
-              } catch (e) {
-                console.log('[Session] Internet connectivity test failed, but this is normal for no-cors requests');
-              }
-            }, 2000);
-            
             loadData(); // Reload to see active session
           }
         } else if (res.status === 404) {
           // Token invalid/expired - only remove if we are sure
           console.log('[Session] Token expired or invalid');
           localStorage.removeItem('ajc_session_token');
-        } else {
-          console.log('[Session] Restore failed:', data.error);
         }
       } catch (e) {
         console.error('Failed to restore session:', e);
@@ -306,18 +251,16 @@ const App: React.FC = () => {
           setTimeout(() => restoreSession(retries - 1), 2000);
         }
       }
-    } else {
-      console.log('[Session] No session token found to restore');
     }
   };
 
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-blue-600 font-bold tracking-widest uppercase text-xs">AJC Core Initializing...</p>
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-blue-400 font-bold tracking-widest uppercase text-xs">AJC Core Initializing...</p>
         </div>
       </div>
     );
@@ -325,21 +268,21 @@ const App: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg border border-gray-200 text-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white p-8 rounded-[32px] shadow-2xl border border-red-100 text-center">
           <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">⚠️</div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2 uppercase tracking-tight">System Offline</h2>
-          <p className="text-gray-600 text-sm mb-8 leading-relaxed">{error}</p>
-          <button onClick={() => { setLoading(true); loadData(); }} className="w-full bg-blue-500 text-white py-3 rounded-lg font-medium hover:bg-blue-600 transition-colors">Retry System Link</button>
+          <h2 className="text-xl font-black text-slate-900 mb-2 uppercase tracking-tight">System Offline</h2>
+          <p className="text-slate-500 text-sm mb-8 leading-relaxed">{error}</p>
+          <button onClick={() => { setLoading(true); loadData(); }} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-black shadow-xl shadow-slate-900/20">Retry System Link</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white font-['Euclid_Circular_A',_system-ui,_sans-serif]">
+    <div className="min-h-screen bg-slate-50">
       <div className="fixed bottom-4 right-4 z-[999] hidden md:block">
-        <button onClick={handleToggleAdmin} className="bg-blue-500 text-white px-5 py-3 rounded-full text-xs font-medium tracking-wide uppercase hover:bg-blue-600 shadow-lg transition-all flex items-center gap-2">
+        <button onClick={handleToggleAdmin} className="bg-slate-950 text-white px-5 py-3 rounded-full text-[10px] font-black tracking-widest uppercase hover:bg-blue-600 shadow-2xl border border-white/10 active:scale-95 transition-all flex items-center gap-2">
           <span>{isAdmin ? '🚪' : '🔐'}</span>
           {isAdmin ? 'Exit Admin' : 'Admin Login'}
         </button>
@@ -347,7 +290,7 @@ const App: React.FC = () => {
 
       {isAdmin ? (
         isAuthenticated ? (
-          <div className="flex h-screen overflow-hidden bg-gray-50 font-['Euclid_Circular_A',_system-ui,_sans-serif] selection:bg-blue-100">
+          <div className="flex h-screen overflow-hidden bg-slate-100 font-sans selection:bg-blue-100">
             {/* Mobile Sidebar Overlay */}
             {sidebarOpen && (
               <div 
@@ -360,56 +303,53 @@ const App: React.FC = () => {
             <aside className={`
               fixed md:relative h-full
               ${sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64 md:translate-x-0 md:w-20'} 
-              bg-white text-gray-800 flex flex-col shrink-0 transition-all duration-300 ease-in-out z-50 border-r border-gray-200 shadow-sm
+              bg-slate-900 text-white flex flex-col shrink-0 transition-all duration-300 ease-in-out z-50 border-r border-slate-800
             `}>
-              <div className={`p-4 border-b border-gray-200 flex items-center ${sidebarOpen ? 'justify-between' : 'justify-center'}`}>
+              <div className={`p-4 border-b border-white/5 flex items-center ${sidebarOpen ? 'justify-between' : 'justify-center'}`}>
                 {sidebarOpen ? (
                   <>
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 bg-blue-500 rounded-lg flex items-center justify-center font-bold text-xs text-white">AJC</div>
-                      <h1 className="text-lg font-bold tracking-tight text-main">PISOWIFI</h1>
+                      <div className="w-7 h-7 bg-blue-600 rounded flex items-center justify-center font-black text-xs">AJC</div>
+                      <h1 className="text-lg font-bold tracking-tight text-white">PISOWIFI</h1>
                     </div>
-                    <button onClick={() => setSidebarOpen(false)} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 md:hidden">
+                    <button onClick={() => setSidebarOpen(false)} className="p-1.5 hover:bg-white/10 rounded-md text-slate-400 md:hidden">
                       ✕
                     </button>
                   </>
                 ) : (
-                  <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-bold text-xs text-white">A</div>
+                  <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center font-black text-xs">A</div>
                 )}
               </div>
               
               <nav className={`flex-1 ${sidebarOpen ? 'p-3' : 'p-2'} space-y-1 overflow-y-auto scrollbar-hide`}>
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Dashboard} onClick={() => setActiveTab(AdminTab.Dashboard)} icon="📊" label="Dashboard" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Interfaces} onClick={() => setActiveTab(AdminTab.Interfaces)} icon="�" label="Interfaces" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Analytics} onClick={() => setActiveTab(AdminTab.Analytics)} icon="📊" label="Dashboard" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Rates} onClick={() => setActiveTab(AdminTab.Rates)} icon="💰" label="Pricing" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Vouchers} onClick={() => setActiveTab(AdminTab.Vouchers)} icon="�" label="Vouchers" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Network} onClick={() => setActiveTab(AdminTab.Network)} icon="🌐" label="Network" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Devices} onClick={() => setActiveTab(AdminTab.Devices)} icon="�" label="Devices" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Devices} onClick={() => setActiveTab(AdminTab.Devices)} icon="📱" label="Devices" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Hardware} onClick={() => setActiveTab(AdminTab.Hardware)} icon="🔌" label="Hardware" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Themes} onClick={() => setActiveTab(AdminTab.Themes)} icon="🎨" label="Themes" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.PortalEditor} onClick={() => setActiveTab(AdminTab.PortalEditor)} icon="�️" label="Portal" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.PPPoE} onClick={() => setActiveTab(AdminTab.PPPoE)} icon="�" label="PPPoE" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Bandwidth} onClick={() => setActiveTab(AdminTab.Bandwidth)} icon="�" label="QoS" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.MultiWan} onClick={() => setActiveTab(AdminTab.MultiWan)} icon="�" label="Multi-WAN" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Chat} onClick={() => setActiveTab(AdminTab.Chat)} icon="�" label="Chat" collapsed={!sidebarOpen} />
-                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.ZeroTier} onClick={() => setActiveTab(AdminTab.ZeroTier)} icon="🕸️" label="ZeroTier" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.PortalEditor} onClick={() => setActiveTab(AdminTab.PortalEditor)} icon="🖥️" label="Portal" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.PPPoE} onClick={() => setActiveTab(AdminTab.PPPoE)} icon="📞" label="PPPoE" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Bandwidth} onClick={() => setActiveTab(AdminTab.Bandwidth)} icon="📶" label="QoS" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.MultiWan} onClick={() => setActiveTab(AdminTab.MultiWan)} icon="🔀" label="Multi-WAN" collapsed={!sidebarOpen} />
+                <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Chat} onClick={() => setActiveTab(AdminTab.Chat)} icon="💬" label="Chat" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Machines} onClick={() => setActiveTab(AdminTab.Machines)} icon="🤖" label="Machines" collapsed={!sidebarOpen} />
                 <SidebarItem active={activeTab === AdminTab.System} onClick={() => setActiveTab(AdminTab.System)} icon="⚙️" label="System" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Updater} onClick={() => setActiveTab(AdminTab.Updater)} icon="🚀" label="Updater" collapsed={!sidebarOpen} />
               </nav>
 
-              <div className={`p-4 border-t border-gray-200 bg-gray-50 ${sidebarOpen ? 'block' : 'hidden md:block'}`}>
+              <div className={`p-4 border-t border-white/5 bg-black/20 ${sidebarOpen ? 'block' : 'hidden md:block'}`}>
                  <div className="flex flex-col gap-3">
                    <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                      {sidebarOpen && <span className="text-muted text-[9px] font-medium uppercase tracking-wider">v3.5.0-beta.1 ONLINE</span>}
+                      {sidebarOpen && <span className="text-slate-500 text-[9px] font-bold uppercase tracking-wider">v3.4.0-beta.1 ONLINE</span>}
                    </div>
                    
                    {/* Mobile Exit Button */}
                    {sidebarOpen && (
                      <button 
                        onClick={handleToggleAdmin}
-                       className="w-full bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-2 rounded-lg text-xs font-medium uppercase tracking-wide flex items-center justify-center gap-2 transition-colors md:hidden"
+                       className="w-full bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-colors md:hidden"
                      >
                        <span>🚪</span> Exit Admin
                      </button>
@@ -419,29 +359,29 @@ const App: React.FC = () => {
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col min-w-0 bg-gray-50 overflow-hidden">
+            <main className="flex-1 flex flex-col min-w-0 bg-slate-100 overflow-hidden">
               {/* Compact Top Bar */}
-              <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0 z-30">
+              <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0 z-30">
                 <div className="flex items-center gap-3">
                   <button 
                     onClick={() => setSidebarOpen(!sidebarOpen)}
-                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
+                    className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
                   </button>
-                  <h2 className="text-sm font-bold text-main uppercase tracking-tight block">
+                  <h2 className="text-sm font-bold text-slate-800 uppercase tracking-tight block">
                     {activeTab}
                   </h2>
                 </div>
 
                 <div className="flex items-center gap-3">
                   <div className="hidden md:flex flex-col items-end mr-2">
-                    <span className="text-[10px] font-medium text-main uppercase">Administrator</span>
-                    <span className="text-[9px] text-green-600 font-medium uppercase tracking-tighter">System Verified</span>
+                    <span className="text-[10px] font-bold text-slate-900 uppercase">Administrator</span>
+                    <span className="text-[9px] text-green-600 font-bold uppercase tracking-tighter">System Verified</span>
                   </div>
-                  <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center text-white font-bold text-xs shadow-sm">
+                  <div className="w-8 h-8 bg-slate-800 rounded-md flex items-center justify-center text-white font-bold text-xs shadow-sm">
                     AD
                   </div>
                 </div>
@@ -450,10 +390,8 @@ const App: React.FC = () => {
               {/* Scrollable Content Area */}
               <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 scroll-smooth">
                 <div className="max-w-7xl mx-auto space-y-6">
-                  {activeTab === AdminTab.Dashboard && <SystemDashboard />}
-                  {activeTab === AdminTab.Interfaces && <InterfacesList />}
+                  {activeTab === AdminTab.Analytics && <Analytics sessions={activeSessions} />}
                   {activeTab === AdminTab.Rates && <RatesManager rates={rates} setRates={updateRates} />}
-                  {activeTab === AdminTab.Vouchers && <VoucherManager />}
                   {activeTab === AdminTab.Network && <NetworkSettings />}
                   {activeTab === AdminTab.Devices && <DeviceManager sessions={activeSessions} refreshSessions={loadData} refreshDevices={loadData} />}
                   {activeTab === AdminTab.Hardware && <HardwareManager />}
@@ -463,7 +401,6 @@ const App: React.FC = () => {
                   {activeTab === AdminTab.Bandwidth && <BandwidthManager devices={devices} rates={rates} />}
                   {activeTab === AdminTab.MultiWan && <MultiWanSettings />}
                   {activeTab === AdminTab.Chat && <ChatManager />}
-                  {activeTab === AdminTab.ZeroTier && <ZeroTierManager />}
                   {activeTab === AdminTab.Machines && <MyMachines />}
                   {activeTab === AdminTab.System && <SystemSettings />}
                   {activeTab === AdminTab.Updater && <SystemUpdater />}
@@ -502,14 +439,14 @@ const SidebarItem: React.FC<{ active: boolean; onClick: () => void; icon: string
     disabled={disabled}
     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group ${
       disabled 
-        ? 'opacity-30 cursor-not-allowed' 
+        ? 'opacity-20 cursor-not-allowed grayscale' 
         : active 
-          ? 'bg-blue-500 text-white shadow-sm' 
-          : 'text-muted hover:bg-blue-50 hover:text-blue-700'
+          ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' 
+          : 'text-slate-400 hover:bg-white/5 hover:text-white'
     } ${collapsed ? 'justify-center' : 'justify-start'}`}
   >
     <span className={`text-lg ${active ? 'scale-110' : 'group-hover:scale-110'} transition-transform`}>{icon}</span>
-    {!collapsed && <span className="uppercase tracking-wide text-xs font-medium">{label}</span>}
+    {!collapsed && <span className="uppercase tracking-wider text-[10px] font-bold">{label}</span>}
   </button>
 );
 

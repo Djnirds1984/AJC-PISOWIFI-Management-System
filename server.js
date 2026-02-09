@@ -4,7 +4,6 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const si = require('systeminformation');
 const db = require('./lib/db');
 const { initGPIO, updateGPIO, registerSlotCallback, unregisterSlotCallback } = require('./lib/gpio');
@@ -15,39 +14,12 @@ const { verifyPassword, hashPassword } = require('./lib/auth');
 const crypto = require('crypto');
 const multer = require('multer');
 const edgeSync = require('./lib/edge-sync');
-const zerotier = require('./lib/zerotier');
-const { deviceFingerprint, sessionSecurity, checkRateLimit, isDeviceBlocked } = require('./lib/security');
 const AdmZip = require('adm-zip');
-
-// IP Validation Helper Function
-const isValidIp = (ip) => {
-  if (!ip || ip === 'AUTO' || ip === 'unknown') return false;
-  const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-  return ipv4Regex.test(ip);
-};
 
 // PREVENT PROCESS TERMINATION ON TERMINAL DISCONNECT
 process.on('SIGHUP', () => {
   console.log('[SYSTEM] Received SIGHUP. Ignoring to prevent process termination on disconnect.');
 });
-
-// Helper function to register device hardware for session ownership
-async function registerDeviceHardware(mac, hardwareSignature) {
-  if (!hardwareSignature || hardwareSignature === 'unknown') return;
-  
-  try {
-    // Register or update device hardware signature
-    await db.run(`
-      INSERT OR REPLACE INTO device_registry (mac, hardware_signature, last_seen, session_count)
-      VALUES (?, ?, CURRENT_TIMESTAMP, 
-        COALESCE((SELECT session_count FROM device_registry WHERE mac = ?), 0))
-    `, [mac, hardwareSignature, mac]);
-    
-    console.log(`[HARDWARE] Registered device ${mac} with signature: ${hardwareSignature.substring(0, 16)}...`);
-  } catch (e) {
-    console.log(`[HARDWARE] Failed to register device ${mac}: ${e.message}`);
-  }
-}
 
 // GLOBAL ERROR HANDLERS TO PREVENT CRASHES
 process.on('uncaughtException', (err) => {
@@ -457,320 +429,6 @@ app.post('/api/logout', async (req, res) => {
 
 app.get('/api/admin/check-auth', requireAdmin, (req, res) => {
   res.json({ authenticated: true, username: req.adminUser });
-});
-
-// Admin: Get system information for dashboard
-app.get('/api/admin/system-info', requireAdmin, async (req, res) => {
-  try {
-    console.log('[System] Loading system information...');
-    
-    // Get system information using systeminformation library
-    const [cpu, mem, fsSize, osInfo, currentLoad, cpuTemperature] = await Promise.all([
-      si.cpu(),
-      si.mem(),
-      si.fsSize(),
-      si.osInfo(),
-      si.currentLoad(),
-      si.cpuTemperature().catch(() => ({ main: 0 })) // Fallback if temp not available
-    ]);
-
-    // Calculate uptime in hours
-    const uptimeHours = os.uptime() / 3600;
-
-    // Get CPU core usage
-    const cpuCores = currentLoad.cpus ? currentLoad.cpus.map(core => core.load) : [currentLoad.currentLoad];
-
-    // Get storage info (use first filesystem, usually root)
-    const storage = fsSize.length > 0 ? fsSize[0] : { used: 0, size: 0 };
-
-    const systemInfo = {
-      deviceModel: osInfo.hostname || 'Orange Pi Zero',
-      system: `${osInfo.distro} / ${osInfo.arch}` || 'Ubuntu / Armbian',
-      cpuTemp: cpuTemperature.main || Math.random() * 20 + 50, // Fallback random temp
-      cpuLoad: currentLoad.currentLoad || 0,
-      ramUsage: {
-        used: mem.used,
-        total: mem.total
-      },
-      storage: {
-        used: storage.used || 0,
-        total: storage.size || 0
-      },
-      uptime: uptimeHours,
-      cpuCores: cpuCores.length > 0 ? cpuCores : [currentLoad.currentLoad || 0]
-    };
-
-    console.log('[System] System info loaded successfully');
-    res.json(systemInfo);
-  } catch (err) {
-    console.error('[System] Error loading system info:', err);
-    
-    // Fallback system info if systeminformation fails
-    const fallbackInfo = {
-      deviceModel: 'Orange Pi Zero',
-      system: 'Ubuntu / Armbian',
-      cpuTemp: Math.random() * 20 + 50,
-      cpuLoad: Math.random() * 30 + 20,
-      ramUsage: {
-        used: 400 * 1024 * 1024, // 400MB
-        total: 512 * 1024 * 1024  // 512MB
-      },
-      storage: {
-        used: 2 * 1024 * 1024 * 1024,   // 2GB
-        total: 16 * 1024 * 1024 * 1024  // 16GB
-      },
-      uptime: os.uptime() / 3600,
-      cpuCores: [25, 30, 35, 28] // 4 cores with sample usage
-    };
-    
-    res.json(fallbackInfo);
-  }
-});
-
-// Admin: Get clients status for dashboard
-app.get('/api/admin/clients-status', requireAdmin, async (req, res) => {
-  try {
-    console.log('[System] Loading clients status...');
-    
-    // Get active sessions
-    const activeSessions = await db.all('SELECT * FROM sessions WHERE remaining_seconds > 0');
-    
-    // Get total devices (all devices that have connected)
-    const totalDevices = await db.all('SELECT DISTINCT mac FROM sessions');
-    
-    // Count voucher vs coin sessions
-    const voucherSessions = activeSessions.filter(s => s.voucher_code);
-    const coinSessions = activeSessions.filter(s => !s.voucher_code);
-    
-    const clientsStatus = {
-      online: activeSessions.length,
-      total: totalDevices.length,
-      activeVouchers: voucherSessions.length,
-      activeCoin: coinSessions.length
-    };
-
-    console.log('[System] Clients status loaded:', clientsStatus);
-    res.json(clientsStatus);
-  } catch (err) {
-    console.error('[System] Error loading clients status:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Admin: Get network traffic data for dashboard
-app.get('/api/admin/network-traffic', requireAdmin, async (req, res) => {
-  try {
-    console.log('[System] Loading network traffic data...');
-    
-    // Get network interface statistics using systeminformation
-    const networkStats = await si.networkStats();
-    
-    const interfaces = networkStats.map(iface => ({
-      name: iface.iface,
-      rxBytes: iface.rx_bytes || 0,
-      txBytes: iface.tx_bytes || 0,
-      rxSpeed: iface.rx_sec || 0,
-      txSpeed: iface.tx_sec || 0
-    }));
-
-    console.log('[System] Network traffic loaded for interfaces:', interfaces.map(i => i.name));
-    res.json({ interfaces });
-  } catch (err) {
-    console.error('[System] Error loading network traffic:', err);
-    
-    // Fallback data if systeminformation fails
-    const fallbackInterfaces = [
-      {
-        name: 'eth0',
-        rxBytes: Math.random() * 1000000000,
-        txBytes: Math.random() * 1000000000,
-        rxSpeed: Math.random() * 1024 * 1024,
-        txSpeed: Math.random() * 512 * 1024
-      },
-      {
-        name: 'wlan0',
-        rxBytes: Math.random() * 500000000,
-        txBytes: Math.random() * 500000000,
-        rxSpeed: Math.random() * 512 * 1024,
-        txSpeed: Math.random() * 256 * 1024
-      }
-    ];
-    
-    res.json({ interfaces: fallbackInterfaces });
-  }
-});
-
-// Admin: Get detailed interfaces list (MikroTik style)
-app.get('/api/admin/interfaces', requireAdmin, async (req, res) => {
-  try {
-    console.log('[System] Loading detailed interfaces list...');
-    
-    // Get comprehensive network interface information
-    const [networkInterfaces, networkStats] = await Promise.all([
-      si.networkInterfaces(),
-      si.networkStats()
-    ]);
-
-    const interfaces = networkInterfaces.map(iface => {
-      // Find corresponding stats
-      const stats = networkStats.find(stat => stat.iface === iface.iface) || {};
-      
-      // Determine interface type
-      let type = 'ethernet';
-      if (iface.iface.includes('wlan') || iface.iface.includes('wifi')) {
-        type = 'wifi';
-      } else if (iface.iface.includes('br') || iface.iface.includes('bridge')) {
-        type = 'bridge';
-      } else if (iface.iface.includes('.') || iface.iface.includes('vlan')) {
-        type = 'vlan';
-      } else if (iface.iface.includes('lo')) {
-        type = 'loopback';
-      } else if (iface.iface.includes('tun') || iface.iface.includes('tap')) {
-        type = 'tunnel';
-      } else if (iface.iface.includes('ppp')) {
-        type = 'ppp';
-      }
-
-      // Extract VLAN info
-      let parentInterface = null;
-      let vlanId = null;
-      if (type === 'vlan' && iface.iface.includes('.')) {
-        const parts = iface.iface.split('.');
-        parentInterface = parts[0];
-        vlanId = parseInt(parts[1]);
-      }
-
-      // Determine status
-      let status = 'down';
-      if (iface.operstate === 'up' || iface.state === 'up') {
-        status = 'up';
-      } else if (iface.operstate === 'down' || iface.state === 'down') {
-        status = 'down';
-      }
-
-      return {
-        name: iface.iface,
-        type,
-        status,
-        mac: iface.mac || 'N/A',
-        ip: iface.ip4 || iface.ip6 || null,
-        netmask: iface.ip4subnet || null,
-        gateway: iface.gateway || null,
-        mtu: iface.mtu || 1500,
-        rxBytes: stats.rx_bytes || 0,
-        txBytes: stats.tx_bytes || 0,
-        rxPackets: stats.rx || 0,
-        txPackets: stats.tx || 0,
-        rxSpeed: stats.rx_sec || 0,
-        txSpeed: stats.tx_sec || 0,
-        rxErrors: stats.rx_errors || 0,
-        txErrors: stats.tx_errors || 0,
-        parentInterface,
-        vlanId,
-        comment: null, // Could be loaded from config
-        lastSeen: new Date().toISOString()
-      };
-    });
-
-    console.log('[System] Interfaces loaded:', interfaces.length);
-    res.json({ interfaces });
-  } catch (err) {
-    console.error('[System] Error loading interfaces:', err);
-    
-    // Fallback data if systeminformation fails
-    const fallbackInterfaces = [
-      {
-        name: 'eth0',
-        type: 'ethernet',
-        status: 'up',
-        mac: '00:11:22:33:44:55',
-        ip: '192.168.1.100',
-        netmask: '255.255.255.0',
-        gateway: '192.168.1.1',
-        mtu: 1500,
-        rxBytes: Math.floor(Math.random() * 1000000000),
-        txBytes: Math.floor(Math.random() * 1000000000),
-        rxPackets: Math.floor(Math.random() * 1000000),
-        txPackets: Math.floor(Math.random() * 1000000),
-        rxSpeed: Math.floor(Math.random() * 1024 * 1024),
-        txSpeed: Math.floor(Math.random() * 512 * 1024),
-        rxErrors: 0,
-        txErrors: 0,
-        parentInterface: null,
-        vlanId: null,
-        comment: 'Main ethernet interface',
-        lastSeen: new Date().toISOString()
-      },
-      {
-        name: 'eth0.100',
-        type: 'vlan',
-        status: 'up',
-        mac: '00:11:22:33:44:55',
-        ip: '10.0.100.1',
-        netmask: '255.255.255.0',
-        gateway: null,
-        mtu: 1500,
-        rxBytes: Math.floor(Math.random() * 500000000),
-        txBytes: Math.floor(Math.random() * 500000000),
-        rxPackets: Math.floor(Math.random() * 500000),
-        txPackets: Math.floor(Math.random() * 500000),
-        rxSpeed: Math.floor(Math.random() * 512 * 1024),
-        txSpeed: Math.floor(Math.random() * 256 * 1024),
-        rxErrors: 0,
-        txErrors: 0,
-        parentInterface: 'eth0',
-        vlanId: 100,
-        comment: 'Guest network VLAN',
-        lastSeen: new Date().toISOString()
-      },
-      {
-        name: 'wlan0',
-        type: 'wifi',
-        status: 'up',
-        mac: '00:aa:bb:cc:dd:ee',
-        ip: '192.168.50.1',
-        netmask: '255.255.255.0',
-        gateway: null,
-        mtu: 1500,
-        rxBytes: Math.floor(Math.random() * 800000000),
-        txBytes: Math.floor(Math.random() * 800000000),
-        rxPackets: Math.floor(Math.random() * 800000),
-        txPackets: Math.floor(Math.random() * 800000),
-        rxSpeed: Math.floor(Math.random() * 2048 * 1024),
-        txSpeed: Math.floor(Math.random() * 1024 * 1024),
-        rxErrors: 0,
-        txErrors: 0,
-        parentInterface: null,
-        vlanId: null,
-        comment: 'WiFi access point',
-        lastSeen: new Date().toISOString()
-      },
-      {
-        name: 'br0',
-        type: 'bridge',
-        status: 'up',
-        mac: '00:ff:ee:dd:cc:bb',
-        ip: '192.168.1.1',
-        netmask: '255.255.255.0',
-        gateway: null,
-        mtu: 1500,
-        rxBytes: Math.floor(Math.random() * 1200000000),
-        txBytes: Math.floor(Math.random() * 1200000000),
-        rxPackets: Math.floor(Math.random() * 1200000),
-        txPackets: Math.floor(Math.random() * 1200000),
-        rxSpeed: Math.floor(Math.random() * 3072 * 1024),
-        txSpeed: Math.floor(Math.random() * 1536 * 1024),
-        rxErrors: 0,
-        txErrors: 0,
-        parentInterface: null,
-        vlanId: null,
-        comment: 'Main bridge interface',
-        lastSeen: new Date().toISOString()
-      }
-    ];
-    
-    res.json({ interfaces: fallbackInterfaces });
-  }
 });
 
 app.post('/api/admin/change-password', requireAdmin, async (req, res) => {
@@ -1271,7 +929,7 @@ const { checkTrialStatus, activateLicense: storeLocalLicense } = require('./lib/
 const { getUniqueHardwareId } = require('./lib/hardware');
 
 // Edge Sync (Cloud Data Sync)
-const { getSyncStats } = require('./lib/edge-sync');
+const { syncSaleToCloud, getSyncStats } = require('./lib/edge-sync');
 
 // Initialize license manager (will use env variables if available)
 const licenseManager = initializeLicenseManager();
@@ -1299,155 +957,10 @@ let systemHardwareId = null;
   }
 })();
 
-// Helper function to determine if two fingerprints likely belong to the same device
-function isLikelySameDevice(fingerprint1, fingerprint2) {
-  // If exact match, definitely same device
-  if (fingerprint1 === fingerprint2) return true;
-  
-  // For roaming scenarios, be more permissive but still secure
-  try {
-    const decoded1 = atob(fingerprint1);
-    const decoded2 = atob(fingerprint2);
-    
-    // Extract hardware ID (most reliable persistent identifier)
-    const hwIdRegex = /(HW-[a-zA-Z0-9]+)/g;
-    const hwIds1 = decoded1.match(hwIdRegex) || [];
-    const hwIds2 = decoded2.match(hwIdRegex) || [];
-    
-    // If both have hardware IDs and they match, it's the same device
-    if (hwIds1.length > 0 && hwIds2.length > 0) {
-      const match = hwIds1.some(id1 => hwIds2.includes(id1));
-      if (match) {
-        console.log(`[ROAMING-ALLOW] Same hardware ID detected: ${hwIds1.find(id => hwIds2.includes(id))}`);
-        return true;
-      }
-    }
-    
-    // Check screen dimensions (allow reasonable variation for responsive design)
-    const screenRegex = /(\d+)/g;
-    const screens1 = (decoded1.match(screenRegex) || []).map(Number);
-    const screens2 = (decoded2.match(screenRegex) || []).map(Number);
-    
-    // Look for similar screen dimensions
-    const hasSimilarScreens = screens1.some(s1 => 
-      screens2.some(s2 => s1 > 0 && s2 > 0 && Math.abs(s1 - s2) <= 200)
-    );
-    
-    if (hasSimilarScreens && screens1.length > 0 && screens2.length > 0) {
-      console.log(`[ROAMING-ALLOW] Similar screen dimensions detected`);
-      return true;
-    }
-    
-    // Last resort: partial string similarity (at least 70% similar)
-    const similarity = calculateStringSimilarity(decoded1, decoded2);
-    if (similarity >= 0.7) {
-      console.log(`[ROAMING-ALLOW] High string similarity detected: ${(similarity * 100).toFixed(1)}%`);
-      return true;
-    }
-    
-    return false;
-  } catch (e) {
-    console.log(`[ROAMING-CHECK] Error comparing fingerprints: ${e.message}`);
-    return false;
-  }
-}
-
-// Helper function to calculate string similarity
-function calculateStringSimilarity(str1, str2) {
-  const longer = str1.length > str2.length ? str1 : str2;
-  const shorter = str1.length > str2.length ? str2 : str1;
-  
-  if (longer.length === 0) return 1.0;
-  
-  const editDistance = levenshteinDistance(longer, shorter);
-  return (longer.length - editDistance) / longer.length;
-}
-
-// Levenshtein distance algorithm for string similarity
-function levenshteinDistance(str1, str2) {
-  const matrix = [];
-  
-  for (let i = 0; i <= str2.length; i++) {
-    matrix[i] = [i];
-  }
-  
-  for (let j = 0; j <= str1.length; j++) {
-    matrix[0][j] = j;
-  }
-  
-  for (let i = 1; i <= str2.length; i++) {
-    for (let j = 1; j <= str1.length; j++) {
-      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1, // substitution
-          matrix[i][j - 1] + 1,     // insertion
-          matrix[i - 1][j] + 1      // deletion
-        );
-      }
-    }
-  }
-  
-  return matrix[str2.length][str1.length];
-}
-
 // Helper: Get MAC from IP using ARP table and DHCP leases
 async function getMacFromIp(ip) {
   if (ip === '::1' || ip === '127.0.0.1' || !ip) return null;
   
-  // Windows-specific MAC resolution
-  if (process.platform === 'win32') {
-    try {
-      // Use Windows arp command - try multiple approaches
-      const { stdout } = await execPromise(`arp -a ${ip}`);
-      // Output format: "  10.0.0.50            aa-bb-cc-dd-ee-ff     dynamic"
-      const match = stdout.match(/([a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2})/);
-      if (match && match[1]) {
-        // Convert Windows format (aa-bb-cc-dd-ee-ff) to standard format (AA:BB:CC:DD:EE:FF)
-        const mac = match[1].replace(/-/g, ':').toUpperCase();
-        console.log(`[MAC-Resolve] Windows ARP found MAC for ${ip}: ${mac}`);
-        return mac;
-      }
-    } catch (e) {
-      console.log(`[MAC-Resolve] Windows ARP failed for ${ip}:`, e.message);
-    }
-    
-    // Try alternative Windows method - netsh
-    try {
-      const { stdout } = await execPromise('netsh interface ipv4 show neighbors');
-      // Look for the IP in the output
-      const lines = stdout.split('\n');
-      for (const line of lines) {
-        if (line.includes(ip)) {
-          // Extract MAC from line like: "10.0.0.50        aa-bb-cc-dd-ee-ff     Dynamic"
-          const macMatch = line.match(/([a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2}-[a-fA-F0-9]{2})/);
-          if (macMatch && macMatch[1]) {
-            const mac = macMatch[1].replace(/-/g, ':').toUpperCase();
-            console.log(`[MAC-Resolve] Windows netsh found MAC for ${ip}: ${mac}`);
-            return mac;
-          }
-        }
-      }
-    } catch (e) {
-      console.log(`[MAC-Resolve] Windows netsh failed for ${ip}:`, e.message);
-    }
-    
-    // Fallback: Check Active Sessions in DB for Windows
-    try {
-      const session = await db.get('SELECT mac FROM sessions WHERE ip = ? AND remaining_seconds > 0', [ip]);
-      if (session && session.mac) {
-        console.log(`[MAC-Resolve] DB Fallback found MAC for ${ip}: ${session.mac}`);
-        return session.mac.toUpperCase();
-      }
-    } catch (e) {
-      console.error(`[MAC-Resolve] DB Fallback error for ${ip}:`, e.message);
-    }
-    
-    return null;
-  }
-  
-  // Linux-specific MAC resolution (original code)
   // 1. Try to ping the IP to ensure it's in the ARP table (fast check)
   try { await execPromise(`ping -c 1 -W 1 ${ip}`); } catch (e) {}
 
@@ -1456,10 +969,7 @@ async function getMacFromIp(ip) {
     const { stdout } = await execPromise(`ip neigh show ${ip}`);
     // Output: 10.0.0.5 dev wlan0 lladdr aa:bb:cc:dd:ee:ff REACHABLE
     const match = stdout.match(/lladdr\s+([a-fA-F0-9:]+)/);
-    if (match && match[1]) {
-      console.log(`[MAC-Resolve] ip neigh found MAC for ${ip}: ${match[1].toUpperCase()}`);
-      return match[1].toUpperCase();
-    }
+    if (match && match[1]) return match[1].toUpperCase();
   } catch (e) {}
 
   // 3. Fallback to /proc/net/arp
@@ -1470,8 +980,7 @@ async function getMacFromIp(ip) {
       if (line.includes(ip)) {
         const parts = line.split(/\s+/);
         if (parts[3] && parts[3] !== '00:00:00:00:00:00') {
-          console.log(`[MAC-Resolve] /proc/net/arp found MAC for ${ip}: ${parts[3].toUpperCase()}`);
-          return parts[3].toUpperCase();
+           return parts[3].toUpperCase();
         }
       }
     }
@@ -1489,7 +998,6 @@ async function getMacFromIp(ip) {
            const parts = line.split(' ');
            // Check for IP match (usually 3rd column)
            if (parts.length >= 3 && parts[2] === ip) {
-             console.log(`[MAC-Resolve] DHCP lease found MAC for ${ip}: ${parts[1].toUpperCase()}`);
              return parts[1].toUpperCase();
            }
         }
@@ -1503,171 +1011,14 @@ async function getMacFromIp(ip) {
   try {
     const session = await db.get('SELECT mac FROM sessions WHERE ip = ? AND remaining_seconds > 0', [ip]);
     if (session && session.mac) {
-      console.log(`[MAC-Resolve] DB Fallback found MAC for ${ip}: ${session.mac}`);
       return session.mac.toUpperCase();
     }
   } catch (e) {
     console.error(`[MAC-Resolve] DB Fallback error for ${ip}:`, e.message);
   }
 
-  console.log(`[MAC-Resolve] Could not resolve MAC for IP: ${ip}`);
   return null;
 }
-
-// Device tracking to prevent re-scanning processed devices
-// DISABLED: No longer needed since auto-scanning is disabled
-// const processedDevices = new Map(); // MAC -> { processed: true, timestamp: Date.now(), hasSession: boolean }
-
-// DISABLED: Clean up old processed device entries every 5 minutes
-// setInterval(() => {
-//   const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
-//   for (const [mac, data] of processedDevices.entries()) {
-//     if (data.timestamp < fiveMinutesAgo) {
-//       processedDevices.delete(mac);
-//     }
-//   }
-// }, 5 * 60 * 1000);
-
-// Periodic token audit - log all active sessions every 5 minutes
-setInterval(async () => {
-  try {
-    const activeSessions = await db.all(
-      'SELECT mac, ip, token, remaining_seconds, session_type, token_expires_at FROM sessions WHERE remaining_seconds > 0 ORDER BY mac'
-    );
-    
-    if (activeSessions.length > 0) {
-      console.log(`\n========================================`);
-      console.log(`[TOKEN-AUDIT] ACTIVE SESSIONS REPORT`);
-      console.log(`[TOKEN-AUDIT] Total Active Sessions: ${activeSessions.length}`);
-      console.log(`[TOKEN-AUDIT] Report Time: ${new Date().toISOString()}`);
-      console.log(`========================================`);
-      
-      // Group sessions by token to detect duplicates
-      const tokenMap = new Map();
-      activeSessions.forEach(session => {
-        if (!tokenMap.has(session.token)) {
-          tokenMap.set(session.token, []);
-        }
-        tokenMap.get(session.token).push({
-          mac: session.mac,
-          ip: session.ip,
-          type: session.session_type || 'coin',
-          time: session.remaining_seconds
-        });
-      });
-      
-      // Check for token duplication
-      let duplicateTokens = 0;
-      for (const [token, devices] of tokenMap.entries()) {
-        if (devices.length > 1) {
-          duplicateTokens++;
-          console.log(`[SECURITY-ALERT] TOKEN SHARING DETECTED!`);
-          console.log(`[SECURITY-ALERT] Token: ${token.substring(0, 16)}...`);
-          console.log(`[SECURITY-ALERT] Shared by ${devices.length} devices:`);
-          devices.forEach((device, index) => {
-            console.log(`  Device ${index + 1}: MAC=${device.mac}, IP=${device.ip}, Type=${device.type}, Time=${device.time}s`);
-          });
-          console.log(`---`);
-        }
-      }
-      
-      if (duplicateTokens > 0) {
-        console.log(`[SECURITY-CRITICAL] ${duplicateTokens} tokens are being shared between devices!`);
-      }
-      
-      // Regular session listing
-      activeSessions.forEach((session, index) => {
-        console.log(`[TOKEN-AUDIT] Session #${index + 1}:`);
-        console.log(`  MAC: ${session.mac}`);
-        console.log(`  IP: ${session.ip}`);
-        console.log(`  Token: ${session.token.substring(0, 16)}...`);
-        console.log(`  Type: ${session.session_type || 'coin'}`);
-        console.log(`  Time Left: ${session.remaining_seconds} seconds`);
-        console.log(`  Expires: ${session.token_expires_at || 'Never'}`);
-        console.log(`  ---`);
-      });
-      
-      console.log(`========================================\n`);
-    }
-  } catch (err) {
-    console.error('[TOKEN-AUDIT] Failed to generate session report:', err.message);
-  }
-}, 5 * 60 * 1000); // Every 5 minutes
-// The system now waits for devices to communicate through the captive portal instead
-async function scanForNewClients() {
-  // This function is disabled to save CPU resources
-  // Session restoration now happens reactively when devices visit the captive portal
-  // The token-based system handles MAC changes automatically without proactive scanning
-  console.log('[CLIENT-SCAN] Auto-scanning is disabled - using reactive token-based session restoration');
-}
-
-// DISABLED: Background client scanner - replaced with reactive token-based system
-// setInterval(scanForNewClients, 10000); // Scan every 10 seconds for balanced performance
-console.log('[CLIENT-SCAN] Background client scanner DISABLED - using reactive token-based session restoration for better CPU efficiency');
-app.get('/api/zerotier/status', requireAdmin, async (req, res) => {
-  try {
-    const installed = await zerotier.isInstalled();
-    if (!installed) {
-      return res.json({ installed: false, running: false });
-    }
-    const status = await zerotier.getStatus();
-    res.json({ installed: true, ...status });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/zerotier/install', requireAdmin, async (req, res) => {
-  try {
-    const result = await zerotier.install();
-    if (result.success) {
-      res.json({ success: true, message: 'ZeroTier installed successfully' });
-    } else {
-      res.status(500).json({ success: false, error: result.error || result.stderr });
-    }
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.get('/api/zerotier/networks', requireAdmin, async (req, res) => {
-  try {
-    const networks = await zerotier.listNetworks();
-    res.json({ networks });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/zerotier/join', requireAdmin, async (req, res) => {
-  const { networkId } = req.body;
-  if (!networkId) return res.status(400).json({ error: 'Network ID required' });
-  try {
-    const result = await zerotier.joinNetwork(networkId);
-    if (result.success) {
-      res.json({ success: true });
-    } else {
-      res.status(500).json({ error: result.error || result.stderr });
-    }
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/zerotier/leave', requireAdmin, async (req, res) => {
-  const { networkId } = req.body;
-  if (!networkId) return res.status(400).json({ error: 'Network ID required' });
-  try {
-    const result = await zerotier.leaveNetwork(networkId);
-    if (result.success) {
-      res.json({ success: true });
-    } else {
-      res.status(500).json({ error: result.error || result.stderr });
-    }
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // Explicitly serve tailwind.js to fix 404 issues
 app.get('/dist/tailwind.js', (req, res) => {
@@ -1725,820 +1076,93 @@ app.get('/success', (req, res) => {
 // CAPTIVE PORTAL DETECTION ENDPOINTS
 app.get('/generate_204', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
-  let mac = await getMacFromIp(clientIp);
+  const mac = await getMacFromIp(clientIp);
   
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
-      console.log(`[CAPTIVE-DETECT] Authorized client ${mac} - returning 204 (internet available)`);
       return res.status(204).send();
-    } else {
-      // Check for transferable sessions and FORCE transfer
-      // SIMPLE APPROACH: Only allow transfers when requesting device presents valid session token
-      const presentedToken = req.headers['x-session-token'];
-      
-      let transferableSessions = [];
-      
-      if (presentedToken) {
-        // Device claims to have a session token - verify it
-        const session = await db.get(
-          'SELECT token, mac as original_mac, remaining_seconds, session_type, voucher_code FROM sessions WHERE token = ? AND remaining_seconds > 0 AND token_expires_at > datetime("now")',
-          [presentedToken]
-        );
-        
-        if (session && session.original_mac !== mac) {
-          // Valid session token from different MAC - this is legitimate roaming!
-          transferableSessions = [session];
-          console.log(`[CAPTIVE-DETECT] Valid session token presented for roaming: ${presentedToken.substring(0,8)}...`);
-        }
-      }
-      
-      // Fallback: Check for orphaned sessions (no token presented)
-      if (transferableSessions.length === 0) {
-        const orphanedSessions = await db.all(
-          `SELECT token, mac as original_mac, remaining_seconds, session_type, voucher_code
-           FROM sessions 
-           WHERE remaining_seconds > 0 
-             AND token_expires_at > datetime("now") 
-             AND mac != ? 
-             AND session_type = ? 
-             AND voucher_code IS NULL
-           LIMIT 1`,
-          [mac, 'coin']
-        );
-        
-        // Only allow if no hardware registry exists (legitimate case)
-        const deviceRegistered = await db.get('SELECT mac FROM device_registry WHERE mac = ?', [mac]);
-        if (!deviceRegistered && orphanedSessions.length > 0) {
-          transferableSessions = [orphanedSessions[0]]; // Take first one
-          console.log(`[CAPTIVE-DETECT] Allowing transfer for unregistered device`);
-        }
-      }
-      
-      if (transferableSessions.length > 0) {
-        console.log(`[CAPTIVE-DETECT] New MAC ${mac} with transferable sessions - FORCING session transfer`);
-        
-        // Log all transferable session tokens
-        transferableSessions.forEach((sess, index) => {
-          console.log(`========================================`);
-          console.log(`[DEVICE-TOKEN] CAPTIVE PORTAL TRANSFERABLE SESSION #${index + 1}`);
-          console.log(`[DEVICE-TOKEN] Session Token: ${sess.token}`);
-          console.log(`[DEVICE-TOKEN] Original MAC: ${sess.original_mac}`);
-          console.log(`[DEVICE-TOKEN] Remaining Time: ${sess.remaining_seconds} seconds`);
-          console.log(`[DEVICE-TOKEN] Session Type: ${sess.session_type || 'coin'}`);
-          console.log(`[DEVICE-TOKEN] Voucher Code: ${sess.voucher_code || 'NONE'}`);
-          console.log(`[DEVICE-TOKEN] Owner Hardware: ${sess.owner_hardware || 'UNREGISTERED'}`);
-          console.log(`[DEVICE-TOKEN] Requesting Hardware: ${req.headers['x-hardware-id'] || 'UNKNOWN'}`);
-          console.log(`[DEVICE-TOKEN] Target MAC: ${mac}`);
-          console.log(`[DEVICE-TOKEN] Timestamp: ${new Date().toISOString()}`);
-          console.log(`========================================`);
-        });
-        
-        // NEW: Instant MAC transfer for seamless roaming
-        console.log(`[INSTANT-SWAP] MAC transfer detected: ${transferableSessions[0].original_mac} -> ${mac}`);
-        
-        try {
-          const firstToken = transferableSessions[0].token;
-          const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
-          
-          if (oldSession) {
-            // ACTION 1: Immediately revoke DNS access for Original MAC
-            console.log(`[INSTANT-SWAP] 🔥 Blocking old MAC: ${oldSession.mac} (${oldSession.ip})`);
-            try {
-              await network.blockMAC(oldSession.mac, oldSession.ip);
-              console.log(`[INSTANT-SWAP] ✅ Old MAC blocked successfully`);
-            } catch (blockErr) {
-              console.log(`[INSTANT-SWAP] Warning: Failed to block old MAC: ${blockErr.message}`);
-            }
-            
-            // Small delay to ensure blocking takes effect
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            // ACTION 2: Immediately grant DNS access for Requesting MAC
-            console.log(`[INSTANT-SWAP] 🔥 Whitelisting new MAC: ${mac} (${clientIp})`);
-            try {
-              await network.whitelistMAC(mac, clientIp);
-              console.log(`[INSTANT-SWAP] ✅ New MAC whitelisted successfully`);
-            } catch (whitelistErr) {
-              console.log(`[INSTANT-SWAP] Warning: Failed to whitelist new MAC: ${whitelistErr.message}`);
-            }
-            
-            // ACTION 3: Update database to bind token to new MAC
-            try {
-              await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
-              console.log(`[INSTANT-SWAP] ✅ Database updated - token now bound to ${mac}`);
-            } catch (dbErr) {
-              console.log(`[INSTANT-SWAP] Warning: Database update failed: ${dbErr.message}`);
-            }
-            
-            // Force immediate network refresh
-            try {
-              await network.forceNetworkRefresh(mac, clientIp);
-              console.log(`[INSTANT-SWAP] ✅ Network refresh completed`);
-            } catch (refreshErr) {
-              console.log(`[INSTANT-SWAP] Warning: Network refresh failed: ${refreshErr.message}`);
-            }
-            
-            console.log(`[INSTANT-SWAP] ✅ Seamless MAC transfer completed`);
-            console.log(`[INSTANT-SWAP] Returning 204 to close captive portal instantly`);
-            return res.status(204).send();
-          }
-        } catch (e) {
-          console.error(`[INSTANT-SWAP] Error during transfer:`, e.message);
-        }
-        
-        // Fallback: redirect to portal
-        return res.redirect(302, '/');
-      }
     }
   }
   
-  console.log(`[CAPTIVE-DETECT] Unauthorized client ${mac || 'unknown'} - redirecting to portal`);
-  return res.redirect(302, '/');
+  // Not authorized - serve portal directly
+  return res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.get('/hotspot-detect.html', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
-  let mac = await getMacFromIp(clientIp);
+  const mac = await getMacFromIp(clientIp);
   
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Success');
-    } else {
-      // Check for transferable sessions and FORCE transfer
-      const transferableSessions = await db.all(
-        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
-        [mac]
-      );
-      
-      if (transferableSessions.length > 0) {
-        // IMPLEMENTING: Strict fingerprint validation before transfer (Ghost Token fix)
-        console.log(`[CAPTIVE-DETECT] Found transferable session for ${mac}, validating hardware before transfer`);
-        
-        try {
-          const firstToken = transferableSessions[0].token;
-          const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
-          
-          if (oldSession) {
-            // STEP 1: GET HARDWARE FINGERPRINT FROM REQUEST
-            const presentedFingerprint = req.headers['x-device-fingerprint'];
-            const presentedHardwareID = req.headers['x-hardware-id'];
-            
-            console.log(`[SECURITY] Hardware validation for token ${firstToken.substring(0, 8)}...`);
-            console.log(`[SECURITY] Stored Hardware ID: ${oldSession.hardware_id || 'NONE'}`);
-            console.log(`[SECURITY] Presented Hardware ID: ${presentedHardwareID || 'NONE'}`);
-            console.log(`[SECURITY] Stored Fingerprint: ${oldSession.device_fingerprint ? oldSession.device_fingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            console.log(`[SECURITY] Presented Fingerprint: ${presentedFingerprint ? presentedFingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            
-            // STEP 2: STRICT HARDWARE VALIDATION
-            let isLegitimateTransfer = false;
-            let validationMethod = '';
-            
-            // Method A: Hardware ID match (most reliable)
-            if (presentedHardwareID && oldSession.hardware_id) {
-              if (presentedHardwareID === oldSession.hardware_id) {
-                isLegitimateTransfer = true;
-                validationMethod = 'HARDWARE_ID_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Hardware ID match confirmed`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Hardware ID mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
-            else if (presentedFingerprint && oldSession.device_fingerprint) {
-              // Check for exact match first (ideal case)
-              if (presentedFingerprint === oldSession.device_fingerprint) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_EXACT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
-              } 
-              // Check for relaxed match (same device, minor differences allowed for roaming)
-              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
-                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method C: No hardware info available (associate new hardware)
-            else if (presentedHardwareID || presentedFingerprint) {
-              isLegitimateTransfer = true;
-              validationMethod = 'NEW_HARDWARE_ASSOCIATION';
-              console.log(`[SECURITY] ⚠️  ASSOCIATING new hardware with existing session`);
-            }
-            
-            // STEP 3: HANDLE VALIDATION RESULT
-            if (isLegitimateTransfer) {
-              console.log(`[CAPTIVE-DETECT] ✅ Hardware validation PASSED - proceeding with legitimate MAC transfer`);
-              console.log(`[CAPTIVE-DETECT] Validation method: ${validationMethod}`);
-              
-              // Perform the legitimate transfer
-              await network.blockMAC(oldSession.mac, oldSession.ip);
-            await new Promise(r => setTimeout(r, 800));
-            await network.whitelistMAC(mac, clientIp);
-            
-            // Force network refresh
-            try {
-              await network.forceNetworkRefresh(mac, clientIp);
-            } catch (e) {
-              console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
-            }
-            
-            await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, firstToken]);
-            console.log(`[CAPTIVE-DETECT] ✅ FORCED TRANSFER: ${oldSession.mac} -> ${mac}`);
-            return res.type('text/plain').send('Success');
-          }
-        }
-        } catch (e) {
-          console.error(`[CAPTIVE-DETECT] Error:`, e.message);
-        }
-        
-        return res.redirect(302, '/');
-      }
     }
   }
   
-  return res.redirect(302, '/');
+  // Not authorized - serve portal directly
+  return res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.get('/ncsi.txt', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
-  let mac = await getMacFromIp(clientIp);
+  const mac = await getMacFromIp(clientIp);
   
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Microsoft NCSI');
-    } else {
-      const transferableSessions = await db.all(
-        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
-        [mac]
-      );
-      
-      if (transferableSessions.length > 0) {
-        // IMPLEMENTING: Strict fingerprint validation before transfer (Ghost Token fix)
-        console.log(`[CAPTIVE-DETECT] Found transferable session for ${mac}, validating hardware before transfer`);
-        
-        try {
-          const firstToken = transferableSessions[0].token;
-          const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
-          
-          if (oldSession) {
-            // STEP 1: GET HARDWARE FINGERPRINT FROM REQUEST
-            const presentedFingerprint = req.headers['x-device-fingerprint'];
-            const presentedHardwareID = req.headers['x-hardware-id'];
-            
-            console.log(`[SECURITY] Hardware validation for token ${firstToken.substring(0, 8)}...`);
-            console.log(`[SECURITY] Stored Hardware ID: ${oldSession.hardware_id || 'NONE'}`);
-            console.log(`[SECURITY] Presented Hardware ID: ${presentedHardwareID || 'NONE'}`);
-            console.log(`[SECURITY] Stored Fingerprint: ${oldSession.device_fingerprint ? oldSession.device_fingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            console.log(`[SECURITY] Presented Fingerprint: ${presentedFingerprint ? presentedFingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            
-            // STEP 2: STRICT HARDWARE VALIDATION
-            let isLegitimateTransfer = false;
-            let validationMethod = '';
-            
-            // Method A: Hardware ID match (most reliable)
-            if (presentedHardwareID && oldSession.hardware_id) {
-              if (presentedHardwareID === oldSession.hardware_id) {
-                isLegitimateTransfer = true;
-                validationMethod = 'HARDWARE_ID_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Hardware ID match confirmed`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Hardware ID mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
-            else if (presentedFingerprint && oldSession.device_fingerprint) {
-              // Check for exact match first (ideal case)
-              if (presentedFingerprint === oldSession.device_fingerprint) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_EXACT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
-              } 
-              // Check for relaxed match (same device, minor differences allowed for roaming)
-              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
-                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method C: No hardware info available (associate new hardware)
-            else if (presentedHardwareID || presentedFingerprint) {
-              isLegitimateTransfer = true;
-              validationMethod = 'NEW_HARDWARE_ASSOCIATION';
-              console.log(`[SECURITY] ⚠️  ASSOCIATING new hardware with existing session`);
-            }
-            
-            // STEP 3: HANDLE VALIDATION RESULT
-            if (isLegitimateTransfer) {
-              console.log(`[CAPTIVE-DETECT] ✅ Hardware validation PASSED - proceeding with legitimate MAC transfer`);
-              console.log(`[CAPTIVE-DETECT] Validation method: ${validationMethod}`);
-              
-              // Perform the legitimate transfer
-              await network.blockMAC(oldSession.mac, oldSession.ip);
-              await new Promise(r => setTimeout(r, 800));
-              await network.whitelistMAC(mac, clientIp);
-              
-              // Force network refresh
-              try {
-                await network.forceNetworkRefresh(mac, clientIp);
-              } catch (e) {
-                console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
-              }
-              
-              // Update session with new MAC/IP and associate hardware if needed
-              const updateParams = [mac, clientIp, firstToken];
-              let updateQuery = 'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?';
-              
-              if (presentedHardwareID && !oldSession.hardware_id) {
-                updateQuery = 'UPDATE sessions SET mac = ?, ip = ?, hardware_id = ? WHERE token = ?';
-                updateParams.splice(2, 0, presentedHardwareID);
-                console.log(`[HARDWARE] Associating Hardware ID: ${presentedHardwareID}`);
-              }
-              
-              if (presentedFingerprint && !oldSession.device_fingerprint) {
-                updateQuery = updateQuery.replace('WHERE token = ?', ', device_fingerprint = ? WHERE token = ?');
-                updateParams.splice(updateParams.length - 1, 0, presentedFingerprint);
-                console.log(`[FINGERPRINT] Associating device fingerprint`);
-              }
-              
-              await db.run(updateQuery, updateParams);
-              
-              console.log(`[CAPTIVE-DETECT] ✅ LEGITIMATE TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
-              return res.status(204).send();
-            } else {
-              // BLOCK the transfer - this is likely a Ghost Token
-              console.log(`========================================`);
-              console.log(`[SECURITY-ALERT] GHOST TOKEN DETECTED AND BLOCKED!`);
-              console.log(`[SECURITY-ALERT] Token: ${firstToken.substring(0, 16)}...`);
-              console.log(`[SECURITY-ALERT] Original MAC: ${oldSession.mac}`);
-              console.log(`[SECURITY-ALERT] Requesting MAC: ${mac}`);
-              console.log(`[SECURITY-ALERT] Reason: Hardware validation failed`);
-              console.log(`[SECURITY-ALERT] Action: Blocking NET unblocking commands`);
-              console.log(`[SECURITY-ALERT] TIMESTAMP: ${new Date().toISOString()}`);
-              console.log(`========================================`);
-              
-              // Do NOT trigger NET unblocking commands
-              // Do NOT transfer the session
-              // Redirect to portal for proper authentication
-              console.log(`[SECURITY-BLOCK] Blocked Ghost Token transfer - redirecting to portal for authentication`);
-            }
-          }
-        } catch (e) {
-          console.error(`[CAPTIVE-DETECT] Error during hardware validation:`, e.message);
-        }
-        
-        // Fallback: redirect to portal
-        return res.redirect(302, '/');
-      }
     }
   }
   
-  return res.redirect(302, '/');
+  // Not authorized - serve portal directly
+  return res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.get('/connecttest.txt', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
-  let mac = await getMacFromIp(clientIp);
+  const mac = await getMacFromIp(clientIp);
   
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Success');
-    } else {
-      // Check for transferable sessions and FORCE transfer
-      const transferableSessions = await db.all(
-        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
-        [mac]
-      );
-      
-      if (transferableSessions.length > 0) {
-        // IMPLEMENTING: Strict fingerprint validation before transfer (Ghost Token fix)
-        console.log(`[CAPTIVE-DETECT] Found transferable session for ${mac}, validating hardware before transfer`);
-        
-        try {
-          const firstToken = transferableSessions[0].token;
-          const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
-          
-          if (oldSession) {
-            // STEP 1: GET HARDWARE FINGERPRINT FROM REQUEST
-            const presentedFingerprint = req.headers['x-device-fingerprint'];
-            const presentedHardwareID = req.headers['x-hardware-id'];
-            
-            console.log(`[SECURITY] Hardware validation for token ${firstToken.substring(0, 8)}...`);
-            console.log(`[SECURITY] Stored Hardware ID: ${oldSession.hardware_id || 'NONE'}`);
-            console.log(`[SECURITY] Presented Hardware ID: ${presentedHardwareID || 'NONE'}`);
-            console.log(`[SECURITY] Stored Fingerprint: ${oldSession.device_fingerprint ? oldSession.device_fingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            console.log(`[SECURITY] Presented Fingerprint: ${presentedFingerprint ? presentedFingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            
-            // STEP 2: STRICT HARDWARE VALIDATION
-            let isLegitimateTransfer = false;
-            let validationMethod = '';
-            
-            // Method A: Hardware ID match (most reliable)
-            if (presentedHardwareID && oldSession.hardware_id) {
-              if (presentedHardwareID === oldSession.hardware_id) {
-                isLegitimateTransfer = true;
-                validationMethod = 'HARDWARE_ID_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Hardware ID match confirmed`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Hardware ID mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
-            else if (presentedFingerprint && oldSession.device_fingerprint) {
-              // Check for exact match first (ideal case)
-              if (presentedFingerprint === oldSession.device_fingerprint) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_EXACT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
-              } 
-              // Check for relaxed match (same device, minor differences allowed for roaming)
-              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
-                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method C: No hardware info available (associate new hardware)
-            else if (presentedHardwareID || presentedFingerprint) {
-              isLegitimateTransfer = true;
-              validationMethod = 'NEW_HARDWARE_ASSOCIATION';
-              console.log(`[SECURITY] ⚠️  ASSOCIATING new hardware with existing session`);
-            }
-            
-            // STEP 3: HANDLE VALIDATION RESULT
-            if (isLegitimateTransfer) {
-              console.log(`[CAPTIVE-DETECT] ✅ Hardware validation PASSED - proceeding with legitimate MAC transfer`);
-              console.log(`[CAPTIVE-DETECT] Validation method: ${validationMethod}`);
-              
-              // Perform the legitimate transfer
-              await network.blockMAC(oldSession.mac, oldSession.ip);
-              await new Promise(r => setTimeout(r, 800));
-              await network.whitelistMAC(mac, clientIp);
-              
-              // Force network refresh
-              try {
-                await network.forceNetworkRefresh(mac, clientIp);
-              } catch (e) {
-                console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
-              }
-              
-              // Update session with new MAC/IP and associate hardware if needed
-              const updateParams = [mac, clientIp, firstToken];
-              let updateQuery = 'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?';
-              
-              if (presentedHardwareID && !oldSession.hardware_id) {
-                updateQuery = 'UPDATE sessions SET mac = ?, ip = ?, hardware_id = ? WHERE token = ?';
-                updateParams.splice(2, 0, presentedHardwareID);
-                console.log(`[HARDWARE] Associating Hardware ID: ${presentedHardwareID}`);
-              }
-              
-              if (presentedFingerprint && !oldSession.device_fingerprint) {
-                updateQuery = updateQuery.replace('WHERE token = ?', ', device_fingerprint = ? WHERE token = ?');
-                updateParams.splice(updateParams.length - 1, 0, presentedFingerprint);
-                console.log(`[FINGERPRINT] Associating device fingerprint`);
-              }
-              
-              await db.run(updateQuery, updateParams);
-              
-              console.log(`[CAPTIVE-DETECT] ✅ LEGITIMATE TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
-              return res.status(204).send();
-            } else {
-              // BLOCK the transfer - this is likely a Ghost Token
-              console.log(`========================================`);
-              console.log(`[SECURITY-ALERT] GHOST TOKEN DETECTED AND BLOCKED!`);
-              console.log(`[SECURITY-ALERT] Token: ${firstToken.substring(0, 16)}...`);
-              console.log(`[SECURITY-ALERT] Original MAC: ${oldSession.mac}`);
-              console.log(`[SECURITY-ALERT] Requesting MAC: ${mac}`);
-              console.log(`[SECURITY-ALERT] Reason: Hardware validation failed`);
-              console.log(`[SECURITY-ALERT] Action: Blocking NET unblocking commands`);
-              console.log(`[SECURITY-ALERT] TIMESTAMP: ${new Date().toISOString()}`);
-              console.log(`========================================`);
-              
-              // Do NOT trigger NET unblocking commands
-              // Do NOT transfer the session
-              // Redirect to portal for proper authentication
-              console.log(`[SECURITY-BLOCK] Blocked Ghost Token transfer - redirecting to portal for authentication`);
-            }
-          }
-        } catch (e) {
-          console.error(`[CAPTIVE-DETECT] Error during hardware validation:`, e.message);
-        }
-        
-        // Fallback: redirect to portal
-        return res.redirect(302, '/');
-      }
     }
   }
   
-  // Not authorized - redirect to portal
-  return res.redirect(302, '/');
+  // Not authorized - serve portal directly
+  return res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.get('/success.txt', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
-  let mac = await getMacFromIp(clientIp);
+  const mac = await getMacFromIp(clientIp);
   
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Success');
-    } else {
-      // Check for transferable sessions and FORCE transfer
-      const transferableSessions = await db.all(
-        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
-        [mac]
-      );
-      
-      if (transferableSessions.length > 0) {
-        // IMPLEMENTING: Strict fingerprint validation before transfer (Ghost Token fix)
-        console.log(`[CAPTIVE-DETECT] Found transferable session for ${mac}, validating hardware before transfer`);
-        
-        try {
-          const firstToken = transferableSessions[0].token;
-          const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
-          
-          if (oldSession) {
-            // STEP 1: GET HARDWARE FINGERPRINT FROM REQUEST
-            const presentedFingerprint = req.headers['x-device-fingerprint'];
-            const presentedHardwareID = req.headers['x-hardware-id'];
-            
-            console.log(`[SECURITY] Hardware validation for token ${firstToken.substring(0, 8)}...`);
-            console.log(`[SECURITY] Stored Hardware ID: ${oldSession.hardware_id || 'NONE'}`);
-            console.log(`[SECURITY] Presented Hardware ID: ${presentedHardwareID || 'NONE'}`);
-            console.log(`[SECURITY] Stored Fingerprint: ${oldSession.device_fingerprint ? oldSession.device_fingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            console.log(`[SECURITY] Presented Fingerprint: ${presentedFingerprint ? presentedFingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            
-            // STEP 2: STRICT HARDWARE VALIDATION
-            let isLegitimateTransfer = false;
-            let validationMethod = '';
-            
-            // Method A: Hardware ID match (most reliable)
-            if (presentedHardwareID && oldSession.hardware_id) {
-              if (presentedHardwareID === oldSession.hardware_id) {
-                isLegitimateTransfer = true;
-                validationMethod = 'HARDWARE_ID_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Hardware ID match confirmed`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Hardware ID mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
-            else if (presentedFingerprint && oldSession.device_fingerprint) {
-              // Check for exact match first (ideal case)
-              if (presentedFingerprint === oldSession.device_fingerprint) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_EXACT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
-              } 
-              // Check for relaxed match (same device, minor differences allowed for roaming)
-              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
-                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method C: No hardware info available (associate new hardware)
-            else if (presentedHardwareID || presentedFingerprint) {
-              isLegitimateTransfer = true;
-              validationMethod = 'NEW_HARDWARE_ASSOCIATION';
-              console.log(`[SECURITY] ⚠️  ASSOCIATING new hardware with existing session`);
-            }
-            
-            // STEP 3: HANDLE VALIDATION RESULT
-            if (isLegitimateTransfer) {
-              console.log(`[CAPTIVE-DETECT] ✅ Hardware validation PASSED - proceeding with legitimate MAC transfer`);
-              console.log(`[CAPTIVE-DETECT] Validation method: ${validationMethod}`);
-              
-              // Perform the legitimate transfer
-              await network.blockMAC(oldSession.mac, oldSession.ip);
-              await new Promise(r => setTimeout(r, 800));
-              await network.whitelistMAC(mac, clientIp);
-              
-              // Force network refresh
-              try {
-                await network.forceNetworkRefresh(mac, clientIp);
-              } catch (e) {
-                console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
-              }
-              
-              // Update session with new MAC/IP and associate hardware if needed
-              const updateParams = [mac, clientIp, firstToken];
-              let updateQuery = 'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?';
-              
-              if (presentedHardwareID && !oldSession.hardware_id) {
-                updateQuery = 'UPDATE sessions SET mac = ?, ip = ?, hardware_id = ? WHERE token = ?';
-                updateParams.splice(2, 0, presentedHardwareID);
-                console.log(`[HARDWARE] Associating Hardware ID: ${presentedHardwareID}`);
-              }
-              
-              if (presentedFingerprint && !oldSession.device_fingerprint) {
-                updateQuery = updateQuery.replace('WHERE token = ?', ', device_fingerprint = ? WHERE token = ?');
-                updateParams.splice(updateParams.length - 1, 0, presentedFingerprint);
-                console.log(`[FINGERPRINT] Associating device fingerprint`);
-              }
-              
-              await db.run(updateQuery, updateParams);
-              
-              console.log(`[CAPTIVE-DETECT] ✅ LEGITIMATE TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
-              return res.status(204).send();
-            } else {
-              // BLOCK the transfer - this is likely a Ghost Token
-              console.log(`========================================`);
-              console.log(`[SECURITY-ALERT] GHOST TOKEN DETECTED AND BLOCKED!`);
-              console.log(`[SECURITY-ALERT] Token: ${firstToken.substring(0, 16)}...`);
-              console.log(`[SECURITY-ALERT] Original MAC: ${oldSession.mac}`);
-              console.log(`[SECURITY-ALERT] Requesting MAC: ${mac}`);
-              console.log(`[SECURITY-ALERT] Reason: Hardware validation failed`);
-              console.log(`[SECURITY-ALERT] Action: Blocking NET unblocking commands`);
-              console.log(`[SECURITY-ALERT] TIMESTAMP: ${new Date().toISOString()}`);
-              console.log(`========================================`);
-              
-              // Do NOT trigger NET unblocking commands
-              // Do NOT transfer the session
-              // Redirect to portal for proper authentication
-              console.log(`[SECURITY-BLOCK] Blocked Ghost Token transfer - redirecting to portal for authentication`);
-            }
-          }
-        } catch (e) {
-          console.error(`[CAPTIVE-DETECT] Error during hardware validation:`, e.message);
-        }
-        
-        // Fallback: redirect to portal
-        return res.redirect(302, '/');
-      }
     }
   }
   
-  // Not authorized - redirect to portal
-  return res.redirect(302, '/');
+  // Not authorized - serve portal directly
+  return res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // Apple-specific captive portal detection
 app.get('/library/test/success.html', async (req, res) => {
   const clientIp = req.ip.replace('::ffff:', '');
-  let mac = await getMacFromIp(clientIp);
+  const mac = await getMacFromIp(clientIp);
   
   if (mac) {
     const session = await db.get('SELECT mac FROM sessions WHERE mac = ? AND remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)', [mac]);
     if (session) {
       return res.type('text/plain').send('Success');
-    } else {
-      // Check for transferable sessions and FORCE transfer
-      const transferableSessions = await db.all(
-        'SELECT token, mac as original_mac, remaining_seconds FROM sessions WHERE remaining_seconds > 0 AND token_expires_at > datetime("now") AND mac != ? LIMIT 1',
-        [mac]
-      );
-      
-      if (transferableSessions.length > 0) {
-        // IMPLEMENTING: Strict fingerprint validation before transfer (Ghost Token fix)
-        console.log(`[CAPTIVE-DETECT] Found transferable session for ${mac}, validating hardware before transfer`);
-        
-        try {
-          const firstToken = transferableSessions[0].token;
-          const oldSession = await db.get('SELECT * FROM sessions WHERE token = ?', [firstToken]);
-          
-          if (oldSession) {
-            // STEP 1: GET HARDWARE FINGERPRINT FROM REQUEST
-            const presentedFingerprint = req.headers['x-device-fingerprint'];
-            const presentedHardwareID = req.headers['x-hardware-id'];
-            
-            console.log(`[SECURITY] Hardware validation for token ${firstToken.substring(0, 8)}...`);
-            console.log(`[SECURITY] Stored Hardware ID: ${oldSession.hardware_id || 'NONE'}`);
-            console.log(`[SECURITY] Presented Hardware ID: ${presentedHardwareID || 'NONE'}`);
-            console.log(`[SECURITY] Stored Fingerprint: ${oldSession.device_fingerprint ? oldSession.device_fingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            console.log(`[SECURITY] Presented Fingerprint: ${presentedFingerprint ? presentedFingerprint.substring(0, 32) + '...' : 'NONE'}`);
-            
-            // STEP 2: STRICT HARDWARE VALIDATION
-            let isLegitimateTransfer = false;
-            let validationMethod = '';
-            
-            // Method A: Hardware ID match (most reliable)
-            if (presentedHardwareID && oldSession.hardware_id) {
-              if (presentedHardwareID === oldSession.hardware_id) {
-                isLegitimateTransfer = true;
-                validationMethod = 'HARDWARE_ID_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Hardware ID match confirmed`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Hardware ID mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method B: Relaxed fingerprint validation for roaming (same device, different SSID)
-            else if (presentedFingerprint && oldSession.device_fingerprint) {
-              // Check for exact match first (ideal case)
-              if (presentedFingerprint === oldSession.device_fingerprint) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_EXACT_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Exact fingerprint match confirmed`);
-              } 
-              // Check for relaxed match (same device, minor differences allowed for roaming)
-              else if (isLikelySameDevice(presentedFingerprint, oldSession.device_fingerprint)) {
-                isLegitimateTransfer = true;
-                validationMethod = 'FINGERPRINT_ROAMING_MATCH';
-                console.log(`[SECURITY] ✅ VALID transfer - Roaming fingerprint match confirmed`);
-                console.log(`[SECURITY] Device appears to be roaming to different SSID`);
-              } else {
-                console.log(`[SECURITY-ALERT] ❌ INVALID transfer - Fingerprint mismatch!`);
-                console.log(`[SECURITY-ALERT] This appears to be a Ghost Token attempt`);
-              }
-            }
-            // Method C: No hardware info available (associate new hardware)
-            else if (presentedHardwareID || presentedFingerprint) {
-              isLegitimateTransfer = true;
-              validationMethod = 'NEW_HARDWARE_ASSOCIATION';
-              console.log(`[SECURITY] ⚠️  ASSOCIATING new hardware with existing session`);
-            }
-            
-            // STEP 3: HANDLE VALIDATION RESULT
-            if (isLegitimateTransfer) {
-              console.log(`[CAPTIVE-DETECT] ✅ Hardware validation PASSED - proceeding with legitimate MAC transfer`);
-              console.log(`[CAPTIVE-DETECT] Validation method: ${validationMethod}`);
-              
-              // Perform the legitimate transfer
-              await network.blockMAC(oldSession.mac, oldSession.ip);
-              await new Promise(r => setTimeout(r, 800));
-              await network.whitelistMAC(mac, clientIp);
-              
-              // Force network refresh
-              try {
-                await network.forceNetworkRefresh(mac, clientIp);
-              } catch (e) {
-                console.log(`[CAPTIVE-DETECT] Network refresh failed: ${e.message}`);
-              }
-              
-              // Update session with new MAC/IP and associate hardware if needed
-              const updateParams = [mac, clientIp, firstToken];
-              let updateQuery = 'UPDATE sessions SET mac = ?, ip = ? WHERE token = ?';
-              
-              if (presentedHardwareID && !oldSession.hardware_id) {
-                updateQuery = 'UPDATE sessions SET mac = ?, ip = ?, hardware_id = ? WHERE token = ?';
-                updateParams.splice(2, 0, presentedHardwareID);
-                console.log(`[HARDWARE] Associating Hardware ID: ${presentedHardwareID}`);
-              }
-              
-              if (presentedFingerprint && !oldSession.device_fingerprint) {
-                updateQuery = updateQuery.replace('WHERE token = ?', ', device_fingerprint = ? WHERE token = ?');
-                updateParams.splice(updateParams.length - 1, 0, presentedFingerprint);
-                console.log(`[FINGERPRINT] Associating device fingerprint`);
-              }
-              
-              await db.run(updateQuery, updateParams);
-              
-              console.log(`[CAPTIVE-DETECT] ✅ LEGITIMATE TRANSFER COMPLETE: ${oldSession.mac} -> ${mac} (${oldSession.remaining_seconds}s)`);
-              return res.status(204).send();
-            } else {
-              // BLOCK the transfer - this is likely a Ghost Token
-              console.log(`========================================`);
-              console.log(`[SECURITY-ALERT] GHOST TOKEN DETECTED AND BLOCKED!`);
-              console.log(`[SECURITY-ALERT] Token: ${firstToken.substring(0, 16)}...`);
-              console.log(`[SECURITY-ALERT] Original MAC: ${oldSession.mac}`);
-              console.log(`[SECURITY-ALERT] Requesting MAC: ${mac}`);
-              console.log(`[SECURITY-ALERT] Reason: Hardware validation failed`);
-              console.log(`[SECURITY-ALERT] Action: Blocking NET unblocking commands`);
-              console.log(`[SECURITY-ALERT] TIMESTAMP: ${new Date().toISOString()}`);
-              console.log(`========================================`);
-              
-              // Do NOT trigger NET unblocking commands
-              // Do NOT transfer the session
-              // Redirect to portal for proper authentication
-              console.log(`[SECURITY-BLOCK] Blocked Ghost Token transfer - redirecting to portal for authentication`);
-            }
-          }
-        } catch (e) {
-          console.error(`[CAPTIVE-DETECT] Error during hardware validation:`, e.message);
-        }
-        
-        // Fallback: redirect to portal
-        return res.redirect(302, '/');
-      }
     }
   }
   
-  // Not authorized - redirect to portal
-  return res.redirect(302, '/');
+  // Not authorized - serve portal directly
+  return res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // DNS REDIRECT HANDLING FOR CAPTIVE PORTAL
@@ -2593,23 +1217,15 @@ app.use(async (req, res, next) => {
   ];
   const isProbe = portalProbes.some(p => url.includes(p));
 
-  let mac = await getMacFromIp(clientIp);
-  
-  // Fallback: Generate temporary MAC if detection fails (Windows compatibility)
-  if (!mac) {
-    mac = `TEMP-${clientIp.replace(/\./g, '-')}-${Date.now().toString(36).slice(-4)}`;
-  }
-  
+  const mac = await getMacFromIp(clientIp);
   if (mac) {
-    // FIRST: Check if this MAC already has an active session
-    const directSession = await db.get('SELECT mac, ip, remaining_seconds FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
-    
-    if (directSession) {
+    const session = await db.get('SELECT mac, ip, remaining_seconds FROM sessions WHERE mac = ? AND remaining_seconds > 0', [mac]);
+    if (session) {
       // If IP has changed, update the whitelist rule
-      if (directSession.ip !== clientIp) {
-        console.log(`[NET] Client ${mac} moved from IP ${directSession.ip} to ${clientIp} (likely different SSID). Re-applying limits...`);
+      if (session.ip !== clientIp) {
+        console.log(`[NET] Client ${mac} moved from IP ${session.ip} to ${clientIp} (likely different SSID). Re-applying limits...`);
         // Block and clean up old IP (removes TC rules from old VLAN interface)
-        await network.blockMAC(mac, directSession.ip);
+        await network.blockMAC(mac, session.ip);
         // Add extra delay to ensure complete cleanup
         await new Promise(r => setTimeout(r, 300));
         // Whitelist and re-apply limits on new IP (applies TC rules to new VLAN interface)
@@ -2636,100 +1252,22 @@ app.use(async (req, res, next) => {
       }
       
       return next();
-    } else {
-      // SECOND: No direct session found - check for transferable sessions
-      console.log(`[PORTAL-REDIRECT] New MAC detected: ${mac} (${clientIp}) - checking for transferable sessions...`);
-      
-      // Check if there are any sessions that could be transferred to this device
-      // SIMPLE APPROACH: Only allow transfers when requesting device presents valid session token
-      const presentedToken = req.headers['x-session-token'];
-      
-      let transferableSessions = [];
-      
-      if (presentedToken) {
-        // Device claims to have a session token - verify it
-        const session = await db.get(
-          'SELECT token, mac as original_mac, remaining_seconds, session_type, voucher_code FROM sessions WHERE token = ? AND remaining_seconds > 0 AND token_expires_at > datetime("now")',
-          [presentedToken]
-        );
-        
-        if (session && session.original_mac !== mac) {
-          // Valid session token from different MAC - this is legitimate roaming!
-          transferableSessions = [session];
-          console.log(`[PORTAL-REDIRECT] Valid session token presented for roaming: ${presentedToken.substring(0,8)}...`);
-        }
-      }
-      
-      // Fallback: Check for orphaned sessions (no token presented)
-      if (transferableSessions.length === 0) {
-        const orphanedSessions = await db.all(
-          `SELECT token, mac as original_mac, remaining_seconds, session_type, voucher_code
-           FROM sessions 
-           WHERE remaining_seconds > 0 
-             AND token_expires_at > datetime("now") 
-             AND mac != ? 
-             AND session_type = ? 
-             AND voucher_code IS NULL
-           LIMIT 5`,
-          [mac, 'coin']
-        );
-        
-        // Only allow if no hardware registry exists (legitimate case)
-        const deviceRegistered = await db.get('SELECT mac FROM device_registry WHERE mac = ?', [mac]);
-        if (!deviceRegistered && orphanedSessions.length > 0) {
-          transferableSessions = [orphanedSessions[0]]; // Take first one
-          console.log(`[PORTAL-REDIRECT] Allowing transfer for unregistered device`);
-        }
-      }
-      
-      if (transferableSessions.length > 0) {
-        console.log(`[PORTAL-REDIRECT] Found ${transferableSessions.length} transferable sessions:`);
-        for (const session of transferableSessions) {
-          console.log(`[PORTAL-REDIRECT] - Token ${session.token.slice(0,8)}... from ${session.original_mac} (${session.remaining_seconds}s remaining)`);
-          console.log(`[PORTAL-REDIRECT]   Session Type: ${session.session_type || 'coin'}, Voucher Code: ${session.voucher_code || 'NONE'}`);
-          console.log(`[PORTAL-REDIRECT]   Owner Hardware: ${session.owner_hardware || 'UNREGISTERED'}`);
-          console.log(`[PORTAL-REDIRECT]   Requesting Hardware: ${req.headers['x-hardware-id'] || 'UNKNOWN'}`);
-        }
-        
-        // IMPLEMENTING: Strict fingerprint validation before transfer (Ghost Token fix)
-        if (!isProbe && url === '/') {
-          console.log(`[PORTAL-REDIRECT] Found transferable session for ${mac}, validating hardware before transfer`);
-          
-          // Add headers to indicate transferable sessions are available
-          const firstToken = transferableSessions[0].token;
-          res.setHeader('X-AJC-Session-Restore-Available', 'true');
-          res.setHeader('X-AJC-Available-Sessions', transferableSessions.length.toString());
-          res.setHeader('X-AJC-Session-Token', firstToken);
-          res.setHeader('X-AJC-Session-Remaining', transferableSessions[0].remaining_seconds.toString());
-        }
-      } else {
-        console.log(`[PORTAL-REDIRECT] No transferable sessions found for ${mac} - new client needs to pay`);
-      }
-    }
-  } else {
-    // MAC detection failed completely
-    if (!isProbe && url === '/') {
-      console.log(`[PORTAL-REDIRECT] Client ${clientIp} - MAC detection failed, redirecting to portal`);
     }
   }
 
   // FORCE REDIRECT to common domain for session sharing (localStorage)
-  // DISABLED: Using local IP instead of external domain
-  // const PORTAL_DOMAIN = 'portal.ajcpisowifi.com';
-  const PORTAL_DOMAIN = null; // Disable domain redirect
+  const PORTAL_DOMAIN = 'portal.ajcpisowifi.com';
 
   if (isProbe) {
       // Probes get the file directly to satisfy the CNA
       return res.sendFile(path.join(__dirname, 'index.html'));
   }
 
-  // Domain redirect disabled - allow access via IP address
-  // This allows MAC sync to work on local network without external DNS
-  /*
-  if (host !== PORTAL_DOMAIN && !host.includes('localhost') && !host.includes('127.0.0.1') && !url.startsWith('/admin')) {
+  // If we are NOT on the portal domain (and not localhost), redirect.
+  // This catches IP address access (10.0.0.1) and forces it to the domain.
+  if (host !== PORTAL_DOMAIN && !host.includes('localhost') && !host.includes('127.0.0.1')) {
       return res.redirect(`http://${PORTAL_DOMAIN}/`);
   }
-  */
   
   next();
 });
@@ -2889,16 +1427,7 @@ app.post('/api/coinslot/release', async (req, res) => {
 
 app.get('/api/sessions', async (req, res) => {
   try {
-    const rows = await db.all(`
-      SELECT 
-        mac, ip, remaining_seconds as remainingSeconds, 
-        total_paid as totalPaid, connected_at as connectedAt, 
-        is_paused as isPaused, token, token_expires_at as tokenExpiresAt,
-        voucher_code as voucherCode, download_limit as downloadLimit, 
-        upload_limit as uploadLimit
-      FROM sessions 
-      WHERE remaining_seconds > 0
-    `);
+    const rows = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt, is_paused as isPaused, token FROM sessions');
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2913,33 +1442,6 @@ app.post('/api/sessions/start', async (req, res) => {
   if (!mac) {
     console.error(`[AUTH] Failed to resolve MAC for IP: ${clientIp}`);
     return res.status(400).json({ error: 'Could not identify your device MAC. Please try reconnecting.' });
-  }
-  
-  // Apply rate limiting for session creation
-  const rateLimitKey = `session_${clientIp}_${mac}`;
-  const rateLimit = checkRateLimit(rateLimitKey, 10, 60000); // 10 requests per minute
-  if (!rateLimit.allowed) {
-    console.log(`[SECURITY] Rate limit exceeded for session creation from ${mac}/${clientIp}`);
-    return res.status(429).json({ 
-      error: `Too many session requests. Please try again in ${rateLimit.retryAfter} seconds.` 
-    });
-  }
-  
-  // Get device UUID from headers
-  const deviceUUID = req.headers['x-device-uuid'];
-  if (!deviceUUID) {
-    console.log(`[SESSION] Warning: No device UUID provided for MAC ${mac}`);
-    // Continue without device UUID for backward compatibility
-  } else {
-    console.log(`[SESSION] Device UUID provided: ${deviceUUID} for MAC ${mac}`);
-  }
-      
-  // Get device fingerprint from headers
-  const deviceFingerprint = req.headers['x-device-fingerprint'];
-  if (!deviceFingerprint) {
-    console.log(`[SESSION] Warning: No device fingerprint provided for MAC ${mac}`);
-  } else {
-    console.log(`[SESSION] Device fingerprint provided for MAC ${mac}`);
   }
 
   cleanupExpiredCoinSlotLocks();
@@ -2995,72 +1497,28 @@ app.post('/api/sessions/start', async (req, res) => {
     const seconds = minutes * 60;
 
     // Get existing token or generate new one
-    const existingSession = await db.get('SELECT token, token_expires_at FROM sessions WHERE mac = ?', [mac]);
-    let token;
-    let tokenExpiresAt;
-    
-    // Check if existing token is still valid (not expired)
-    if (existingSession && existingSession.token && existingSession.token_expires_at) {
-      const now = new Date();
-      const expiresAt = new Date(existingSession.token_expires_at);
-      if (expiresAt > now) {
-        // Token is still valid, reuse it
-        token = existingSession.token;
-        tokenExpiresAt = existingSession.token_expires_at;
-      }
-    }
-    
-    // Generate new token if no valid existing token
-    if (!token) {
-      token = crypto.randomBytes(16).toString('hex');
-      // Set token expiration to 3 days from now
-      tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
-    }
+    const existingSession = await db.get('SELECT token FROM sessions WHERE mac = ?', [mac]);
+    const token = existingSession && existingSession.token ? existingSession.token : crypto.randomBytes(16).toString('hex');
 
-    // Check for existing session with same device UUID
-    let sessionQuery = 'SELECT * FROM sessions WHERE mac = ?';
-    let queryParams = [mac];
-    
-    if (deviceUUID) {
-      sessionQuery = 'SELECT * FROM sessions WHERE device_uuid = ?';
-      queryParams = [deviceUUID];
-    }
-    
-    const existingSessionByDevice = await db.get(sessionQuery, queryParams);
-    
-    if (existingSessionByDevice) {
-      // Update existing session
-      await db.run(
-        'UPDATE sessions SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?, token = ?, token_expires_at = ?, mac = ?, device_fingerprint = ? WHERE device_uuid = ?',
-        [seconds, pesos, clientIp, downloadLimit, uploadLimit, token, tokenExpiresAt, mac, deviceFingerprint, deviceUUID]
-      );
-      console.log(`[SESSION] Updated existing session for device UUID: ${deviceUUID} with fingerprint`);
-    } else {
-      // Create new session
-      await db.run(
-        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token, token_expires_at, device_uuid, device_fingerprint, connected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))',
-        [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, token, tokenExpiresAt, deviceUUID, deviceFingerprint]
-      );
-      console.log(`[SESSION] Created new session for device UUID: ${deviceUUID} with fingerprint`);
-            
-      // Register device hardware for ownership tracking
-      await registerDeviceHardware(mac, req.headers['x-hardware-id']);
-    }
+    await db.run(
+      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?, token = ?',
+      [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, token, seconds, pesos, clientIp, downloadLimit, uploadLimit, token]
+    );
     
     // Whitelist the device in firewall
     await network.whitelistMAC(mac, clientIp);
     
-    console.log(`========================================`);
-    console.log(`[DEVICE-TOKEN] COIN SESSION ACTIVATED`);
-    console.log(`[DEVICE-TOKEN] Device MAC: ${mac}`);
-    console.log(`[DEVICE-TOKEN] Device IP: ${clientIp}`);
-    console.log(`[DEVICE-TOKEN] Session Token: ${token}`);
-    console.log(`[DEVICE-TOKEN] Token Expiration: ${tokenExpiresAt}`);
-    console.log(`[DEVICE-TOKEN] Added Time: ${seconds} seconds (₱${pesos})`);
-    console.log(`[DEVICE-TOKEN] Download Limit: ${downloadLimit} Mbps`);
-    console.log(`[DEVICE-TOKEN] Upload Limit: ${uploadLimit} Mbps`);
-    console.log(`[DEVICE-TOKEN] Timestamp: ${new Date().toISOString()}`);
-    console.log(`========================================`);
+    console.log(`[AUTH] Session started for ${mac} (${clientIp}) - ${seconds}s, ₱${pesos}, Limits: ${downloadLimit}/${uploadLimit} Mbps`);
+    
+    // Sync sale to cloud (non-blocking)
+    syncSaleToCloud({
+      amount: pesos,
+      session_duration: seconds,
+      customer_mac: mac,
+      transaction_type: 'coin_insert'
+    }).catch(err => {
+      console.error('[Sync] Failed to sync sale to cloud:', err);
+    });
     
     coinSlotLocks.delete(slot);
     res.json({ success: true, mac, token, message: 'Internet access granted. Please refresh your browser or wait a moment for connection to activate.' });
@@ -3070,225 +1528,16 @@ app.post('/api/sessions/start', async (req, res) => {
 app.post('/api/sessions/restore', async (req, res) => {
   const { token } = req.body;
   const clientIp = req.ip.replace('::ffff:', '');
-  let mac = await getMacFromIp(clientIp);
+  const mac = await getMacFromIp(clientIp);
   
-  // Get device UUID from headers
-  const deviceUUID = req.headers['x-device-uuid'];
-  
-  // Get device fingerprint from headers
-  const deviceFingerprint = req.headers['x-device-fingerprint'];
-  
-  console.log(`[MAC-SYNC] Session restore request: IP=${clientIp}, Token=${token?.slice(0,8)}..., Device UUID=${deviceUUID?.slice(0,8)}..., Fingerprint=${deviceFingerprint?.slice(0,16)}...`);
-  
-  // Fallback: Generate temporary MAC if detection fails (Windows compatibility)
-  if (!mac) {
-    mac = `TEMP-${clientIp.replace(/\./g, '-')}-${Date.now().toString(36).slice(-4)}`;
-    console.log(`[MAC-SYNC] MAC detection failed for ${clientIp}, using temporary MAC: ${mac}`);
-  } else {
-    console.log(`[MAC-SYNC] MAC detected for ${clientIp}: ${mac}`);
-  }
-  
-  if (!token) return res.status(400).json({ error: 'Session token required' });
+  if (!token || !mac) return res.status(400).json({ error: 'Invalid request' });
 
   try {
-    // Check if MAC sync is enabled
-    const macSyncConfig = await db.get('SELECT value FROM config WHERE key = ?', ['mac_sync_enabled']);
-    const isMacSyncEnabled = macSyncConfig ? macSyncConfig.value === '1' : true; // Default enabled
-    
-    // Find session by token (session ID-based approach)
     const session = await db.get('SELECT * FROM sessions WHERE token = ?', [token]);
-    if (!session) {
-      console.log(`[SESSION-RESTORE] Token not found: ${token.substring(0, 16)}...`);
-      return res.status(404).json({ error: 'Session not found' });
-    }
+    if (!session) return res.status(404).json({ error: 'Session not found' });
     
-    // CRITICAL SECURITY CHECK: Verify requesting device matches token owner
-    // REMOVED: Hardware validation that was blocking seamless roam
-    // NEW: Direct MAC transfer logic for instant connectivity
-    let isAuthorizedDevice = false;
-    let securityViolationReason = '';
-    
-    // Check if this is a legitimate MAC transfer request
-    if (session.mac !== mac) {
-      console.log(`[INSTANT-SWAP] MAC transfer detected: ${session.mac} -> ${mac}`);
-      console.log(`[INSTANT-SWAP] Token: ${token.substring(0,8)}...`);
-      
-      // ACTION 1: Immediately revoke DNS access for Original MAC
-      console.log(`[INSTANT-SWAP] 🔥 Blocking old MAC: ${session.mac} (${session.ip})`);
-      try {
-        await network.blockMAC(session.mac, session.ip);
-        console.log(`[INSTANT-SWAP] ✅ Old MAC blocked successfully`);
-      } catch (blockErr) {
-        console.log(`[INSTANT-SWAP] Warning: Failed to block old MAC: ${blockErr.message}`);
-      }
-      
-      // ACTION 2: Immediately grant DNS access for Requesting MAC
-      console.log(`[INSTANT-SWAP] 🔥 Whitelisting new MAC: ${mac} (${clientIp})`);
-      try {
-        await network.whitelistMAC(mac, clientIp);
-        console.log(`[INSTANT-SWAP] ✅ New MAC whitelisted successfully`);
-      } catch (whitelistErr) {
-        console.log(`[INSTANT-SWAP] Warning: Failed to whitelist new MAC: ${whitelistErr.message}`);
-      }
-      
-      // ACTION 3: Update database to bind token to new MAC
-      try {
-        await db.run('UPDATE sessions SET mac = ?, ip = ? WHERE token = ?', [mac, clientIp, token]);
-        console.log(`[INSTANT-SWAP] ✅ Database updated - token now bound to ${mac}`);
-      } catch (dbErr) {
-        console.log(`[INSTANT-SWAP] Warning: Database update failed: ${dbErr.message}`);
-      }
-      
-      // Force immediate network refresh
-      try {
-        await network.forceNetworkRefresh(mac, clientIp);
-        console.log(`[INSTANT-SWAP] ✅ Network refresh completed`);
-      } catch (refreshErr) {
-        console.log(`[INSTANT-SWAP] Warning: Network refresh failed: ${refreshErr.message}`);
-      }
-      
-      // Mark as authorized for instant response
-      isAuthorizedDevice = true;
-      securityViolationReason = 'LEGITIMATE_MAC_TRANSFER';
-      
-      console.log(`[INSTANT-SWAP] ✅ Seamless MAC transfer completed`);
-      console.log(`[INSTANT-SWAP] Returning 204 to close captive portal instantly`);
-      
-      // SILENT RESPONSE: Return 204 to close captive portal
-      return res.status(204).send();
-    } else {
-      // Same MAC - normal session continuation
-      isAuthorizedDevice = true;
-      securityViolationReason = 'SAME_DEVICE';
-      
-      // Update IP if needed
-      if (session.ip !== clientIp) {
-        await db.run('UPDATE sessions SET ip = ? WHERE token = ?', [clientIp, token]);
-        await network.whitelistMAC(mac, clientIp);
-      }
-    }
-    
-    // SKIP: Removed fingerprint validation that was blocking seamless roam
-    // All security now handled by MAC transfer logic above
-    
-    if (!isAuthorizedDevice) {
-      return res.status(403).json({ 
-        error: 'Security violation: This session token belongs to a different device.',
-        security_code: 'DEVICE_MISMATCH_BLOCKED',
-        reason: securityViolationReason
-      });
-    }
-    
-    console.log(`========================================`);
-    console.log(`[DEVICE-TOKEN] SESSION RESTORE REQUEST`);
-    console.log(`[DEVICE-TOKEN] Requesting Device MAC: ${mac}`);
-    console.log(`[DEVICE-TOKEN] Requesting Device IP: ${clientIp}`);
-    console.log(`[DEVICE-TOKEN] Session Token: ${token}`);
-    console.log(`[DEVICE-TOKEN] Token Owner MAC: ${session.mac}`);
-    console.log(`[DEVICE-TOKEN] Token Owner IP: ${session.ip}`);
-    console.log(`[DEVICE-TOKEN] Session Type: ${session.session_type || 'coin'}`);
-    console.log(`[DEVICE-TOKEN] Remaining Time: ${session.remaining_seconds} seconds`);
-    console.log(`[DEVICE-TOKEN] Token Status: ${session.token_expires_at ? 'Valid' : 'No expiration set'}`);
-    console.log(`[DEVICE-TOKEN] TIMESTAMP: ${new Date().toISOString()}`);
-    console.log(`[SECURITY-INVESTIGATION] Token Access Analysis:`);
-    console.log(`[SECURITY-INVESTIGATION] Request Source: ${req.headers['user-agent'] || 'Unknown'}`);
-    console.log(`[SECURITY-INVESTIGATION] Request Origin: ${req.headers['origin'] || 'Direct'}`);
-    console.log(`[SECURITY-INVESTIGATION] Referrer: ${req.headers['referer'] || 'None'}`);
-    console.log(`[SECURITY-INVESTIGATION] Device Fingerprint: ${mac}_${clientIp}`);
-    console.log(`========================================`);
-    
-    // Check if token has expired (3-day expiration)
-    if (session.token_expires_at) {
-      const now = new Date();
-      const tokenExpiresAt = new Date(session.token_expires_at);
-      if (now > tokenExpiresAt) {
-        return res.status(401).json({ error: 'Session token has expired. Please insert coins to get a new session.' });
-      }
-    }
-    
-    // VOUCHER SESSION LOGIC: Treat vouchers like coin sessions for roaming
-    // Voucher time is bound to session token, can transfer between MAC addresses
-    if (session.session_type === 'voucher' || session.voucher_code) {
-      console.log(`[VOUCHER-ROAM] Voucher session detected: ${session.voucher_code || 'mixed'} - allowing roaming transfer`);
-      
-      // Same MAC, just update IP if needed
-      if (session.mac === mac) {
-        if (session.ip !== clientIp) {
-          console.log(`[VOUCHER-ROAM] Updating voucher session IP: ${session.ip} -> ${clientIp}`);
-          await db.run('UPDATE sessions SET ip = ? WHERE token = ?', [clientIp, token]);
-          await network.whitelistMAC(mac, clientIp);
-        }
-        return res.json({ 
-          success: true, 
-          remainingSeconds: session.remaining_seconds, 
-          isPaused: session.is_paused === 1,
-          sessionType: 'voucher',
-          message: 'Voucher session restored on same device'
-        });
-      }
-      
-      // Different MAC - allow transfer (voucher roaming)
-      console.log(`[VOUCHER-ROAM] Voucher session token ${token.slice(0,8)}... - transferring from ${session.mac} to ${mac}`);
-      
-      // Check if MAC sync is enabled
-      if (!isMacSyncEnabled) {
-        console.log(`[VOUCHER-ROAM] MAC sync disabled - blocking voucher transfer from ${session.mac} to ${mac}`);
-        return res.status(403).json({ error: 'MAC sync is disabled. Voucher session can only be used on the original device.' });
-      }
-      
-      // Check if the target MAC already has a different session
-      const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
-      let extraTime = 0;
-      let extraPaid = 0;
-      
-      if (targetSession) {
-        // Merge existing time from the target MAC if any
-        extraTime = targetSession.remaining_seconds;
-        extraPaid = targetSession.total_paid;
-        console.log(`[VOUCHER-ROAM] Merging existing session on ${mac}: +${extraTime}s, +₱${extraPaid}`);
-        await db.run('DELETE FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
-      }
-      
-      // Update session with new MAC and IP (session ID stays the same)
-      await db.run(
-        'UPDATE sessions SET mac = ?, ip = ?, remaining_seconds = ?, total_paid = ? WHERE token = ?',
-        [mac, clientIp, session.remaining_seconds + extraTime, session.total_paid + extraPaid, token]
-      );
-      
-      // Switch network access
-      console.log(`[VOUCHER-ROAM] Blocking old MAC: ${session.mac} (${session.ip})`);
-      await network.blockMAC(session.mac, session.ip); // Block old MAC
-      
-      // Add delay to ensure old rules are cleared
-      await new Promise(r => setTimeout(r, 500));
-      
-      console.log(`[VOUCHER-ROAM] Whitelisting new MAC: ${mac} (${clientIp})`);
-      await network.whitelistMAC(mac, clientIp); // Allow new MAC
-      
-      // Force network refresh to ensure connection activates immediately
-      try {
-        await network.forceNetworkRefresh(mac, clientIp);
-      } catch (e) {
-        console.log(`[VOUCHER-ROAM] Network refresh failed: ${e.message}`);
-      }
-      
-      // Log session transfer for audit
-      console.log(`[VOUCHER-ROAM] Voucher session transferred: ${session.mac} -> ${mac} (${session.remaining_seconds + extraTime}s remaining)`);
-      
-      res.json({ 
-        success: true, 
-        migrated: true, 
-        remainingSeconds: session.remaining_seconds + extraTime, 
-        isPaused: session.is_paused === 1,
-        sessionType: 'voucher',
-        message: 'Voucher session transferred to new device. Internet access should activate within 10 seconds.'
-      });
-      return;
-    }
-    
-    // COIN SESSION LOGIC: Regular MAC sync behavior for coin-based sessions
-    // If same MAC, just update IP if needed
     if (session.mac === mac) {
+       // Same device, just update IP if changed and ensure whitelisted
        if (session.ip !== clientIp) {
          await db.run('UPDATE sessions SET ip = ? WHERE mac = ?', [clientIp, mac]);
          await network.whitelistMAC(mac, clientIp);
@@ -3296,16 +1545,10 @@ app.post('/api/sessions/restore', async (req, res) => {
        return res.json({ success: true, remainingSeconds: session.remaining_seconds, isPaused: session.is_paused === 1 });
     }
 
-    // Different MAC - check if MAC sync is enabled for coin sessions
-    if (!isMacSyncEnabled) {
-      console.log(`[MAC-SYNC] MAC sync disabled - blocking transfer from ${session.mac} to ${mac}`);
-      return res.status(403).json({ error: 'MAC sync is disabled. Session can only be used on the original device.' });
-    }
+    console.log(`[AUTH] Restoring session ${token} from ${session.mac} to ${mac}`);
 
-    console.log(`[MAC-SYNC] Coin session token ${token.slice(0,8)}... - transferring from ${session.mac} to ${mac}`);
-
-    // Check if the target MAC already has a different session
-    const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
+    // Check if the target MAC already has a session
+    const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ?', [mac]);
     let extraTime = 0;
     let extraPaid = 0;
     
@@ -3313,45 +1556,25 @@ app.post('/api/sessions/restore', async (req, res) => {
       // Merge existing time from the target MAC if any
       extraTime = targetSession.remaining_seconds;
       extraPaid = targetSession.total_paid;
-      console.log(`[MAC-SYNC] Merging existing session on ${mac}: +${extraTime}s, +₱${extraPaid}`);
-      await db.run('DELETE FROM sessions WHERE mac = ? AND token != ?', [mac, token]);
+      await db.run('DELETE FROM sessions WHERE mac = ?', [mac]);
     }
 
-    // Update session with new MAC and IP (session ID stays the same)
+    // Delete the old session record
+    await db.run('DELETE FROM sessions WHERE mac = ?', [session.mac]);
+    
+    // Insert new record with merged data
     await db.run(
-      'UPDATE sessions SET mac = ?, ip = ?, remaining_seconds = ?, total_paid = ? WHERE token = ?',
-      [mac, clientIp, session.remaining_seconds + extraTime, session.total_paid + extraPaid, token]
+      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, download_limit, upload_limit, token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [mac, clientIp, session.remaining_seconds + extraTime, session.total_paid + extraPaid, session.connected_at, session.download_limit, session.upload_limit, token]
     );
     
-    // Switch network access
-    console.log(`[MAC-SYNC] Blocking old MAC: ${session.mac} (${session.ip})`);
-    await network.blockMAC(session.mac, session.ip); // Block old MAC
+    // Switch whitelist
+    await network.blockMAC(session.mac, session.ip); // Block old
+    await network.whitelistMAC(mac, clientIp); // Allow new
     
-    // Add delay to ensure old rules are cleared
-    await new Promise(r => setTimeout(r, 500));
-    
-    console.log(`[MAC-SYNC] Whitelisting new MAC: ${mac} (${clientIp})`);
-    await network.whitelistMAC(mac, clientIp); // Allow new MAC
-    
-    // Force network refresh to ensure connection activates immediately
-    try {
-      await network.forceNetworkRefresh(mac, clientIp);
-    } catch (e) {
-      console.log(`[MAC-SYNC] Network refresh failed: ${e.message}`);
-    }
-    
-    // Log session transfer for audit
-    console.log(`[MAC-SYNC] Session transferred: ${session.mac} -> ${mac} (${session.remaining_seconds + extraTime}s remaining)`);
-    
-    res.json({ 
-      success: true, 
-      migrated: true, 
-      remainingSeconds: session.remaining_seconds + extraTime, 
-      isPaused: session.is_paused === 1,
-      message: 'Session transferred to new device. Internet access should activate within 10 seconds.'
-    });
+    res.json({ success: true, migrated: true, remainingSeconds: session.remaining_seconds + extraTime, isPaused: session.is_paused === 1 });
   } catch (err) { 
-    console.error('[MAC-SYNC] Restore error:', err);
+    console.error('[AUTH] Restore error:', err);
     res.status(500).json({ error: err.message }); 
   }
 });
@@ -3389,433 +1612,6 @@ app.post('/api/sessions/resume', async (req, res) => {
     res.json({ success: true, message: 'Time resumed. Internet access restored.' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
-
-// MAC Sync Status API - Check if MAC sync is enabled and available
-app.get('/api/sessions/mac-sync-status', async (req, res) => {
-  try {
-    // Check if MAC sync is enabled in config
-    const macSyncConfig = await db.get('SELECT value FROM config WHERE key = ?', ['mac_sync_enabled']);
-    const isEnabled = macSyncConfig ? macSyncConfig.value === '1' : true; // Default enabled
-    
-    res.json({ 
-      enabled: isEnabled,
-      available: true,
-      message: isEnabled ? 'MAC sync is available - use your session token to restore time on any device' : 'MAC sync is disabled'
-    });
-  } catch (err) { 
-    res.status(500).json({ error: err.message }); 
-  }
-});
-
-// Token Status API - Check token expiration
-app.get('/api/sessions/token-status/:token', async (req, res) => {
-  try {
-    const { token } = req.params;
-    const session = await db.get('SELECT token_expires_at, remaining_seconds FROM sessions WHERE token = ?', [token]);
-    
-    if (!session) {
-      return res.status(404).json({ error: 'Session not found' });
-    }
-    
-    const now = new Date();
-    let tokenValid = true;
-    let daysRemaining = null;
-    
-    if (session.token_expires_at) {
-      const expiresAt = new Date(session.token_expires_at);
-      tokenValid = expiresAt > now;
-      daysRemaining = Math.max(0, Math.ceil((expiresAt - now) / (24 * 60 * 60 * 1000)));
-    }
-    
-    res.json({
-      tokenValid,
-      daysRemaining,
-      sessionTimeRemaining: session.remaining_seconds,
-      message: tokenValid ? `Token valid for ${daysRemaining} more days` : 'Token has expired'
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ==========================================
-// VOUCHER SYSTEM API ENDPOINTS
-// ==========================================
-
-// Admin: Get all vouchers
-app.get('/api/admin/vouchers', requireAdmin, async (req, res) => {
-  try {
-    console.log('[Vouchers] Loading vouchers list...');
-    
-    const vouchers = await db.all(`
-      SELECT 
-        id, code, minutes, price, status, 
-        download_limit, upload_limit, 
-        created_at, expires_at, used_at, 
-        used_by_mac, used_by_ip, session_id
-      FROM vouchers 
-      ORDER BY created_at DESC
-    `);
-    
-    console.log(`[Vouchers] Found ${vouchers.length} vouchers in database`);
-    if (vouchers.length > 0) {
-      console.log('[Vouchers] Sample vouchers:', vouchers.slice(0, 3).map(v => `${v.code} (${v.status})`));
-    }
-    
-    res.json(vouchers);
-    console.log('[Vouchers] Sent vouchers list to client');
-  } catch (err) {
-    console.error('[Vouchers] Get error:', err);
-    res.status(500).json({ error: 'Failed to fetch vouchers' });
-  }
-});
-
-// Admin: Create vouchers
-app.post('/api/admin/vouchers/create', requireAdmin, async (req, res) => {
-  try {
-    const { minutes, price, quantity = 1, downloadLimit = 0, uploadLimit = 0, expiryDays = 30 } = req.body;
-    
-    if (!minutes || !price || minutes <= 0 || price <= 0) {
-      return res.status(400).json({ error: 'Invalid minutes or price' });
-    }
-    
-    console.log(`[Vouchers] Starting creation: ${quantity} voucher(s), ${minutes}min, ₱${price}`);
-    
-    const vouchers = [];
-    const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
-    
-    for (let i = 0; i < quantity; i++) {
-      const code = generateVoucherCode();
-      const id = `voucher_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      console.log(`[Vouchers] Inserting voucher ${i + 1}: ${code} (${id})`);
-      
-      try {
-        const result = await db.run(`
-          INSERT INTO vouchers (id, code, minutes, price, download_limit, upload_limit, expires_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `, [id, code, minutes, price, downloadLimit, uploadLimit, expiresAt]);
-        
-        console.log(`[Vouchers] Database insert result:`, result);
-        
-        vouchers.push({
-          id, code, minutes, price, 
-          downloadLimit, uploadLimit, 
-          expiresAt, status: 'active'
-        });
-        
-        console.log(`[Vouchers] Added to array: ${code}`);
-        
-      } catch (dbErr) {
-        console.error(`[Vouchers] Database insert failed for ${code}:`, dbErr.message);
-        throw dbErr;
-      }
-    }
-    
-    console.log(`[Vouchers] All vouchers created, sending response...`);
-    
-    // Send response first, then log
-    res.json({ success: true, created: quantity, vouchers });
-    console.log(`[Vouchers] Created ${quantity} voucher(s): ${minutes}min, ₱${price}`);
-    
-    // Verify in database
-    const dbCount = await db.get('SELECT COUNT(*) as count FROM vouchers');
-    console.log(`[Vouchers] Total vouchers in DB after creation: ${dbCount.count}`);
-    
-  } catch (err) {
-    console.error('[Vouchers] Create error:', err);
-    res.status(500).json({ error: 'Failed to create vouchers' });
-  }
-});
-
-// Admin: Delete voucher
-app.delete('/api/admin/vouchers/:id', requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    await db.run('DELETE FROM vouchers WHERE id = ?', [id]);
-    res.json({ success: true });
-  } catch (err) {
-    console.error('[Vouchers] Delete error:', err);
-    res.status(500).json({ error: 'Failed to delete voucher' });
-  }
-});
-
-// Public: Activate voucher (no auth required - for portal users)
-app.post('/api/vouchers/activate', async (req, res) => {
-  try {
-    const { code } = req.body;
-    const clientIp = req.ip.replace('::ffff:', '');
-    
-    // Apply rate limiting
-    const rateLimitKey = `voucher_${clientIp}`;
-    const rateLimit = checkRateLimit(rateLimitKey, 5, 300000); // 5 requests per 5 minutes
-    if (!rateLimit.allowed) {
-      console.log(`[SECURITY] Rate limit exceeded for voucher activation from IP: ${clientIp}`);
-      return res.status(429).json({ 
-        error: `Too many voucher activation attempts. Please try again in ${rateLimit.retryAfter} seconds.` 
-      });
-    }
-    
-    if (!code || !code.trim()) {
-      return res.status(400).json({ error: 'Voucher code is required' });
-    }
-    
-    console.log(`[Voucher] Activation attempt for code: ${code.trim().toUpperCase()}`);
-    
-    // Get MAC address (same logic as your existing session system)
-    let mac = await getMacFromIp(clientIp);
-    if (!mac && clientIp === '127.0.0.1') mac = 'DEV-LOCALHOST';
-    
-    if (!mac) {
-      console.log(`[Voucher] Could not resolve MAC for IP: ${clientIp}`);
-      return res.status(400).json({ error: 'Could not identify your device. Please try reconnecting.' });
-    }
-    
-    // Get device UUID from headers
-    const deviceUUID = req.headers['x-device-uuid'];
-    
-    // Get device fingerprint from headers
-    const deviceFingerprint = req.headers['x-device-fingerprint'];
-    if (!deviceUUID) {
-      console.log(`[Voucher] Warning: No device UUID provided for MAC ${mac}`);
-      // Continue without device UUID for backward compatibility
-    } else {
-      console.log(`[Voucher] Device UUID provided: ${deviceUUID} for MAC ${mac}`);
-    }
-    if (!deviceFingerprint) {
-      console.log(`[Voucher] Warning: No device fingerprint provided for MAC ${mac}`);
-    } else {
-      console.log(`[Voucher] Device fingerprint provided for MAC ${mac}`);
-    }
-    
-    console.log(`[Voucher] Device identified: ${mac} (${clientIp})`);
-    
-    // Check if this device already has an active voucher session
-    // First check by device UUID if available, fall back to MAC
-    let existingVoucherSession;
-    if (deviceUUID) {
-      existingVoucherSession = await db.get(`
-        SELECT * FROM sessions 
-        WHERE device_uuid = ? AND remaining_seconds > 0 AND voucher_code IS NOT NULL
-      `, [deviceUUID]);
-    } else {
-      existingVoucherSession = await db.get(`
-        SELECT * FROM sessions 
-        WHERE mac = ? AND remaining_seconds > 0 AND voucher_code IS NOT NULL
-      `, [mac]);
-    }
-    
-    if (existingVoucherSession) {
-      console.log(`[Voucher] Device ${deviceUUID || mac} already has active voucher: ${existingVoucherSession.voucher_code}`);
-      return res.status(400).json({ 
-        error: `This device already has an active voucher (${existingVoucherSession.voucher_code}). Please wait for it to expire before using another voucher.` 
-      });
-    }
-    
-    // Find voucher - check both active status and expiration
-    const voucher = await db.get(`
-      SELECT * FROM vouchers 
-      WHERE UPPER(code) = UPPER(?) AND status = 'active'
-    `, [code.trim()]);
-    
-    if (!voucher) {
-      console.log(`[Voucher] Voucher not found or not active: ${code.trim().toUpperCase()}`);
-      return res.status(404).json({ error: 'Invalid or already used voucher code' });
-    }
-    
-    // Check if voucher is expired
-    const now = new Date();
-    const expiresAt = new Date(voucher.expires_at);
-    
-    if (expiresAt <= now) {
-      console.log(`[Voucher] Voucher expired: ${voucher.code} (expired at ${expiresAt})`);
-      await db.run('UPDATE vouchers SET status = ? WHERE id = ?', ['expired', voucher.id]);
-      return res.status(404).json({ error: 'Voucher has expired' });
-    }
-    
-    console.log(`[Voucher] Valid voucher found: ${voucher.code} (${voucher.minutes} minutes, ₱${voucher.price})`);
-    
-    // VOUCHER DEVICE BINDING SECURITY: Prevent cross-device usage
-    if (voucher.used_by_device_uuid && deviceUUID) {
-      // Check if voucher was already used by a different device
-      if (voucher.used_by_device_uuid !== deviceUUID) {
-        console.log(`[SECURITY-BLOCK] Voucher ${voucher.code} already used by different device!`);
-        console.log(`[SECURITY-BLOCK] Original device: ${voucher.used_by_device_uuid}`);
-        console.log(`[SECURITY-BLOCK] Requesting device: ${deviceUUID}`);
-        return res.status(403).json({ 
-          error: 'This voucher has already been used on a different device.' 
-        });
-      } else {
-        console.log(`[Voucher] Device ${deviceUUID} reusing its own voucher ${voucher.code}`);
-        // Allow reuse by same device (could be MAC change scenario)
-      }
-    }
-    
-    // Generate ABSOLUTELY UNIQUE session token for this specific device ONLY
-    // Include device fingerprint to ensure tokens are device-specific
-    const timestamp = Date.now();
-    const randomComponent = crypto.randomBytes(32).toString('hex');
-    
-    // Create device-specific signature that includes browser/user-agent info
-    const userAgent = req.headers['user-agent'] || 'unknown-browser';
-    const deviceSignature = `${mac}_${clientIp}_${timestamp}_${randomComponent}_${voucher.code}_${userAgent}`;
-    let token = crypto.createHash('sha256').update(deviceSignature).digest('hex');
-    
-    // Double-check token uniqueness in database
-    const existingToken = await db.get('SELECT mac, ip, token FROM sessions WHERE token = ?', [token]);
-    if (existingToken) {
-      console.log(`[SECURITY-ALERT] Token collision detected! Regenerating with additional entropy...`);
-      console.log(`[SECURITY-ALERT] Existing token owner: MAC=${existingToken.mac}, IP=${existingToken.ip}`);
-      console.log(`[SECURITY-ALERT] Current request: MAC=${mac}, IP=${clientIp}`);
-      
-      // Generate with additional entropy including more device-specific info
-      const retrySignature = `${deviceSignature}_${Math.random().toString(36).substr(2, 12)}_retry_${process.hrtime().join('')}`;
-      const tokenRetry = crypto.createHash('sha256').update(retrySignature).digest('hex');
-      
-      // Final verification
-      const finalCheck = await db.get('SELECT mac FROM sessions WHERE token = ?', [tokenRetry]);
-      if (finalCheck) {
-        console.error(`[SECURITY-CRITICAL] Unable to generate unique token after retry!`);
-        return res.status(500).json({ error: 'Unable to generate secure session. Please try again.' });
-      }
-      
-      token = tokenRetry;
-      console.log(`[SECURITY] Generated unique token after collision check`);
-    }
-    
-    const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
-    const seconds = voucher.minutes * 60;
-    
-    // Check for existing session with same device UUID
-    let sessionQuery = 'SELECT * FROM sessions WHERE mac = ?';
-    let queryParams = [mac];
-    
-    if (deviceUUID) {
-      sessionQuery = 'SELECT * FROM sessions WHERE device_uuid = ?';
-      queryParams = [deviceUUID];
-      
-      // For backward compatibility, also check if this MAC already has a session without device_uuid
-      const macSessionWithoutUUID = await db.get('SELECT * FROM sessions WHERE mac = ? AND (device_uuid IS NULL OR device_uuid = "")', [mac]);
-      if (macSessionWithoutUUID) {
-        // Migrate this session to use device UUID
-        await db.run('UPDATE sessions SET device_uuid = ? WHERE mac = ? AND (device_uuid IS NULL OR device_uuid = "")', [deviceUUID, mac]);
-        console.log(`[BACKWARD-COMPAT] Migrated session ${mac} to use device UUID: ${deviceUUID}`);
-      }
-    }
-    
-    const existingSession = await db.get(sessionQuery, queryParams);
-    
-    if (existingSession) {
-      // If existing session has voucher, don't allow another voucher
-      if (existingSession.voucher_code) {
-        console.log(`[Voucher] Device ${deviceUUID || mac} already has active voucher: ${existingSession.voucher_code}`);
-        return res.status(400).json({ 
-          error: `This device already has an active voucher (${existingSession.voucher_code}). Please wait for it to expire before using another voucher.` 
-        });
-      }
-      
-      // For coin sessions, log that we're replacing with voucher
-      console.log(`[Voucher] Replacing existing coin session with voucher for device: ${deviceUUID || mac}`);
-      
-      // Replace existing coin session with voucher session
-      await db.run(`
-        UPDATE sessions SET 
-          remaining_seconds = ?, total_paid = ?, download_limit = ?, upload_limit = ?,
-          token = ?, token_expires_at = ?, voucher_code = ?, ip = ?, session_type = 'voucher', mac = ?
-        WHERE device_uuid = ?
-      `, [
-        seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
-        token, tokenExpiresAt, voucher.code, clientIp, mac, deviceUUID
-      ]);
-      
-      console.log(`[Voucher] Updated existing session for device ${deviceUUID || mac} with voucher ${voucher.code}`);
-    } else {
-      // Create new voucher session with device UUID and fingerprint
-      await db.run(`
-        INSERT INTO sessions (
-          mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, 
-          token, token_expires_at, voucher_code, connected_at, session_type, device_uuid, device_fingerprint
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'voucher', ?, ?)
-      `, [
-        mac, clientIp, seconds, voucher.price, voucher.download_limit, voucher.upload_limit,
-        token, tokenExpiresAt, voucher.code, deviceUUID, deviceFingerprint
-      ]);
-      
-      console.log(`[Voucher] Created new voucher session for device ${deviceUUID || mac} with UNIQUE token and fingerprint`);
-    }
-    
-    // Mark voucher as used and bind to device
-    let updateQuery = `
-      UPDATE vouchers 
-      SET status = 'used', used_at = datetime('now'), used_by_mac = ?, used_by_ip = ?
-      WHERE id = ?
-    `;
-    let updateParams = [mac, clientIp, voucher.id];
-    
-    // Add device UUID binding if available
-    if (deviceUUID) {
-      updateQuery = `
-        UPDATE vouchers 
-        SET status = 'used', used_at = datetime('now'), used_by_mac = ?, used_by_ip = ?, used_by_device_uuid = ?
-        WHERE id = ?
-      `;
-      updateParams = [mac, clientIp, deviceUUID, voucher.id];
-      console.log(`[Voucher] Binding voucher ${voucher.code} to device UUID: ${deviceUUID}`);
-    }
-    
-    await db.run(updateQuery, updateParams);
-    
-    // Whitelist device for internet access
-    await network.whitelistMAC(mac, clientIp);
-    
-    console.log(`========================================`);
-    console.log(`[DEVICE-TOKEN] NEW VOUCHER SESSION ACTIVATED`);
-    console.log(`[DEVICE-TOKEN] Device MAC: ${mac}`);
-    console.log(`[DEVICE-TOKEN] Device IP: ${clientIp}`);
-    console.log(`[DEVICE-TOKEN] Voucher Code: ${voucher.code}`);
-    console.log(`[DEVICE-TOKEN] Session Token: ${token}`);
-    console.log(`[DEVICE-TOKEN] Token Expiration: ${tokenExpiresAt}`);
-    console.log(`[DEVICE-TOKEN] Session Time: ${seconds} seconds (₱${voucher.price})`);
-    console.log(`[DEVICE-TOKEN] TIMESTAMP: ${new Date().toISOString()}`);
-    console.log(`[SECURITY-INVESTIGATION] Token Generation Details:`);
-    console.log(`[SECURITY-INVESTIGATION] Token Entropy Sources: MAC=${mac}, IP=${clientIp}, Time=${timestamp}`);
-    console.log(`[SECURITY-INVESTIGATION] Voucher Code Used: ${voucher.code}`);
-    console.log(`[SECURITY-INVESTIGATION] Device Signature: ${deviceSignature.substring(0, 32)}...`);
-    console.log(`========================================`);
-    
-    res.json({
-      success: true,
-      mac,
-      token,
-      remainingSeconds: seconds,
-      totalPaid: voucher.price,
-      downloadLimit: voucher.download_limit,
-      uploadLimit: voucher.upload_limit,
-      message: 'Voucher activated successfully! Internet access granted.'
-    });
-    
-  } catch (err) {
-    console.error('[Voucher] Activation error:', err);
-    res.status(500).json({ error: 'Server error during voucher activation. Please try again.' });
-  }
-});
-
-// Helper function to generate voucher codes
-function generateVoucherCode() {
-  const prefix = 'AJC';
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let code = prefix;
-  
-  for (let i = 0; i < 5; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  
-  return code;
-}
-
-// ==========================================
-// END VOUCHER SYSTEM
-// ==========================================
 
 // RATES API
 app.get('/api/rates', async (req, res) => {
@@ -3882,7 +1678,7 @@ app.post('/api/config/qos', requireAdmin, async (req, res) => {
         await network.initQoS(lan, discipline);
         
         // Restore limits for all active devices/sessions because initQoS wipes TC classes
-        const activeDevices = await db.all('SELECT mac, ip FROM wifi_devices WHERE is_active = 1 AND is_deleted = 0');
+        const activeDevices = await db.all('SELECT mac, ip FROM wifi_devices WHERE is_active = 1');
         const activeSessions = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds > 0');
         
         // Merge list to avoid duplicates
@@ -4049,7 +1845,7 @@ app.get('/api/system/interfaces', requireAdmin, async (req, res) => {
 
 app.get('/api/system/info', requireAdmin, async (req, res) => {
   try {
-    const [system, osInfo] = await Promise.all([
+    const [system, os] = await Promise.all([
       si.system(),
       si.osInfo()
     ]);
@@ -4057,9 +1853,9 @@ app.get('/api/system/info', requireAdmin, async (req, res) => {
     res.json({
       manufacturer: system.manufacturer,
       model: system.model,
-      distro: osInfo.platform,
-      arch: osInfo.arch,
-      platform: osInfo.platform
+      distro: os.distro,
+      arch: os.arch,
+      platform: os.platform
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -4094,7 +1890,6 @@ app.get('/api/config', requireAdmin, async (req, res) => {
     const espPort = await db.get('SELECT value FROM config WHERE key = ?', ['espPort']);
     const nodemcuDevices = await db.get('SELECT value FROM config WHERE key = ?', ['nodemcuDevices']);
     const registrationKey = await db.get('SELECT value FROM config WHERE key = ?', ['registrationKey']);
-    const macSyncEnabled = await db.get('SELECT value FROM config WHERE key = ?', ['mac_sync_enabled']);
     
     res.json({ 
       boardType: board?.value || 'none', 
@@ -4104,8 +1899,7 @@ app.get('/api/config', requireAdmin, async (req, res) => {
       espPort: parseInt(espPort?.value || '80'),
       coinSlots: coinSlots?.value ? JSON.parse(coinSlots.value) : [],
       nodemcuDevices: nodemcuDevices?.value ? JSON.parse(nodemcuDevices.value) : [],
-      registrationKey: registrationKey?.value || '7B3F1A9',
-      macSyncEnabled: macSyncEnabled?.value === '1'
+      registrationKey: registrationKey?.value || '7B3F1A9'
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -4133,12 +1927,6 @@ app.post('/api/config', requireAdmin, async (req, res) => {
     // Handle multi-NodeMCU devices
     if (req.body.nodemcuDevices !== undefined) {
       await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['nodemcuDevices', JSON.stringify(req.body.nodemcuDevices)]);
-    }
-    
-    // Handle MAC Sync configuration
-    if (req.body.macSyncEnabled !== undefined) {
-      await db.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['mac_sync_enabled', req.body.macSyncEnabled ? '1' : '0']);
-      console.log(`[CONFIG] MAC Sync ${req.body.macSyncEnabled ? 'enabled' : 'disabled'}`);
     }
     
     res.json({ success: true });
@@ -4783,66 +2571,9 @@ app.post('/api/system/reset', requireAdmin, async (req, res) => {
 app.get('/api/system/backup', requireAdmin, async (req, res) => {
   try {
     const zip = new AdmZip();
-    const exclude = ['node_modules', '.git', '.next', 'dist', 'package-lock.json', 'backups'];
+    const exclude = ['node_modules', '.git', '.next', 'dist', 'uploads', 'package-lock.json'];
     
-    // Add system metadata
-    const metadata = {
-      version: '1.0.0',
-      timestamp: new Date().toISOString(),
-      hostname: os.hostname(),
-      platform: os.platform(),
-      arch: os.arch(),
-      backupType: 'full-system',
-      hardwareId: null,
-      licenseStatus: null
-    };
-    
-    // Try to get hardware and license info
-    try {
-      const hardwareInfo = await db.getHardwareInfo();
-      metadata.hardwareId = hardwareInfo?.hardware_id || null;
-      
-      const licenseData = await db.getCurrentLicense();
-      metadata.licenseStatus = licenseData ? {
-        isLicensed: licenseData.is_licensed,
-        licenseKey: licenseData.license_key,
-        expiresAt: licenseData.expires_at
-      } : null;
-    } catch (e) {
-      console.warn('Could not fetch hardware/license info for backup:', e.message);
-    }
-    
-    zip.addFile('metadata.json', Buffer.from(JSON.stringify(metadata, null, 2)));
-    
-    // Add database export
-    try {
-      const dbExport = await db.exportDatabase();
-      zip.addFile('database.sql', Buffer.from(dbExport));
-    } catch (e) {
-      console.warn('Could not export database:', e.message);
-      // Continue without database export
-    }
-    
-    // Add configuration files
-    const configFiles = [
-      '.env',
-      'config.json',
-      'network.json'
-    ];
-    
-    for (const configFile of configFiles) {
-      const configPath = path.join(__dirname, configFile);
-      if (fs.existsSync(configPath)) {
-        try {
-          const content = fs.readFileSync(configPath, 'utf8');
-          zip.addFile(`config/${configFile}`, Buffer.from(content));
-        } catch (e) {
-          console.warn(`Could not read config file ${configFile}:`, e.message);
-        }
-      }
-    }
-    
-    // Add application files and directories
+    // Add files from root
     const rootFiles = fs.readdirSync(__dirname);
     for (const file of rootFiles) {
       if (exclude.includes(file)) continue;
@@ -4850,39 +2581,25 @@ app.get('/api/system/backup', requireAdmin, async (req, res) => {
       const filePath = path.join(__dirname, file);
       const stats = fs.statSync(filePath);
       
-      try {
-        if (stats.isDirectory()) {
-          // Skip uploads directory entirely - too large
-          if (file === 'uploads') continue;
-          zip.addLocalFolder(filePath, file);
-        } else {
-          zip.addLocalFile(filePath);
-        }
-      } catch (e) {
-        console.warn(`Could not add ${file} to backup:`, e.message);
+      if (stats.isDirectory()) {
+         zip.addLocalFolder(filePath, file);
+      } else {
+        zip.addLocalFile(filePath);
       }
     }
     
-    // Add uploads/audio if it exists
-    const audioPath = path.join(__dirname, 'uploads/audio');
-    if (fs.existsSync(audioPath)) {
-      try {
-        zip.addLocalFolder(audioPath, 'uploads/audio');
-      } catch (e) {
-        console.warn('Could not add audio files to backup:', e.message);
-      }
+    // Special handling for uploads (only audio)
+    if (fs.existsSync(path.join(__dirname, 'uploads/audio'))) {
+        zip.addLocalFolder(path.join(__dirname, 'uploads/audio'), 'uploads/audio');
     }
-    
+
     const buffer = zip.toBuffer();
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `pisowifi-backup-${timestamp}.nxs`;
+    const filename = `backup-${new Date().toISOString().replace(/[:.]/g, '-')}.nxs`;
     
     res.set('Content-Type', 'application/octet-stream');
-    res.set('Content-Disposition', `attachment; filename="${filename}"`);
+    res.set('Content-Disposition', `attachment; filename=${filename}`);
     res.set('Content-Length', buffer.length);
     res.send(buffer);
-    
-    console.log(`[Backup] Created backup: ${filename} (${Math.round(buffer.length / 1024 / 1024 * 100) / 100} MB)`);
   } catch (err) {
     console.error('Backup failed:', err);
     res.status(500).json({ error: 'Backup failed: ' + err.message });
@@ -4893,116 +2610,28 @@ app.post('/api/system/restore', requireAdmin, uploadBackup.single('file'), async
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   
   try {
-    console.log(`[Restore] Starting restore from: ${req.file.originalname}`);
-    
-    const zip = new AdmZip(req.file.path);
-    const entries = zip.getEntries();
-    
-    // Validate backup structure
-    const hasMetadata = entries.some(e => e.entryName === 'metadata.json');
-    const hasDatabase = entries.some(e => e.entryName === 'database.sql');
-    
-    if (!hasMetadata) {
-      throw new Error('Invalid backup file: missing metadata.json');
-    }
-    
-    // Read metadata
-    const metadataEntry = entries.find(e => e.entryName === 'metadata.json');
-    const metadata = JSON.parse(zip.readAsText(metadataEntry));
-    
-    console.log(`[Restore] Backup metadata:`, {
-      version: metadata.version,
-      timestamp: metadata.timestamp,
-      hostname: metadata.hostname,
-      platform: metadata.platform
-    });
-    
-    // Close database connection
+    // Attempt to close DB to avoid lock issues on Windows
     try {
-      await db.close();
-      console.log('[Restore] Database connection closed');
+        await db.close();
     } catch (e) {
-      console.warn('[Restore] Could not close DB:', e.message);
+        console.warn('Could not close DB:', e);
     }
-    
-    // Extract application files (excluding special files)
-    const specialFiles = ['metadata.json', 'database.sql'];
-    const configFiles = [];
-    
-    for (const entry of entries) {
-      if (specialFiles.includes(entry.entryName)) continue;
-      
-      try {
-        if (entry.entryName.startsWith('config/')) {
-          // Handle config files separately
-          configFiles.push(entry);
-        } else {
-          // Extract regular files/directories
-          zip.extractEntryTo(entry, __dirname, true, true);
-        }
-      } catch (e) {
-        console.warn(`[Restore] Could not extract ${entry.entryName}:`, e.message);
-      }
-    }
-    
-    // Handle config files
-    for (const entry of configFiles) {
-      try {
-        const fileName = entry.entryName.replace('config/', '');
-        const targetPath = path.join(__dirname, fileName);
-        
-        // Only restore .env if it doesn't exist or is empty
-        if (fileName === '.env' && fs.existsSync(targetPath)) {
-          const currentEnv = fs.readFileSync(targetPath, 'utf8').trim();
-          if (currentEnv) {
-            console.log('[Restore] Skipping .env restore - file already exists with content');
-            continue;
-          }
-        }
-        
-        zip.extractEntryTo(entry, __dirname, true, true);
-        console.log(`[Restore] Restored config file: ${fileName}`);
-      } catch (e) {
-        console.warn(`[Restore] Could not restore config ${entry.entryName}:`, e.message);
-      }
-    }
-    
-    // Restore database if present
-    if (hasDatabase) {
-      try {
-        const dbEntry = entries.find(e => e.entryName === 'database.sql');
-        const sqlContent = zip.readAsText(dbEntry);
-        
-        // Import database
-        await db.importDatabase(sqlContent);
-        console.log('[Restore] Database imported successfully');
-      } catch (e) {
-        console.error('[Restore] Database import failed:', e.message);
-        throw new Error('Database restore failed: ' + e.message);
-      }
-    }
+
+    const zip = new AdmZip(req.file.path);
+    // Extract everything, overwriting existing files
+    zip.extractAllTo(__dirname, true);
     
     // Cleanup
     fs.unlinkSync(req.file.path);
     
-    res.json({ 
-      success: true, 
-      message: 'System restored successfully. Restarting...',
-      backupInfo: {
-        version: metadata.version,
-        timestamp: metadata.timestamp,
-        hostname: metadata.hostname
-      }
-    });
-    
-    console.log('[Restore] Restore completed. Initiating restart...');
+    res.json({ success: true, message: 'System restored successfully. Restarting...' });
     
     // Restart logic
     setTimeout(() => {
         process.exit(0); // PM2 should restart it
     }, 2000);
   } catch (err) {
-    console.error('[Restore] Restore failed:', err);
+    console.error('Restore failed:', err);
     res.status(500).json({ error: 'Restore failed: ' + err.message });
   }
 });
@@ -5091,17 +2720,7 @@ app.post('/api/network/vlan', requireAdmin, async (req, res) => {
 
 app.delete('/api/network/vlan/:name', requireAdmin, async (req, res) => {
   try {
-    // Get the full VLAN record from database
-    const vlan = await db.get('SELECT * FROM vlans WHERE name = ?', [req.params.name]);
-    
-    if (vlan) {
-      // Pass the full VLAN record for proper interface name generation
-      await network.deleteVlan(vlan);
-    } else {
-      // Fallback to legacy format if not found in database
-      await network.deleteVlan(req.params.name);
-    }
-    
+    await network.deleteVlan(req.params.name);
     await db.run('DELETE FROM vlans WHERE name = ?', [req.params.name]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -5136,206 +2755,6 @@ app.delete('/api/network/bridge/:name', requireAdmin, async (req, res) => {
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
-
-// IP POOL MANAGEMENT API
-app.get('/api/ip-pools', requireAdmin, async (req, res) => {
-  try {
-    const pools = await db.all(`
-      SELECT *, 
-        (SELECT COUNT(*) FROM sessions s WHERE s.ip BETWEEN p.start_ip AND p.end_ip) as used_ips
-      FROM ip_pools p 
-      ORDER BY created_at DESC
-    `);
-    
-    // Calculate additional metrics
-    const enhancedPools = pools.map(pool => {
-      const totalIps = ipToInt(pool.end_ip) - ipToInt(pool.start_ip) + 1;
-      const availableIps = totalIps - (pool.used_ips || 0);
-      const utilization = totalIps > 0 ? Math.round((pool.used_ips || 0) / totalIps * 100) : 0;
-      
-      return {
-        ...pool,
-        total_ips: totalIps,
-        available_ips: availableIps,
-        utilization_percentage: utilization
-      };
-    });
-    
-    res.json(enhancedPools);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/ip-pools/:id', requireAdmin, async (req, res) => {
-  try {
-    const pool = await db.get('SELECT * FROM ip_pools WHERE id = ?', [req.params.id]);
-    if (!pool) {
-      return res.status(404).json({ error: 'IP Pool not found' });
-    }
-    
-    // Add usage statistics
-    const totalIps = ipToInt(pool.end_ip) - ipToInt(pool.start_ip) + 1;
-    const usedIps = await db.get(
-      'SELECT COUNT(*) as count FROM sessions WHERE ip BETWEEN ? AND ?', 
-      [pool.start_ip, pool.end_ip]
-    );
-    
-    const enhancedPool = {
-      ...pool,
-      total_ips: totalIps,
-      used_ips: usedIps.count,
-      available_ips: totalIps - usedIps.count,
-      utilization_percentage: totalIps > 0 ? Math.round(usedIps.count / totalIps * 100) : 0
-    };
-    
-    res.json(enhancedPool);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/ip-pools', requireAdmin, async (req, res) => {
-  try {
-    const { name, network, gateway, start_ip, end_ip, subnet_mask, description, status = 'active' } = req.body;
-    
-    // Validate required fields
-    if (!name || !network || !gateway || !start_ip || !end_ip || !subnet_mask) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-    
-    // Validate IP format
-    if (!isValidIp(start_ip) || !isValidIp(end_ip) || !isValidIp(gateway)) {
-      return res.status(400).json({ error: 'Invalid IP address format' });
-    }
-    
-    // Check for overlapping pools
-    const overlap = await db.get(`
-      SELECT id FROM ip_pools 
-      WHERE (start_ip BETWEEN ? AND ? OR end_ip BETWEEN ? AND ?)
-      AND status = 'active'
-      LIMIT 1
-    `, [start_ip, end_ip, start_ip, end_ip]);
-    
-    if (overlap) {
-      return res.status(400).json({ error: 'IP range overlaps with existing pool' });
-    }
-    
-    const result = await db.run(`
-      INSERT INTO ip_pools (name, network, gateway, start_ip, end_ip, subnet_mask, description, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [name, network, gateway, start_ip, end_ip, subnet_mask, description, status]);
-    
-    const newPool = await db.get('SELECT * FROM ip_pools WHERE id = ?', [result.lastID]);
-    res.status(201).json(newPool);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.put('/api/ip-pools/:id', requireAdmin, async (req, res) => {
-  try {
-    const poolId = req.params.id;
-    const { name, network, gateway, start_ip, end_ip, subnet_mask, description, status } = req.body;
-    
-    // Check if pool exists
-    const existingPool = await db.get('SELECT * FROM ip_pools WHERE id = ?', [poolId]);
-    if (!existingPool) {
-      return res.status(404).json({ error: 'IP Pool not found' });
-    }
-    
-    // Validate IP format if provided
-    if ((start_ip && !isValidIp(start_ip)) || (end_ip && !isValidIp(end_ip)) || (gateway && !isValidIp(gateway))) {
-      return res.status(400).json({ error: 'Invalid IP address format' });
-    }
-    
-    // Check for overlapping pools (excluding current pool)
-    if (start_ip && end_ip) {
-      const overlap = await db.get(`
-        SELECT id FROM ip_pools 
-        WHERE id != ? AND (start_ip BETWEEN ? AND ? OR end_ip BETWEEN ? AND ?)
-        AND status = 'active'
-        LIMIT 1
-      `, [poolId, start_ip, end_ip, start_ip, end_ip]);
-      
-      if (overlap) {
-        return res.status(400).json({ error: 'IP range overlaps with existing pool' });
-      }
-    }
-    
-    await db.run(`
-      UPDATE ip_pools SET
-        name = COALESCE(?, name),
-        network = COALESCE(?, network),
-        gateway = COALESCE(?, gateway),
-        start_ip = COALESCE(?, start_ip),
-        end_ip = COALESCE(?, end_ip),
-        subnet_mask = COALESCE(?, subnet_mask),
-        description = COALESCE(?, description),
-        status = COALESCE(?, status),
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, [name, network, gateway, start_ip, end_ip, subnet_mask, description, status, poolId]);
-    
-    const updatedPool = await db.get('SELECT * FROM ip_pools WHERE id = ?', [poolId]);
-    res.json(updatedPool);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.delete('/api/ip-pools/:id', requireAdmin, async (req, res) => {
-  try {
-    const poolId = req.params.id;
-    
-    // Check if pool is assigned to any service
-    const assigned = await db.get(
-      'SELECT assigned_to, assigned_type FROM ip_pools WHERE id = ? AND assigned_to IS NOT NULL', 
-      [poolId]
-    );
-    
-    if (assigned) {
-      return res.status(400).json({ 
-        error: `Cannot delete IP pool: currently assigned to ${assigned.assigned_type} '${assigned.assigned_to}'` 
-      });
-    }
-    
-    await db.run('DELETE FROM ip_pools WHERE id = ?', [poolId]);
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/ip-pools/:id/assign', requireAdmin, async (req, res) => {
-  try {
-    const { assigned_to, assigned_type } = req.body;
-    
-    if (!assigned_to || !assigned_type) {
-      return res.status(400).json({ error: 'assigned_to and assigned_type are required' });
-    }
-    
-    // Validate assignment type
-    if (!['hotspot', 'pppoe', 'static'].includes(assigned_type)) {
-      return res.status(400).json({ error: 'Invalid assignment type' });
-    }
-    
-    await db.run(
-      'UPDATE ip_pools SET assigned_to = ?, assigned_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [assigned_to, assigned_type, req.params.id]
-    );
-    
-    const updatedPool = await db.get('SELECT * FROM ip_pools WHERE id = ?', [req.params.id]);
-    res.json(updatedPool);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/ip-pools/:id/unassign', requireAdmin, async (req, res) => {
-  try {
-    await db.run(
-      'UPDATE ip_pools SET assigned_to = NULL, assigned_type = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [req.params.id]
-    );
-    
-    const updatedPool = await db.get('SELECT * FROM ip_pools WHERE id = ?', [req.params.id]);
-    res.json(updatedPool);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// Helper function to convert IP to integer for range calculations
-function ipToInt(ip) {
-  return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
-}
 
 // NODEMCU FLASHER API
 app.get('/api/system/usb-devices', requireAdmin, async (req, res) => {
@@ -5409,36 +2828,6 @@ app.post('/api/system/flash-nodemcu', requireAdmin, async (req, res) => {
     console.log(`[Flasher] Success: ${stdout}`);
     res.json({ success: true, message: 'Flash complete', output: stdout });
   });
-});
-
-// MAX BANDWIDTH CONFIGURATION API ENDPOINTS
-app.get('/api/max-bandwidth', requireAdmin, async (req, res) => {
-  try {
-    const maxBandwidthRow = await db.get("SELECT value FROM config WHERE key = 'max_bandwidth_mbps'");
-    const maxBandwidth = parseInt(maxBandwidthRow?.value || '10000'); // Default to 10G
-    
-    res.json({ maxBandwidth });
-  } catch (err) { 
-    res.status(500).json({ error: err.message }); 
-  }
-});
-
-app.post('/api/max-bandwidth', requireAdmin, async (req, res) => {
-  try {
-    const { maxBandwidth } = req.body;
-    
-    // Validate input
-    if (typeof maxBandwidth !== 'number' || maxBandwidth <= 0 || maxBandwidth > 100000) { // Max 100G
-      return res.status(400).json({ error: 'Max bandwidth must be a positive number up to 100000 (100Gbps)' });
-    }
-    
-    // Save to database
-    await db.run("INSERT OR REPLACE INTO config (key, value) VALUES ('max_bandwidth_mbps', ?)", [maxBandwidth.toString()]);
-    
-    res.json({ success: true, maxBandwidth });
-  } catch (err) { 
-    res.status(500).json({ error: err.message }); 
-  }
 });
 
 // BANDWIDTH MANAGEMENT API ENDPOINTS
@@ -5686,8 +3075,8 @@ app.get('/api/devices', requireAdmin, async (req, res) => {
       }
     });
 
-    // Get all devices with their current session information (exclude deleted devices)
-    const devices = await db.all('SELECT * FROM wifi_devices WHERE is_deleted = 0 ORDER BY connected_at DESC');
+    // Get all devices with their current session information
+    const devices = await db.all('SELECT * FROM wifi_devices ORDER BY connected_at DESC');
     
     // Get all active sessions
     const sessions = await db.all('SELECT mac, ip, remaining_seconds as remainingSeconds, total_paid as totalPaid, connected_at as connectedAt, is_paused as isPaused FROM sessions WHERE remaining_seconds > 0');
@@ -5796,13 +3185,6 @@ app.post('/api/devices/scan', requireAdmin, async (req, res) => {
     
     // Update or insert scanned devices
     for (const device of scannedDevices) {
-      // Check if device was previously deleted - if so, skip it
-      const deletedDevice = await db.get('SELECT id FROM wifi_devices WHERE mac = ? AND is_deleted = 1', [device.mac]);
-      if (deletedDevice) {
-        console.log(`[DEVICE-SCAN] Skipping re-insertion of deleted device: ${device.mac}`);
-        continue;
-      }
-      
       const existingDevice = await db.get('SELECT * FROM wifi_devices WHERE mac = ?', [device.mac]);
       const session = sessionMap.get(device.mac.toUpperCase());
       
@@ -5830,8 +3212,8 @@ app.post('/api/devices/scan', requireAdmin, async (req, res) => {
       await db.run(`UPDATE wifi_devices SET is_active = 0 WHERE mac NOT IN (${placeholders}) AND mac NOT IN (SELECT mac FROM sessions WHERE remaining_seconds > 0)`, scannedMacs);
     }
     
-    // Return updated device list with session data merged (exclude deleted devices)
-    const devices = await db.all('SELECT * FROM wifi_devices WHERE is_deleted = 0 ORDER BY connected_at DESC');
+    // Return updated device list with session data merged
+    const devices = await db.all('SELECT * FROM wifi_devices ORDER BY connected_at DESC');
     
     // Merge with session data for accurate remaining time
     const formattedDevices = devices.map(device => {
@@ -5870,20 +3252,6 @@ app.get('/api/devices/:id', requireAdmin, async (req, res) => {
 app.post('/api/devices', requireAdmin, async (req, res) => {
   try {
     const { mac, ip, hostname, interface: iface, ssid, signal, customName } = req.body;
-    
-    // Check if device was previously deleted - if so, restore it instead of creating new
-    const deletedDevice = await db.get('SELECT * FROM wifi_devices WHERE mac = ? AND is_deleted = 1', [mac.toUpperCase()]);
-    if (deletedDevice) {
-      // Restore the deleted device with new information
-      await db.run(
-        'UPDATE wifi_devices SET ip = ?, hostname = ?, interface = ?, ssid = ?, signal = ?, last_seen = ?, is_active = 1, is_deleted = 0, custom_name = ? WHERE id = ?',
-        [ip, hostname || '', iface, ssid || '', signal || 0, Date.now(), customName || '', deletedDevice.id]
-      );
-      
-      const restoredDevice = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [deletedDevice.id]);
-      return res.json(restoredDevice);
-    }
-    
     const id = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const now = Date.now();
     
@@ -5933,7 +3301,7 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
     if (sessionTime !== undefined && updatedDevice.ip && updatedDevice.mac) {
       const session = await db.get('SELECT * FROM sessions WHERE mac = ?', [updatedDevice.mac]);
       if (session) {
-        // Update existing session with new time and ensure limits are synced
+        // Update session with new time and ensure limits are synced
         const newSessionUpdates = ['remaining_seconds = ?'];
         const newSessionValues = [sessionTime];
         
@@ -5947,43 +3315,10 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
           newSessionValues.push(uploadLimit !== undefined ? uploadLimit : updatedDevice.upload_limit);
         }
         
-        // Ensure session has token and 3-day expiration for MAC sync
-        if (!session.token) {
-          const sessionToken = crypto.randomBytes(32).toString('hex');
-          const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(); // 3 days
-          newSessionUpdates.push('token = ?', 'token_expires_at = ?');
-          newSessionValues.push(sessionToken, tokenExpiresAt);
-          console.log(`[ADMIN] Generated session token for ${updatedDevice.mac}: ${sessionToken} (expires: ${tokenExpiresAt})`);
-        }
-        
         newSessionValues.push(updatedDevice.mac);
         await db.run(`UPDATE sessions SET ${newSessionUpdates.join(', ')} WHERE mac = ?`, newSessionValues);
         
         console.log(`[ADMIN] Updated session for ${updatedDevice.mac}: time=${sessionTime}s, DL=${downloadLimit || updatedDevice.download_limit}, UL=${uploadLimit || updatedDevice.upload_limit}`);
-      } else {
-        // Create new session with token and 3-day expiration
-        const sessionToken = crypto.randomBytes(32).toString('hex');
-        const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(); // 3 days
-        
-        await db.run(
-          'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, download_limit, upload_limit, token, token_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [
-            updatedDevice.mac, 
-            updatedDevice.ip, 
-            sessionTime, 
-            0, 
-            Date.now(), 
-            downloadLimit !== undefined ? downloadLimit : updatedDevice.download_limit,
-            uploadLimit !== undefined ? uploadLimit : updatedDevice.upload_limit,
-            sessionToken,
-            tokenExpiresAt
-          ]
-        );
-        
-        // Register device hardware for ownership tracking
-        await registerDeviceHardware(updatedDevice.mac, 'admin_created');
-        
-        console.log(`[ADMIN] Created new session for ${updatedDevice.mac}: ${sessionToken} (${sessionTime}s, expires: ${tokenExpiresAt})`);
       }
     }
     
@@ -5998,42 +3333,9 @@ app.put('/api/devices/:id', requireAdmin, async (req, res) => {
 
 app.delete('/api/devices/:id', requireAdmin, async (req, res) => {
   try {
-    // Mark device as deleted instead of actually deleting it
-    // This prevents it from being re-added by scanning processes
-    const result = await db.run('UPDATE wifi_devices SET is_deleted = 1, is_active = 0 WHERE id = ?', [req.params.id]);
+    const result = await db.run('DELETE FROM wifi_devices WHERE id = ?', [req.params.id]);
     if (result.changes === 0) return res.status(404).json({ error: 'Device not found' });
-    
-    // Also disconnect the device if it's currently connected
-    const device = await db.get('SELECT mac, ip FROM wifi_devices WHERE id = ?', [req.params.id]);
-    if (device) {
-      try {
-        await network.blockMAC(device.mac, device.ip);
-        console.log(`[DEVICE] Disconnected deleted device: ${device.mac}`);
-      } catch (e) {
-        console.warn(`[DEVICE] Failed to disconnect deleted device ${device.mac}:`, e.message);
-      }
-    }
-    
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// Get deleted devices
-app.get('/api/devices/deleted', requireAdmin, async (req, res) => {
-  try {
-    const deletedDevices = await db.all('SELECT * FROM wifi_devices WHERE is_deleted = 1 ORDER BY last_seen DESC');
-    res.json(deletedDevices);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// Restore a deleted device
-app.post('/api/devices/:id/restore', requireAdmin, async (req, res) => {
-  try {
-    const result = await db.run('UPDATE wifi_devices SET is_deleted = 0 WHERE id = ? AND is_deleted = 1', [req.params.id]);
-    if (result.changes === 0) return res.status(404).json({ error: 'Deleted device not found' });
-    
-    const restoredDevice = await db.get('SELECT * FROM wifi_devices WHERE id = ?', [req.params.id]);
-    res.json(restoredDevice);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -6053,35 +3355,17 @@ app.post('/api/devices/:id/connect', requireAdmin, async (req, res) => {
     const sessionTime = device.session_time || 3600; // Default 1 hour
     
     if (existingSession) {
-      // Update existing session and ensure it has token for MAC sync
-      const updates = ['remaining_seconds = remaining_seconds + ?', 'ip = ?'];
-      const values = [sessionTime, device.ip];
-      
-      // Ensure session has token and 3-day expiration for MAC sync
-      if (!existingSession.token) {
-        const sessionToken = crypto.randomBytes(32).toString('hex');
-        const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(); // 3 days
-        updates.push('token = ?', 'token_expires_at = ?');
-        values.push(sessionToken, tokenExpiresAt);
-        console.log(`[ADMIN] Generated session token for existing session ${device.mac}: ${sessionToken}`);
-      }
-      
-      values.push(device.mac);
-      await db.run(`UPDATE sessions SET ${updates.join(', ')} WHERE mac = ?`, values);
-    } else {
-      // Create new session with token and 3-day expiration
-      const sessionToken = crypto.randomBytes(32).toString('hex');
-      const tokenExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(); // 3 days
-      
+      // Update existing session
       await db.run(
-        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, token, token_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [device.mac, device.ip, sessionTime, 0, Date.now(), sessionToken, tokenExpiresAt]
+        'UPDATE sessions SET remaining_seconds = remaining_seconds + ?, ip = ? WHERE mac = ?',
+        [sessionTime, device.ip, device.mac]
       );
-      
-      // Register device hardware for ownership tracking
-      await registerDeviceHardware(device.mac, 'admin_created');
-      
-      console.log(`[ADMIN] Created new session for ${device.mac}: ${sessionToken} (${sessionTime}s)`);
+    } else {
+      // Create new session
+      await db.run(
+        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at) VALUES (?, ?, ?, ?, ?)',
+        [device.mac, device.ip, sessionTime, 0, Date.now()]
+      );
     }
     
     res.json({ success: true, sessionTime });
@@ -6409,32 +3693,10 @@ async function bootupRestore(isRestricted = false) {
   
   // 0. Restore VLANs
   try {
-    // Skip VLAN restoration on Windows (no ip command available)
-    if (process.platform === 'win32') {
-      console.log('[AJC] Skipping VLAN restoration on Windows platform');
-    } else {
-      const vlans = await db.all('SELECT * FROM vlans');
-      
-      if (vlans.length > 0) {
-        console.log(`[AJC] Restoring ${vlans.length} VLANs...`);
-        
-        for (const v of vlans) {
-          // Check if parent interface exists before creating VLAN
-          try {
-            await execPromise(`ip link show ${v.parent}`);
-            console.log(`[AJC] Restoring VLAN ${v.name} (${v.parent}.${v.id})`);
-            await network.createVlan(v);
-          } catch (checkError) {
-            if (checkError.message.includes('does not exist')) {
-              console.warn(`[AJC] Skipping VLAN ${v.name} - parent interface ${v.parent} does not exist`);
-            } else {
-              console.error(`[AJC] VLAN Restore Failed for ${v.name}: ${checkError.message}`);
-            }
-          }
-        }
-      } else {
-        console.log('[AJC] No VLANs to restore');
-      }
+    const vlans = await db.all('SELECT * FROM vlans');
+    for (const v of vlans) {
+      console.log(`[AJC] Restoring VLAN ${v.name} on ${v.parent} ID ${v.id}...`);
+      await network.createVlan(v).catch(e => console.error(`[AJC] VLAN Restore Failed: ${e.message}`));
     }
   } catch (e) { console.error('[AJC] Failed to load VLANs from DB', e); }
 
@@ -6666,22 +3928,11 @@ server.listen(80, '0.0.0.0', async () => {
   // Start Background Timers only after DB is initialized
   setInterval(async () => {
     try {
-      // Clean up sessions with no remaining time
       const expired = await db.all('SELECT mac, ip FROM sessions WHERE remaining_seconds <= 0');
       for (const s of expired) {
         await network.blockMAC(s.mac, s.ip);
         await db.run('DELETE FROM sessions WHERE mac = ?', [s.mac]);
       }
-      
-      // Clean up sessions with expired tokens (3-day expiration)
-      const expiredTokens = await db.all('SELECT mac, ip FROM sessions WHERE token_expires_at IS NOT NULL AND token_expires_at < datetime("now")');
-      for (const s of expiredTokens) {
-        console.log(`[AUTH] Removing session with expired token: ${s.mac}`);
-        await network.blockMAC(s.mac, s.ip);
-        await db.run('DELETE FROM sessions WHERE mac = ?', [s.mac]);
-      }
-      
-      // Decrement remaining seconds for active sessions
       await db.run('UPDATE sessions SET remaining_seconds = remaining_seconds - 1 WHERE remaining_seconds > 0 AND (is_paused = 0 OR is_paused IS NULL)');
     } catch (e) { console.error(e); }
   }, 1000);

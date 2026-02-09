@@ -40,6 +40,9 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+const UNAUTH_LOG_TTL_MS = 5 * 60 * 1000;
+const unauthSeen = new Map();
+
 function getCookie(req, name) {
   const cookieHeader = req.headers.cookie;
   if (!cookieHeader) return null;
@@ -1350,6 +1353,18 @@ app.get('/api/whoami', async (req, res) => {
     canOperate,
     canInsertCoin
   });
+  try {
+    if (mac) {
+      const session = await db.get('SELECT remaining_seconds FROM sessions WHERE mac = ?', [mac]);
+      const now = Date.now();
+      const last = unauthSeen.get(mac);
+      const shouldLog = !last || (now - last) > UNAUTH_LOG_TTL_MS;
+      if (shouldLog && (!session || !session.remaining_seconds || session.remaining_seconds <= 0)) {
+        unauthSeen.set(mac, now);
+        console.log(`[AUTH] Device with no active time detected: MAC=${mac} | IP=${clientIp}`);
+      }
+    }
+  } catch (e) {}
 });
 
 app.post('/api/coinslot/reserve', async (req, res) => {

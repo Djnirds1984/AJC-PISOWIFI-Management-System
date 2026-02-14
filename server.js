@@ -1612,6 +1612,20 @@ app.post('/api/sessions/start', async (req, res) => {
           migratedOldIp = sessionByToken.ip;
           tokenToUse = requestedToken;
         }
+      } else {
+        const existingByMac = await db.get('SELECT * FROM sessions WHERE mac = ?', [mac]);
+        if (existingByMac) {
+          await db.run(
+            'UPDATE sessions SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, download_limit = ?, upload_limit = ?, token = ? WHERE mac = ?',
+            [seconds, pesos, clientIp, downloadLimit, uploadLimit, requestedToken, mac]
+          );
+        } else {
+          await db.run(
+            'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, download_limit, upload_limit, token) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [mac, clientIp, seconds, pesos, downloadLimit, uploadLimit, requestedToken]
+          );
+        }
+        tokenToUse = requestedToken;
       }
     }
 
@@ -4171,6 +4185,20 @@ app.post('/api/vouchers/activate', async (req, res) => {
           migratedOldIp = sessionByToken.ip;
           tokenToUse = requestedToken;
         }
+      } else {
+        const existingByMac = await db.get('SELECT * FROM sessions WHERE mac = ?', [mac]);
+        if (existingByMac) {
+          await db.run(
+            'UPDATE sessions SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, token = ? WHERE mac = ?',
+            [seconds, amount, clientIp, requestedToken, mac]
+          );
+        } else {
+          await db.run(
+            'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, token) VALUES (?, ?, ?, ?, ?)',
+            [mac, clientIp, seconds, amount, requestedToken]
+          );
+        }
+        tokenToUse = requestedToken;
       }
     }
 

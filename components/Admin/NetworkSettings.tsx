@@ -34,6 +34,17 @@ const NetworkSettings: React.FC = () => {
   const [bridge, setBridge] = useState({ name: 'br0', members: [] as string[], stp: false });
   const [bridges, setBridges] = useState<any[]>([]);
 
+  const makeSafeVlanName = (parent: string, id: number) => {
+    const base = (parent || '').split('.')[0];
+    const suffix = `.${id}`;
+    const maxLen = 15;
+    const candidate = `${base}${suffix}`;
+    if (candidate.length <= maxLen) return candidate;
+    const allowed = maxLen - suffix.length;
+    if (allowed <= 0) return `v${id}`;
+    return `${base.slice(0, allowed)}${suffix}`;
+  };
+
 
 
   useEffect(() => { loadData(); }, []);
@@ -285,7 +296,7 @@ const NetworkSettings: React.FC = () => {
                 <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Parent</label>
                 <select 
                   value={vlan.parentInterface}
-                  onChange={e => setVlan({...vlan, parentInterface: e.target.value, name: `${e.target.value}.${vlan.id}`})}
+                  onChange={e => setVlan({...vlan, parentInterface: e.target.value, name: makeSafeVlanName(e.target.value, vlan.id)})}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
                 >
                   {interfaces.filter(i => i.type === 'ethernet' || i.name.startsWith('wlan')).map(i => <option key={i.name} value={i.name}>{i.name}</option>)}
@@ -293,7 +304,7 @@ const NetworkSettings: React.FC = () => {
               </div>
               <div>
                 <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">VLAN ID</label>
-                <input type="number" value={vlan.id} onChange={e => setVlan({...vlan, id: parseInt(e.target.value), name: `${vlan.parentInterface}.${e.target.value}`})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono" />
+                <input type="number" value={vlan.id} onChange={e => setVlan({...vlan, id: parseInt(e.target.value), name: makeSafeVlanName(vlan.parentInterface, parseInt(e.target.value))})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono" />
               </div>
             </div>
             <button onClick={generateVlan} disabled={loading} className="w-full bg-slate-900 text-white py-2 rounded-lg font-black text-[9px] uppercase tracking-widest">Create: {vlan.name}</button>

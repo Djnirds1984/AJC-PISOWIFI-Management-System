@@ -2848,10 +2848,10 @@ app.get('/api/network/vlans', requireAdmin, async (req, res) => {
 
 app.post('/api/network/vlan', requireAdmin, async (req, res) => {
   try {
-    await network.createVlan(req.body);
+    const createdName = await network.createVlan(req.body);
     await db.run('INSERT OR REPLACE INTO vlans (name, parent, id) VALUES (?, ?, ?)', 
-      [req.body.name, req.body.parent, req.body.id]);
-    res.json({ success: true });
+      [createdName, req.body.parent, req.body.id]);
+    res.json({ success: true, name: createdName });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

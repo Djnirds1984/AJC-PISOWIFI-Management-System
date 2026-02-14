@@ -23,10 +23,13 @@ class VoucherService {
         code: code.trim().toUpperCase()
       };
 
+      const sessionToken = typeof window !== 'undefined' ? localStorage.getItem('ajc_session_token') || '' : '';
+
       const response = await fetch(`${this.baseUrl}/api/vouchers/activate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(sessionToken ? { 'x-session-token': sessionToken } : {})
         },
         body: JSON.stringify(requestBody)
       });

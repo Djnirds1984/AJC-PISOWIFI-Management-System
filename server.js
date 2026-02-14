@@ -4110,6 +4110,7 @@ app.post('/api/vouchers/activate', async (req, res) => {
     const { code } = req.body;
     const clientIp = req.ip.replace('::ffff:', '');
     const mac = await getMacFromIp(clientIp);
+    const requestedToken = getSessionToken(req);
     
     // Validation
     if (!code || typeof code !== 'string') {
@@ -4139,18 +4140,55 @@ app.post('/api/vouchers/activate', async (req, res) => {
     const seconds = voucher.time_minutes * 60;
     const amount = voucher.amount;
     
-    // Get existing token or generate new one
-    const existingSession = await db.get('SELECT token FROM sessions WHERE mac = ?', [mac]);
-    const token = existingSession && existingSession.token ? existingSession.token : crypto.randomBytes(16).toString('hex');
+    // Prefer the browser-provided token to keep session identity stable across MAC changes
+    let tokenToUse = requestedToken || null;
+    let migratedOldMac = null;
+    let migratedOldIp = null;
+    if (requestedToken) {
+      const sessionByToken = await db.get('SELECT * FROM sessions WHERE token = ?', [requestedToken]);
+      if (sessionByToken) {
+        if (sessionByToken.mac === mac) {
+          await db.run(
+            'UPDATE sessions SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ? WHERE token = ?',
+            [seconds, amount, clientIp, requestedToken]
+          );
+          tokenToUse = requestedToken;
+        } else {
+          const targetSession = await db.get('SELECT * FROM sessions WHERE mac = ?', [mac]);
+          let extraTime = 0;
+          let extraPaid = 0;
+          if (targetSession) {
+            extraTime = targetSession.remaining_seconds || 0;
+            extraPaid = targetSession.total_paid || 0;
+            await db.run('DELETE FROM sessions WHERE mac = ?', [mac]);
+          }
+          await db.run('DELETE FROM sessions WHERE mac = ?', [sessionByToken.mac]);
+          await db.run(
+            'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, connected_at, token) VALUES (?, ?, ?, ?, ?, ?)',
+            [mac, clientIp, (sessionByToken.remaining_seconds || 0) + extraTime + seconds, (sessionByToken.total_paid || 0) + extraPaid + amount, sessionByToken.connected_at, requestedToken]
+          );
+          migratedOldMac = sessionByToken.mac;
+          migratedOldIp = sessionByToken.ip;
+          tokenToUse = requestedToken;
+        }
+      }
+    }
+
+    // Fallback: get existing token by current MAC or generate a new one
+    if (!tokenToUse) {
+      const existingSession = await db.get('SELECT token FROM sessions WHERE mac = ?', [mac]);
+      tokenToUse = existingSession && existingSession.token ? existingSession.token : crypto.randomBytes(16).toString('hex');
+      await db.run(
+        'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, token) VALUES (?, ?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, token = ?',
+        [mac, clientIp, seconds, amount, tokenToUse, seconds, amount, clientIp, tokenToUse]
+      );
+    }
     
-    // Start session - no speed limits for vouchers
-    await db.run(
-      'INSERT INTO sessions (mac, ip, remaining_seconds, total_paid, token) VALUES (?, ?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET remaining_seconds = remaining_seconds + ?, total_paid = total_paid + ?, ip = ?, token = ?',
-      [mac, clientIp, seconds, amount, token, seconds, amount, clientIp, token]
-    );
-    
-    // Whitelist the device in firewall
+    // Whitelist the device in firewall and, if migrated, block the old MAC
     await network.whitelistMAC(mac, clientIp);
+    if (migratedOldMac && migratedOldIp) {
+      await network.blockMAC(migratedOldMac, migratedOldIp);
+    }
     
     // Mark voucher as used
     await db.run(
@@ -4163,15 +4201,15 @@ app.post('/api/vouchers/activate', async (req, res) => {
     const afterSession = await db.get('SELECT remaining_seconds FROM sessions WHERE mac = ?', [mac]);
     const totalSeconds = afterSession?.remaining_seconds || seconds;
     const totalMinutes = Math.floor(totalSeconds / 60);
-    console.log(`[VOUCHER] Total time now: ${totalMinutes}m (${totalSeconds}s) | Session ID: ${token}`);
+    console.log(`[VOUCHER] Total time now: ${totalMinutes}m (${totalSeconds}s) | Session ID: ${tokenToUse}`);
     
     try {
-      res.cookie('ajc_session_token', token, { path: '/', maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'lax' });
+      res.cookie('ajc_session_token', tokenToUse, { path: '/', maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'lax' });
     } catch (e) {}
     res.status(200).json({ 
       success: true, 
       mac, 
-      token, 
+      token: tokenToUse, 
       time_minutes: voucher.time_minutes,
       amount: voucher.amount,
       message: 'Internet access granted! Your session will start shortly. Please refresh your browser if connection is not established.'

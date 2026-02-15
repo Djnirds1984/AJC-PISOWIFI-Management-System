@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import React, { useState, useEffect, useMemo } from 'react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from 'recharts';
 import { UserSession, SystemStats } from '../../types';
 import { apiClient } from '../../lib/api';
 
@@ -20,18 +20,33 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
   const [history, setHistory] = useState<Record<string, InterfaceDataPoint[]>>({});
   const [availableInterfaces, setAvailableInterfaces] = useState<string[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [pppoeOnline, setPppoeOnline] = useState<number>(0);
+  const [machineMetrics, setMachineMetrics] = useState<{ cpuTemp?: number; uptime?: number; storageUsed?: number; storageTotal?: number } | null>(null);
+  const [cpuHistory, setCpuHistory] = useState<{ time: string; load: number }[]>([]);
 
   useEffect(() => {
     // Fetch available interfaces and system info once on mount
     const fetchInitData = async () => {
       try {
-        const [ifaceData, infoData] = await Promise.all([
+        const [ifaceData, infoData, pppoeData, machineData] = await Promise.all([
           apiClient.getSystemInterfaces(),
-          apiClient.getSystemInfo()
+          apiClient.getSystemInfo(),
+          apiClient.getPPPoESessions().catch(() => []),
+          apiClient.getMachineStatus().catch(() => null)
         ]);
         
         setAvailableInterfaces(ifaceData);
         setSysInfo(infoData);
+        setPppoeOnline(Array.isArray(pppoeData) ? pppoeData.length : 0);
+        if (machineData && machineData.metrics) {
+          const m = machineData.metrics;
+          setMachineMetrics({
+            cpuTemp: m.cpuTemp ?? m.cpu_temp,
+            uptime: m.uptime ?? m.uptime_seconds,
+            storageUsed: m.storageUsed ?? m.storage_used,
+            storageTotal: m.storageTotal ?? m.storage_total
+          });
+        }
       } catch (err) {
         console.error('Failed to fetch init data', err);
       }
@@ -45,6 +60,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
         
         // Update history
         const now = new Date().toLocaleTimeString();
+        setCpuHistory(prev => [...prev, { time: now, load: data.cpu?.load || 0 }].slice(-30));
         setHistory(prev => {
           const newHistory = { ...prev };
           data.network.forEach(net => {
@@ -85,6 +101,47 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
     setActiveGraphs(activeGraphs.filter(g => g !== iface));
   };
 
+  const aggHistory = useMemo(() => {
+    const times: string[] = [];
+    Object.values(history).forEach(arr => arr.forEach(p => { if (!times.includes(p.time)) times.push(p.time); }));
+    return times.map(t => {
+      let rx = 0;
+      let tx = 0;
+      Object.values(history).forEach(arr => {
+        const found = arr.find(p => p.time === t);
+        if (found) {
+          rx += found.rx;
+          tx += found.tx;
+        }
+      });
+      return { time: t, rx, tx };
+    });
+  }, [history]);
+
+  const sumRevenue = (range: 'today' | '7d' | 'month' | 'year') => {
+    const now = new Date();
+    return sessions
+      .filter(s => {
+        const d = new Date(s.connectedAt);
+        if (range === 'today') {
+          return d.toDateString() === now.toDateString();
+        }
+        if (range === '7d') {
+          const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
+          return diff <= 7;
+        }
+        if (range === 'month') {
+          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        }
+        return d.getFullYear() === now.getFullYear();
+      })
+      .reduce((acc, s) => acc + (s.totalPaid || 0), 0);
+  };
+
+  const hotspotConnected = sessions.filter(s => !s.isPaused && s.remainingSeconds > 0).length;
+  const hotspotPaused = sessions.filter(s => s.isPaused).length;
+  const hotspotDisconnected = 0;
+
   if (!stats) return (
     <div className="flex flex-col items-center justify-center min-h-[400px] text-slate-400">
         <div className="animate-spin text-4xl mb-4">⚙️</div>
@@ -94,167 +151,167 @@ const Analytics: React.FC<AnalyticsProps> = ({ sessions }) => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20">
-      
-      {/* System Hardware Info */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* CPU Card */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-           <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Processor</h3>
-                {sysInfo && (
-                    <div className="text-[10px] font-bold text-blue-600 mt-0.5">
-                        {sysInfo.manufacturer} {sysInfo.model}
-                    </div>
-                )}
-                <p className="text-sm font-black text-slate-800 mt-0.5">{stats.cpu?.brand || 'CPU'}</p>
-              </div>
-              <div className="bg-blue-50 text-blue-600 p-2 rounded-lg">
-                <span className="text-lg">⚡</span>
-              </div>
-           </div>
-           
-           <div className="space-y-3">
-              <div className="flex justify-between text-[10px] font-bold text-slate-500">
-                 <span>Load</span>
-                 <span>{stats.cpu?.load?.toFixed(1) || 0}%</span>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                 <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: `${stats.cpu?.load || 0}%` }}></div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-100">
-                 <StatItem label="Cores" value={stats.cpu?.cores?.toString() || 'N/A'} />
-                 <StatItem label="Speed" value={`${stats.cpu?.speed || 'N/A'} GHz`} />
-                 <StatItem label="Temp" value={`${stats.cpu?.temp?.toFixed(1) || 'N/A'}°C`} />
-              </div>
-           </div>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">System Info</h3>
+              <div className="text-sm font-black text-slate-800 mt-0.5">{sysInfo ? `${sysInfo.manufacturer} ${sysInfo.model}` : 'Device'}</div>
+              <div className="text-[10px] font-bold text-slate-500 mt-0.5">{sysInfo ? `${sysInfo.distro} / ${sysInfo.arch}` : ''}</div>
+            </div>
+            <div className="bg-slate-100 text-slate-700 p-2 rounded-lg">🖥️</div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <StatItem label="CPU Temp" value={`${(stats.cpu?.temp ?? machineMetrics?.cpuTemp ?? 0).toFixed ? (stats.cpu?.temp ?? machineMetrics?.cpuTemp ?? 0).toFixed(1) : stats.cpu?.temp ?? machineMetrics?.cpuTemp ?? 'N/A'}°C`} />
+            <StatItem label="RAM Usage" value={`${((stats.memory.used / stats.memory.total) * 100).toFixed(1)}%`} />
+            <StatItem label="Storage" value={
+              machineMetrics?.storageTotal && machineMetrics?.storageUsed !== undefined
+                ? `Used: ${((machineMetrics.storageUsed / 1024 / 1024 / 1024)).toFixed(1)} / ${(machineMetrics.storageTotal / 1024 / 1024 / 1024).toFixed(1)} GB`
+                : 'N/A'
+            } />
+            <StatItem label="Uptime" value={
+              machineMetrics?.uptime
+                ? (() => { const s = machineMetrics.uptime as number; const d = Math.floor(s / 86400); const h = Math.floor((s % 86400) / 3600); return d > 0 ? `${d}d ${h}h` : `${h}h`; })()
+                : 'N/A'
+            } />
+          </div>
         </div>
-
-        {/* Memory Card */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-           <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Memory</h3>
-                <p className="text-sm font-black text-slate-800 mt-0.5">{(stats.memory.total / 1024 / 1024 / 1024).toFixed(1)} GB Total</p>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">CPU Usage</h3>
+              <div className="text-sm font-black text-slate-800 mt-0.5">AVG</div>
+            </div>
+            <div className="bg-blue-50 text-blue-600 p-2 rounded-lg">⚡</div>
+          </div>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex-1 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+              <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: `${stats.cpu?.load || 0}%` }}></div>
+            </div>
+            <div className="text-[10px] font-bold text-slate-600">{stats.cpu?.load?.toFixed(1) || 0}%</div>
+          </div>
+          <div className="h-[120px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={cpuHistory}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="time" hide />
+                <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 9}} />
+                <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontSize: '10px' }} formatter={(val: number) => [`${val.toFixed(1)}%`]} />
+                <Line type="monotone" dataKey="load" stroke="#3b82f6" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-100">
+            <StatItem label="Cores" value={stats.cpu?.cores?.toString() || 'N/A'} />
+            <StatItem label="Speed" value={`${stats.cpu?.speed || 'N/A'} GHz`} />
+            <StatItem label="Brand" value={stats.cpu?.brand || 'CPU'} />
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Clients Status</h3>
+            </div>
+            <div className="bg-emerald-50 text-emerald-600 p-2 rounded-lg">👥</div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Hotspot</div>
+              <div className="grid grid-cols-3 gap-2">
+                <StatItem label="Connected" value={String(hotspotConnected)} />
+                <StatItem label="Paused" value={String(hotspotPaused)} />
+                <StatItem label="Disconnected" value={String(hotspotDisconnected)} />
               </div>
-              <div className="bg-purple-50 text-purple-600 p-2 rounded-lg">
-                <span className="text-lg">🧠</span>
+            </div>
+            <div>
+              <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">PPPoE</div>
+              <div className="grid grid-cols-3 gap-2">
+                <StatItem label="Online" value={String(pppoeOnline)} />
+                <StatItem label="Offline" value="0" />
+                <StatItem label="Expired" value="0" />
               </div>
-           </div>
-           
-           <div className="space-y-3">
-              <div className="flex justify-between text-[10px] font-bold text-slate-500">
-                 <span>Used</span>
-                 <span>{((stats.memory.used / stats.memory.total) * 100).toFixed(1)}%</span>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                 <div className="bg-purple-500 h-full rounded-full transition-all duration-500" style={{ width: `${(stats.memory.used / stats.memory.total) * 100}%` }}></div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-100">
-                 <StatItem label="Free" value={`${(stats.memory.free / 1024 / 1024 / 1024).toFixed(1)} GB`} />
-                 <StatItem label="Active" value={`${(stats.memory.active / 1024 / 1024 / 1024).toFixed(1)} GB`} />
-                 <StatItem label="Avail" value={`${(stats.memory.available / 1024 / 1024 / 1024).toFixed(1)} GB`} />
-              </div>
-           </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Interface Graphs */}
-      <div className="space-y-3">
-        <div className="flex justify-between items-center">
-            <h3 className="text-sm font-bold text-slate-800">Network Interfaces</h3>
-            
-            <div className="relative">
-                <button 
-                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                    className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-slate-800 transition-colors flex items-center gap-2"
-                >
-                    <span>+ Add Graph</span>
-                </button>
-                {isDropdownOpen && (
-                    <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-xl border border-slate-100 overflow-hidden z-10 max-h-48 overflow-y-auto">
-                        {availableInterfaces.filter(i => !activeGraphs.includes(i)).map(iface => (
-                            <button  
-                                key={iface}
-                                onClick={() => addGraph(iface)}
-                                className="w-full text-left px-3 py-2 text-[10px] font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors"
-                            >
-                                {iface}
-                            </button>
-                        ))}
-                    </div>
-                )}
-            </div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <RevenueCard title="Daily Revenue" amount={sumRevenue('today')} subtitle="Today" />
+        <RevenueCard title="Weekly Revenue" amount={sumRevenue('7d')} subtitle="Last 7 Days" />
+        <RevenueCard title="Monthly Revenue" amount={sumRevenue('month')} subtitle="This Month" />
+        <RevenueCard title="Yearly Revenue" amount={sumRevenue('year')} subtitle="This Year" />
+      </div>
 
-        <div className="grid grid-cols-1 gap-4">
-            {activeGraphs.map(iface => (
-                <div key={iface} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
-                    <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                            <h3 className="text-xs font-bold text-slate-700">{iface}</h3>
-                        </div>
-                        <button 
-                            onClick={() => removeGraph(iface)}
-                            className="text-slate-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 rounded-md"
-                        >
-                            <span className="text-lg">×</span>
-                        </button>
-                    </div>
-                    <div className="h-[150px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={history[iface] || []}>
-                                <defs>
-                                    <linearGradient id={`gradRx-${iface}`} x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
-                                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                                    </linearGradient>
-                                    <linearGradient id={`gradTx-${iface}`} x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
-                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                <XAxis dataKey="time" hide />
-                                <YAxis 
-                                    tickFormatter={(val) => `${val.toFixed(1)}M`} 
-                                    axisLine={false} 
-                                    tickLine={false} 
-                                    tick={{fill: '#94a3b8', fontSize: 9}} 
-                                />
-                                <Tooltip 
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontSize: '10px' }}
-                                    formatter={(val: number) => [`${val.toFixed(2)} Mb/s`]}
-                                />
-                                <Area 
-                                    type="monotone" 
-                                    dataKey="rx" 
-                                    stroke="#3b82f6" 
-                                    strokeWidth={1.5}
-                                    fill={`url(#gradRx-${iface})`} 
-                                    isAnimationActive={false}
-                                />
-                                <Area 
-                                    type="monotone" 
-                                    dataKey="tx" 
-                                    stroke="#10b981" 
-                                    strokeWidth={1.5}
-                                    fill={`url(#gradTx-${iface})`} 
-                                    isAnimationActive={false}
-                                />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    </div>
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Traffic Overview</div>
+            <div className="text-[10px] font-bold text-slate-500">All Interfaces (Aggregate)</div>
+          </div>
+        </div>
+        <div className="h-[200px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={aggHistory}>
+              <defs>
+                <linearGradient id={`gradRx-agg`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id={`gradTx-agg`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="time" hide />
+              <YAxis tickFormatter={(val) => `${Number(val).toFixed(1)}M`} axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 9}} />
+              <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontSize: '10px' }} formatter={(val: number) => [`${val.toFixed(2)} Mb/s`]} />
+              <Area type="monotone" dataKey="rx" stroke="#3b82f6" strokeWidth={1.5} fill={`url(#gradRx-agg)`} isAnimationActive={false} />
+              <Area type="monotone" dataKey="tx" stroke="#10b981" strokeWidth={1.5} fill={`url(#gradTx-agg)`} isAnimationActive={false} />
+              <Legend />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Top Vendo</div>
+            <select className="text-[10px] border border-slate-200 rounded-md px-2 py-1">
+              <option>This Month</option>
+              <option>Today</option>
+            </select>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-black text-slate-800">Main Vendo</div>
+            <div className="text-sm font-black text-slate-800">₱{sumRevenue('month').toFixed(2)}</div>
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm lg:col-span-2">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Top 5 Clients by Sales</div>
+            <select className="text-[10px] border border-slate-200 rounded-md px-2 py-1">
+              <option>This Month</option>
+              <option>Today</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            {sessions
+              .slice()
+              .sort((a, b) => (b.totalPaid || 0) - (a.totalPaid || 0))
+              .slice(0, 5)
+              .map((s, idx) => (
+                <div key={idx} className="flex items-center justify-between border border-slate-100 rounded-lg p-2">
+                  <div className="text-[10px] font-bold text-slate-600">User: {s.mac}</div>
+                  <div className="text-[10px] font-black text-slate-800">₱{(s.totalPaid || 0).toFixed(2)}</div>
                 </div>
-            ))}
-            {activeGraphs.length === 0 && (
-                <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-                    <p className="text-slate-500 text-[10px] font-bold">No active graphs. Add one to monitor traffic.</p>
-                </div>
+              ))
+            }
+            {sessions.length === 0 && (
+              <div className="text-center text-[10px] font-bold text-slate-400">No data</div>
             )}
+          </div>
         </div>
       </div>
 
@@ -302,6 +359,14 @@ const StatItem: React.FC<{ label: string; value: string }> = ({ label, value }) 
         <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">{label}</span>
         <span className="block text-sm font-bold text-slate-700 truncate">{value}</span>
     </div>
+);
+
+const RevenueCard: React.FC<{ title: string; amount: number; subtitle: string }> = ({ title, amount, subtitle }) => (
+  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</div>
+    <div className="text-2xl font-black text-slate-800">₱{amount.toFixed(2)}</div>
+    <div className="text-[10px] font-bold text-slate-400 mt-1">{subtitle}</div>
+  </div>
 );
 
 export default Analytics;

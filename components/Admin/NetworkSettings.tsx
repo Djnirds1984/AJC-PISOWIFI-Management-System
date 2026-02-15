@@ -23,7 +23,7 @@ const NetworkSettings: React.FC = () => {
     interface: '',
     ip_address: '10.0.10.1',
     dhcp_range: '10.0.10.50,10.0.10.250',
-    netmask: '255.255.255.0',
+    netmask: '255.255.240.0',
     dhcp_start: '10.0.10.50',
     dhcp_end: '10.0.10.250',
     dhcp_gateway: '10.0.10.1',
@@ -167,6 +167,45 @@ const NetworkSettings: React.FC = () => {
         : [...prev.members, iface]
     }));
   };
+
+  const [editHS, setEditHS] = useState<Partial<HotspotInstance> & { netmask?: string; dhcp_start?: string; dhcp_end?: string; dhcp_gateway?: string } | null>(null);
+  const startEdit = (hs: HotspotInstance) => {
+    const parts = String(hs.dhcp_range || '').split(',');
+    const start = parts[0] || '';
+    const end = parts[1] || '';
+    const gw = (hs as any).dhcp_gateway || hs.ip_address;
+    setEditHS({
+      interface: hs.interface,
+      ip_address: gw,
+      dhcp_start: start,
+      dhcp_end: end,
+      dhcp_gateway: gw,
+      netmask: (hs as any).netmask || '255.255.240.0',
+      bandwidth_limit: hs.bandwidth_limit
+    });
+  };
+  const saveHotspotEdit = async () => {
+    if (!editHS || !editHS.interface) return;
+    const gateway = editHS.dhcp_gateway || editHS.ip_address;
+    const start = editHS.dhcp_start || '';
+    const end = editHS.dhcp_end || '';
+    if (!gateway || !start || !end) return alert('Complete DHCP fields!');
+    try {
+      setLoading(true);
+      await apiClient.createHotspot({
+        interface: editHS.interface,
+        ip_address: gateway,
+        dhcp_range: `${start},${end}`,
+        bandwidth_limit: editHS.bandwidth_limit || 10,
+        netmask: editHS.netmask
+      });
+      await loadData();
+      setEditHS(null);
+      alert('Portal Segment Updated!');
+    } catch (e) { alert('Failed to update Hotspot.'); }
+    finally { setLoading(false); }
+  };
+  const cancelEdit = () => setEditHS(null);
 
   // PPPoE Server Functions
 
@@ -324,10 +363,53 @@ const NetworkSettings: React.FC = () => {
                    )}
                  </div>
                </div>
-               <button onClick={() => deleteHotspot(hs.interface)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg font-black text-[8px] uppercase hover:bg-red-100 transition-opacity opacity-0 group-hover:opacity-100">Terminate</button>
+               <div className="flex items-center gap-2">
+                 <button onClick={() => startEdit(hs)} className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-black text-[8px] uppercase hover:bg-blue-100 transition-opacity opacity-0 group-hover:opacity-100">Edit</button>
+                 <button onClick={() => deleteHotspot(hs.interface)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg font-black text-[8px] uppercase hover:bg-red-100 transition-opacity opacity-0 group-hover:opacity-100">Terminate</button>
+               </div>
              </div>
           )) : (
             <div className="py-10 text-center border-2 border-dashed border-slate-200 rounded-xl text-slate-300 text-[10px] font-black uppercase">No Active Segments</div>
+          )}
+          {editHS && (
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Edit: {editHS.interface}</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">DHCP Start</label>
+                  <input type="text" value={editHS.dhcp_start || ''} onChange={e => setEditHS({ ...(editHS as any), dhcp_start: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono" />
+                </div>
+                <div>
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">DHCP End</label>
+                  <input type="text" value={editHS.dhcp_end || ''} onChange={e => setEditHS({ ...(editHS as any), dhcp_end: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono" />
+                </div>
+                <div>
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Gateway</label>
+                  <input type="text" value={editHS.dhcp_gateway || ''} onChange={e => setEditHS({ ...(editHS as any), dhcp_gateway: e.target.value, ip_address: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Bitmask</label>
+                <select
+                  value={editHS.netmask || '255.255.240.0'}
+                  onChange={e => setEditHS({ ...(editHS as any), netmask: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
+                >
+                  <option value="255.255.255.0">/24 • 256 total • 254 usable</option>
+                  <option value="255.255.254.0">/23 • 512 total • 510 usable</option>
+                  <option value="255.255.252.0">/22 • 1024 total • 1022 usable</option>
+                  <option value="255.255.248.0">/21 • 2048 total • 2046 usable</option>
+                  <option value="255.255.240.0">/20 • 4096 total • 4094 usable</option>
+                  <option value="255.255.224.0">/19 • 8192 total • 8190 usable</option>
+                  <option value="255.255.192.0">/18 • 16384 total • 16382 usable</option>
+                  <option value="255.255.0.0">/16 • 65536 total • 65534 usable</option>
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={saveHotspotEdit} disabled={loading} className="bg-slate-900 text-white px-3 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest">Save Changes</button>
+                <button onClick={cancelEdit} className="border border-slate-300 text-slate-600 px-3 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest">Cancel</button>
+              </div>
+            </div>
           )}
         </div>
       </section>

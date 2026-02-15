@@ -278,14 +278,14 @@ const NetworkSettings: React.FC = () => {
                 onChange={e => setNewHS({ ...newHS, netmask: e.target.value })}
                 className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-bold text-white outline-none"
               >
-                <option value="255.255.255.0" className="bg-blue-600">255.255.255.0 (/24)</option>
-                <option value="255.255.254.0" className="bg-blue-600">255.255.254.0 (/23)</option>
-                <option value="255.255.252.0" className="bg-blue-600">255.255.252.0 (/22)</option>
-                <option value="255.255.248.0" className="bg-blue-600">255.255.248.0 (/21)</option>
-                <option value="255.255.240.0" className="bg-blue-600">255.255.240.0 (/20)</option>
-                <option value="255.255.224.0" className="bg-blue-600">255.255.224.0 (/19)</option>
-                <option value="255.255.192.0" className="bg-blue-600">255.255.192.0 (/18)</option>
-                <option value="255.255.0.0" className="bg-blue-600">255.255.0.0 (/16)</option>
+                <option value="255.255.255.0" className="bg-blue-600">/24 • 256 total • 254 usable</option>
+                <option value="255.255.254.0" className="bg-blue-600">/23 • 512 total • 510 usable</option>
+                <option value="255.255.252.0" className="bg-blue-600">/22 • 1024 total • 1022 usable</option>
+                <option value="255.255.248.0" className="bg-blue-600">/21 • 2048 total • 2046 usable</option>
+                <option value="255.255.240.0" className="bg-blue-600">/20 • 4096 total • 4094 usable</option>
+                <option value="255.255.224.0" className="bg-blue-600">/19 • 8192 total • 8190 usable</option>
+                <option value="255.255.192.0" className="bg-blue-600">/18 • 16384 total • 16382 usable</option>
+                <option value="255.255.0.0" className="bg-blue-600">/16 • 65536 total • 65534 usable</option>
               </select>
             </div>
             <div className="grid grid-cols-3 gap-2">

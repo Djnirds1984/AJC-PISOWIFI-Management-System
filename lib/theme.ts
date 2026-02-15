@@ -1,6 +1,6 @@
 import { apiClient } from './api';
 
-export type ThemeId = 'default' | 'dark' | 'eco' | 'terminal';
+export type ThemeId = 'default' | 'neofi' | 'dark' | 'eco' | 'terminal';
 
 export interface ThemeConfig {
   id: ThemeId;
@@ -17,6 +17,13 @@ export const THEMES: ThemeConfig[] = [
     description: 'Standard professional interface with balanced contrast.',
     performanceScore: 90,
     previewColors: ['#2563eb', '#f8fafc', '#0f172a']
+  },
+  {
+    id: 'neofi',
+    name: 'NeoFi Desktop',
+    description: 'Light desktop-style admin with flat sidebar and soft cards.',
+    performanceScore: 88,
+    previewColors: ['#f3f4f6', '#ffffff', '#0f172a']
   },
   {
     id: 'dark',

@@ -291,7 +291,7 @@ const App: React.FC = () => {
 
       {isAdmin ? (
         isAuthenticated ? (
-          <div className="flex h-screen overflow-hidden bg-slate-100 font-sans selection:bg-blue-100">
+          <div className="admin-layout flex h-screen overflow-hidden bg-slate-100 font-sans selection:bg-blue-100">
             {/* Mobile Sidebar Overlay */}
             {sidebarOpen && (
               <div 
@@ -302,7 +302,7 @@ const App: React.FC = () => {
 
             {/* Sidebar */}
             <aside className={`
-              fixed md:relative h-full
+              admin-sidebar fixed md:relative h-full
               ${sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64 md:translate-x-0 md:w-20'} 
               bg-slate-900 text-white flex flex-col shrink-0 transition-all duration-300 ease-in-out z-50 border-r border-slate-800
             `}>
@@ -322,7 +322,7 @@ const App: React.FC = () => {
                 )}
               </div>
               
-              <nav className={`flex-1 ${sidebarOpen ? 'p-3' : 'p-2'} space-y-1 overflow-y-auto scrollbar-hide`}>
+              <nav className={`admin-sidebar-nav flex-1 ${sidebarOpen ? 'p-3' : 'p-2'} space-y-1 overflow-y-auto scrollbar-hide`}>
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Analytics} onClick={() => setActiveTab(AdminTab.Analytics)} icon="📊" label="Dashboard" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Rates} onClick={() => setActiveTab(AdminTab.Rates)} icon="💰" label="Pricing" collapsed={!sidebarOpen} />
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Network} onClick={() => setActiveTab(AdminTab.Network)} icon="🌐" label="Network" collapsed={!sidebarOpen} />
@@ -340,7 +340,7 @@ const App: React.FC = () => {
                 <SidebarItem disabled={licenseStatus.isRevoked} active={activeTab === AdminTab.Updater} onClick={() => setActiveTab(AdminTab.Updater)} icon="🚀" label="Updater" collapsed={!sidebarOpen} />
               </nav>
 
-              <div className={`p-4 border-t border-white/5 bg-black/20 ${sidebarOpen ? 'block' : 'hidden md:block'}`}>
+              <div className={`admin-sidebar-footer p-4 border-t border-white/5 bg-black/20 ${sidebarOpen ? 'block' : 'hidden md:block'}`}>
                  <div className="flex flex-col gap-3">
                    <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
@@ -440,16 +440,16 @@ const SidebarItem: React.FC<{ active: boolean; onClick: () => void; icon: string
     onClick={disabled ? undefined : onClick} 
     title={collapsed ? label : undefined}
     disabled={disabled}
-    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group ${
+    className={`sidebar-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group ${
       disabled 
-        ? 'opacity-20 cursor-not-allowed grayscale' 
+        ? 'sidebar-item-disabled opacity-20 cursor-not-allowed grayscale' 
         : active 
-          ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' 
-          : 'text-slate-400 hover:bg-white/5 hover:text-white'
-    } ${collapsed ? 'justify-center' : 'justify-start'}`}
+          ? 'sidebar-item-active bg-blue-600 text-white shadow-md shadow-blue-600/20' 
+          : 'sidebar-item-default text-slate-400 hover:bg-white/5 hover:text-white'
+    } ${collapsed ? 'sidebar-item-collapsed justify-center' : 'justify-start'}`}
   >
-    <span className={`text-lg ${active ? 'scale-110' : 'group-hover:scale-110'} transition-transform`}>{icon}</span>
-    {!collapsed && <span className="uppercase tracking-wider text-[10px] font-bold">{label}</span>}
+    <span className={`sidebar-icon text-lg ${active ? 'scale-110' : 'group-hover:scale-110'} transition-transform`}>{icon}</span>
+    {!collapsed && <span className="sidebar-label uppercase tracking-wider text-[10px] font-bold">{label}</span>}
   </button>
 );
 

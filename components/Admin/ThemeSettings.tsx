@@ -22,6 +22,9 @@ interface ThemeEditorState {
   textMuted: string;
   border: string;
   sidebarBg: string;
+  sidebarText: string;
+  sidebarBg: string;
+  sidebarBg: string;
 }
 
 const defaultEditorState: ThemeEditorState = {
@@ -34,7 +37,8 @@ const defaultEditorState: ThemeEditorState = {
   textMain: '#0f172a',
   textMuted: '#64748b',
   border: '#e2e8f0',
-  sidebarBg: '#0f172a'
+  sidebarBg: '#0f172a',
+  sidebarText: '#ffffff'
 };
 
 const ThemeSettings: React.FC = () => {
@@ -77,7 +81,8 @@ const ThemeSettings: React.FC = () => {
       textMain: values.textMain,
       textMuted: values.textMuted,
       border: values.border,
-      sidebarBg: values.sidebarBg || '#0f172a'
+      sidebarBg: values.sidebarBg || '#0f172a',
+      sidebarText: values.sidebarText || '#ffffff'
     });
   };
 
@@ -95,7 +100,8 @@ const ThemeSettings: React.FC = () => {
       textMain: editor.textMain,
       textMuted: editor.textMuted,
       border: editor.border,
-      sidebarBg: editor.sidebarBg
+      sidebarBg: editor.sidebarBg,
+      sidebarText: editor.sidebarText
     };
     const payload: StoredCustomTheme = {
       id: editor.id,
@@ -313,7 +319,7 @@ const ThemeSettings: React.FC = () => {
                   <div className="grid grid-cols-3 gap-2">
                     <div
                       className="rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest"
-                      style={{ backgroundColor: editor.sidebarBg, color: '#ffffff' }}
+                      style={{ backgroundColor: editor.sidebarBg, color: editor.sidebarText }}
                     >
                       Sidebar
                     </div>
@@ -342,7 +348,8 @@ const ThemeSettings: React.FC = () => {
                     { key: 'textMain', label: 'Text Main' },
                     { key: 'textMuted', label: 'Text Muted' },
                     { key: 'border', label: 'Border' },
-                    { key: 'sidebarBg', label: 'Sidebar' }
+                    { key: 'sidebarBg', label: 'Sidebar' },
+                    { key: 'sidebarText', label: 'Sidebar Text' }
                   ].map(field => (
                     <label
                       key={field.key}

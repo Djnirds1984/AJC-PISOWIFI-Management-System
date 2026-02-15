@@ -63,6 +63,7 @@ export interface CustomThemeValues {
   textMuted: string;
   border: string;
   sidebarBg?: string;
+  sidebarText?: string;
 }
 
 export interface StoredCustomTheme {
@@ -101,6 +102,11 @@ function applyCustomThemeValues(values: CustomThemeValues) {
   } else {
     rootStyle.removeProperty('--sidebar-bg');
   }
+   if (values.sidebarText) {
+    rootStyle.setProperty('--sidebar-text', values.sidebarText);
+  } else {
+    rootStyle.removeProperty('--sidebar-text');
+  }
 }
 
 function clearCustomThemeValues() {
@@ -113,6 +119,7 @@ function clearCustomThemeValues() {
   rootStyle.removeProperty('--text-muted');
   rootStyle.removeProperty('--border');
   rootStyle.removeProperty('--sidebar-bg');
+  rootStyle.removeProperty('--sidebar-text');
 }
 
 export interface PortalConfig {

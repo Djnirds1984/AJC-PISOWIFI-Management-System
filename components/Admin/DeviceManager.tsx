@@ -49,7 +49,7 @@ const DeviceManager: React.FC<Props> = ({ sessions = [], refreshSessions, refres
     try {
       setLoading(true);
       setError(null);
-      const data = await apiClient.getWifiDevices();
+      const data = await apiClient.scanDevices();
       setDevices(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch devices');

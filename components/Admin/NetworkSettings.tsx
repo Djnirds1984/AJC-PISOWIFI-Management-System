@@ -19,11 +19,12 @@ const NetworkSettings: React.FC = () => {
   });
 
   // State for Hotspot Portal Setup
-  const [newHS, setNewHS] = useState<Partial<HotspotInstance>>({
+  const [newHS, setNewHS] = useState<Partial<HotspotInstance & { bitmask?: string }>>({
     interface: '',
     ip_address: '10.0.10.1',
     dhcp_range: '10.0.10.50,10.0.10.250',
-    bandwidth_limit: 10
+    bandwidth_limit: 10,
+    bitmask: '255.255.255.0'
   });
 
   // VLAN State
@@ -251,10 +252,23 @@ const NetworkSettings: React.FC = () => {
               <select 
                 value={newHS.interface}
                 onChange={e => setNewHS({...newHS, interface: e.target.value})}
-                className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-bold text-white outline-none"
+                className="w-full bg-white border border-white/30 rounded-lg px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-white/40"
               >
-                <option value="" className="bg-blue-600">Select Link...</option>
-                {interfaces.map(i => <option key={i.name} value={i.name} className="bg-blue-600">{i.name}</option>)}
+                <option value="" className="text-slate-500">Select Link...</option>
+                {interfaces.map(i => <option key={i.name} value={i.name} className="text-slate-900">{i.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">Bitmask</label>
+              <select
+                value={newHS.bitmask || '255.255.255.0'}
+                onChange={e => setNewHS({ ...newHS, bitmask: e.target.value })}
+                className="w-full bg-white border border-white/30 rounded-lg px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-white/40"
+              >
+                <option value="255.255.255.0" className="text-slate-900">/24 (255.255.255.0)</option>
+                <option value="255.255.254.0" className="text-slate-900">/23 (255.255.254.0)</option>
+                <option value="255.255.252.0" className="text-slate-900">/22 (255.255.252.0)</option>
+                <option value="255.255.248.0" className="text-slate-900">/21 (255.255.248.0)</option>
               </select>
             </div>
             <div>

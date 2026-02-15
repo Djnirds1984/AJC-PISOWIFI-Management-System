@@ -251,10 +251,10 @@ const NetworkSettings: React.FC = () => {
               <select 
                 value={newHS.interface}
                 onChange={e => setNewHS({...newHS, interface: e.target.value})}
-                className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-bold text-white outline-none"
+                className="w-full bg-blue-700/30 border border-white/30 rounded-lg px-3 py-2 text-xs font-bold text-white outline-none focus:ring-2 focus:ring-white/40"
               >
-                <option value="" className="bg-blue-600">Select Link...</option>
-                {interfaces.map(i => <option key={i.name} value={i.name} className="bg-blue-600">{i.name}</option>)}
+                <option value="" className="text-slate-900">Select Link...</option>
+                {interfaces.map(i => <option key={i.name} value={i.name} className="text-slate-900">{i.name}</option>)}
               </select>
             </div>
             <div>

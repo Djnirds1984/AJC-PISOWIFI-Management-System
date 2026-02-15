@@ -23,7 +23,7 @@ const NetworkSettings: React.FC = () => {
     interface: '',
     ip_address: '10.0.10.1',
     dhcp_range: '10.0.10.50,10.0.10.250',
-    netmask: '255.255.240.0',
+    netmask: '255.255.255.0',
     dhcp_start: '10.0.10.50',
     dhcp_end: '10.0.10.250',
     dhcp_gateway: '10.0.10.1',
@@ -168,6 +168,32 @@ const NetworkSettings: React.FC = () => {
     }));
   };
 
+  const ipToInt = (ip: string) => ip.split('.').reduce((a, b) => (a << 8) + (parseInt(b, 10) & 255), 0) >>> 0;
+  const intToIp = (n: number) => [ (n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255 ].join('.');
+  const calcDhcpRange = (gateway: string, mask: string) => {
+    if (!gateway || !mask) return { start: '', end: '' };
+    const gw = ipToInt(gateway);
+    const m = ipToInt(mask);
+    const network = gw & m;
+    const broadcast = network | (~m >>> 0);
+    const countBits = (n: number) => ((n & 128 ? 1 : 0) + (n & 64 ? 1 : 0) + (n & 32 ? 1 : 0) + (n & 16 ? 1 : 0) + (n & 8 ? 1 : 0) + (n & 4 ? 1 : 0) + (n & 2 ? 1 : 0) + (n & 1 ? 1 : 0));
+    const prefix = [ (m >>> 24) & 255, (m >>> 16) & 255, (m >>> 8) & 255, m & 255 ].reduce((a, b) => a + countBits(b), 0);
+    const large = prefix <= 23;
+    const baseStartOffset = large ? 100 : 50;
+    const baseEndOffset = large ? 500 : 250;
+    let start = Math.min(Math.max(network + baseStartOffset, network + 10), broadcast - 10);
+    let end = Math.min(network + baseEndOffset, broadcast - 10);
+    if (end <= start) end = Math.min(start + 30, broadcast - 10);
+    if (gw === start) start = Math.min(start + 10, broadcast - 10);
+    if (gw === end) end = Math.min(end - 10, broadcast - 10);
+    return { start: intToIp(start), end: intToIp(end) };
+  };
+  const handleNetmaskChange = (mask: string) => {
+    const gw = newHS.dhcp_gateway || newHS.ip_address || '';
+    const { start, end } = calcDhcpRange(gw, mask);
+    setNewHS({ ...newHS, netmask: mask, dhcp_start: start, dhcp_end: end });
+  };
+
   const [editHS, setEditHS] = useState<Partial<HotspotInstance> & { netmask?: string; dhcp_start?: string; dhcp_end?: string; dhcp_gateway?: string } | null>(null);
   const startEdit = (hs: HotspotInstance) => {
     const parts = String(hs.dhcp_range || '').split(',');
@@ -180,7 +206,7 @@ const NetworkSettings: React.FC = () => {
       dhcp_start: start,
       dhcp_end: end,
       dhcp_gateway: gw,
-      netmask: (hs as any).netmask || '255.255.240.0',
+      netmask: (hs as any).netmask || '255.255.255.0',
       bandwidth_limit: hs.bandwidth_limit
     });
   };
@@ -206,6 +232,12 @@ const NetworkSettings: React.FC = () => {
     finally { setLoading(false); }
   };
   const cancelEdit = () => setEditHS(null);
+  const handleEditNetmaskChange = (mask: string) => {
+    if (!editHS) return;
+    const gw = editHS.dhcp_gateway || editHS.ip_address || '';
+    const { start, end } = calcDhcpRange(gw || '', mask);
+    setEditHS({ ...(editHS as any), netmask: mask, dhcp_start: start, dhcp_end: end });
+  };
 
   // PPPoE Server Functions
 
@@ -314,7 +346,7 @@ const NetworkSettings: React.FC = () => {
               <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">Bitmask</label>
               <select
                 value={newHS.netmask}
-                onChange={e => setNewHS({ ...newHS, netmask: e.target.value })}
+                onChange={e => handleNetmaskChange(e.target.value)}
                 className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-bold text-white outline-none"
               >
                 <option value="255.255.255.0" className="bg-blue-600">/24 • 256 total • 254 usable</option>
@@ -392,7 +424,7 @@ const NetworkSettings: React.FC = () => {
                 <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Bitmask</label>
                 <select
                   value={editHS.netmask || '255.255.240.0'}
-                  onChange={e => setEditHS({ ...(editHS as any), netmask: e.target.value })}
+                  onChange={e => handleEditNetmaskChange(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
                 >
                   <option value="255.255.255.0">/24 • 256 total • 254 usable</option>

@@ -1,12 +1,14 @@
 import { apiClient } from './api';
 
-export type ThemeId = 'default' | 'neofi' | 'dark' | 'eco' | 'terminal';
+export type CustomThemeId = `custom-${string}`;
+
+export type ThemeId = 'default' | 'neofi' | 'dark' | 'eco' | 'terminal' | CustomThemeId;
 
 export interface ThemeConfig {
   id: ThemeId;
   name: string;
   description: string;
-  performanceScore: number; // 1-100, higher is better
+  performanceScore: number;
   previewColors: string[];
 }
 
@@ -49,7 +51,62 @@ export const THEMES: ThemeConfig[] = [
 ];
 
 export const ADMIN_THEME_KEY = 'ajc_pisowifi_theme';
+export const CUSTOM_THEMES_KEY = 'ajc_pisowifi_custom_themes';
 export const PORTAL_CONFIG_KEY = 'ajc_portal_config';
+
+export interface CustomThemeValues {
+  primary: string;
+  primaryDark: string;
+  bg: string;
+  bgCard: string;
+  textMain: string;
+  textMuted: string;
+  border: string;
+}
+
+export interface StoredCustomTheme {
+  id: CustomThemeId;
+  name: string;
+  values: CustomThemeValues;
+}
+
+export function getCustomThemes(): StoredCustomTheme[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_THEMES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as StoredCustomTheme[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomThemes(themes: StoredCustomTheme[]) {
+  localStorage.setItem(CUSTOM_THEMES_KEY, JSON.stringify(themes));
+}
+
+function applyCustomThemeValues(values: CustomThemeValues) {
+  const rootStyle = document.documentElement.style;
+  rootStyle.setProperty('--primary', values.primary);
+  rootStyle.setProperty('--primary-dark', values.primaryDark);
+  rootStyle.setProperty('--bg', values.bg);
+  rootStyle.setProperty('--bg-card', values.bgCard);
+  rootStyle.setProperty('--text-main', values.textMain);
+  rootStyle.setProperty('--text-muted', values.textMuted);
+  rootStyle.setProperty('--border', values.border);
+}
+
+function clearCustomThemeValues() {
+  const rootStyle = document.documentElement.style;
+  rootStyle.removeProperty('--primary');
+  rootStyle.removeProperty('--primary-dark');
+  rootStyle.removeProperty('--bg');
+  rootStyle.removeProperty('--bg-card');
+  rootStyle.removeProperty('--text-main');
+  rootStyle.removeProperty('--text-muted');
+  rootStyle.removeProperty('--border');
+}
 
 export interface PortalConfig {
   title: string;
@@ -90,7 +147,17 @@ export function getStoredAdminTheme(): ThemeId {
 
 export function setAdminTheme(themeId: ThemeId) {
   localStorage.setItem(ADMIN_THEME_KEY, themeId);
-  document.documentElement.setAttribute('data-theme', themeId);
+  const isCustom = typeof themeId === 'string' && themeId.startsWith('custom-');
+  const baseTheme = isCustom ? 'default' : themeId;
+  document.documentElement.setAttribute('data-theme', baseTheme);
+  if (isCustom) {
+    const custom = getCustomThemes().find(t => t.id === themeId);
+    if (custom) {
+      applyCustomThemeValues(custom.values);
+    }
+  } else {
+    clearCustomThemeValues();
+  }
 }
 
 export function initAdminTheme() {

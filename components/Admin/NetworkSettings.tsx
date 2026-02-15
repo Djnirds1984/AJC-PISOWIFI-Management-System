@@ -279,12 +279,12 @@ const NetworkSettings: React.FC = () => {
                 className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-bold text-white outline-none"
               >
                 <option value="255.255.255.0" className="bg-blue-600">255.255.255.0 (/24)</option>
-                <option value="255.255.255.128" className="bg-blue-600">255.255.255.128 (/25)</option>
-                <option value="255.255.255.192" className="bg-blue-600">255.255.255.192 (/26)</option>
-                <option value="255.255.255.224" className="bg-blue-600">255.255.255.224 (/27)</option>
-                <option value="255.255.255.240" className="bg-blue-600">255.255.255.240 (/28)</option>
-                <option value="255.255.255.248" className="bg-blue-600">255.255.255.248 (/29)</option>
-                <option value="255.255.255.252" className="bg-blue-600">255.255.255.252 (/30)</option>
+                <option value="255.255.254.0" className="bg-blue-600">255.255.254.0 (/23)</option>
+                <option value="255.255.252.0" className="bg-blue-600">255.255.252.0 (/22)</option>
+                <option value="255.255.248.0" className="bg-blue-600">255.255.248.0 (/21)</option>
+                <option value="255.255.240.0" className="bg-blue-600">255.255.240.0 (/20)</option>
+                <option value="255.255.224.0" className="bg-blue-600">255.255.224.0 (/19)</option>
+                <option value="255.255.192.0" className="bg-blue-600">255.255.192.0 (/18)</option>
                 <option value="255.255.0.0" className="bg-blue-600">255.255.0.0 (/16)</option>
               </select>
             </div>

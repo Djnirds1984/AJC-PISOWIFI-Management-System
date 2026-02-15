@@ -168,6 +168,77 @@ const NetworkSettings: React.FC = () => {
     }));
   };
 
+  const ipToInt = (ip: string) => ip.split('.').reduce((a, b) => (a << 8) + (parseInt(b, 10) & 255), 0) >>> 0;
+  const intToIp = (n: number) => [ (n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255 ].join('.');
+  const calcDhcpRange = (gateway: string, mask: string) => {
+    if (!gateway || !mask) return { start: '', end: '' };
+    const gw = ipToInt(gateway);
+    const m = ipToInt(mask);
+    const network = gw & m;
+    const broadcast = network | (~m >>> 0);
+    const countBits = (n: number) => ((n & 128 ? 1 : 0) + (n & 64 ? 1 : 0) + (n & 32 ? 1 : 0) + (n & 16 ? 1 : 0) + (n & 8 ? 1 : 0) + (n & 4 ? 1 : 0) + (n & 2 ? 1 : 0) + (n & 1 ? 1 : 0));
+    const prefix = [ (m >>> 24) & 255, (m >>> 16) & 255, (m >>> 8) & 255, m & 255 ].reduce((a, b) => a + countBits(b), 0);
+    const large = prefix <= 23;
+    const baseStartOffset = large ? 100 : 50;
+    const baseEndOffset = large ? 500 : 250;
+    let start = Math.min(Math.max(network + baseStartOffset, network + 10), broadcast - 10);
+    let end = Math.min(network + baseEndOffset, broadcast - 10);
+    if (end <= start) end = Math.min(start + 30, broadcast - 10);
+    if (gw === start) start = Math.min(start + 10, broadcast - 10);
+    if (gw === end) end = Math.min(end - 10, broadcast - 10);
+    return { start: intToIp(start), end: intToIp(end) };
+  };
+  const handleNetmaskChange = (mask: string) => {
+    const gw = newHS.dhcp_gateway || newHS.ip_address || '';
+    const { start, end } = calcDhcpRange(gw, mask);
+    setNewHS({ ...newHS, netmask: mask, dhcp_start: start, dhcp_end: end });
+  };
+
+  const [editHS, setEditHS] = useState<Partial<HotspotInstance> & { netmask?: string; dhcp_start?: string; dhcp_end?: string; dhcp_gateway?: string } | null>(null);
+  const startEdit = (hs: HotspotInstance) => {
+    const parts = String(hs.dhcp_range || '').split(',');
+    const start = parts[0] || '';
+    const end = parts[1] || '';
+    const gw = (hs as any).dhcp_gateway || hs.ip_address;
+    setEditHS({
+      interface: hs.interface,
+      ip_address: gw,
+      dhcp_start: start,
+      dhcp_end: end,
+      dhcp_gateway: gw,
+      netmask: (hs as any).netmask || '255.255.255.0',
+      bandwidth_limit: hs.bandwidth_limit
+    });
+  };
+  const saveHotspotEdit = async () => {
+    if (!editHS || !editHS.interface) return;
+    const gateway = editHS.dhcp_gateway || editHS.ip_address;
+    const start = editHS.dhcp_start || '';
+    const end = editHS.dhcp_end || '';
+    if (!gateway || !start || !end) return alert('Complete DHCP fields!');
+    try {
+      setLoading(true);
+      await apiClient.createHotspot({
+        interface: editHS.interface,
+        ip_address: gateway,
+        dhcp_range: `${start},${end}`,
+        bandwidth_limit: editHS.bandwidth_limit || 10,
+        netmask: editHS.netmask
+      });
+      await loadData();
+      setEditHS(null);
+      alert('Portal Segment Updated!');
+    } catch (e) { alert('Failed to update Hotspot.'); }
+    finally { setLoading(false); }
+  };
+  const cancelEdit = () => setEditHS(null);
+  const handleEditNetmaskChange = (mask: string) => {
+    if (!editHS) return;
+    const gw = editHS.dhcp_gateway || editHS.ip_address || '';
+    const { start, end } = calcDhcpRange(gw || '', mask);
+    setEditHS({ ...(editHS as any), netmask: mask, dhcp_start: start, dhcp_end: end });
+  };
+
   // PPPoE Server Functions
 
 
@@ -275,17 +346,17 @@ const NetworkSettings: React.FC = () => {
               <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">Bitmask</label>
               <select
                 value={newHS.netmask}
-                onChange={e => setNewHS({ ...newHS, netmask: e.target.value })}
+                onChange={e => handleNetmaskChange(e.target.value)}
                 className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-bold text-white outline-none"
               >
-                <option value="255.255.255.0" className="bg-blue-600">255.255.255.0 (/24)</option>
-                <option value="255.255.255.128" className="bg-blue-600">255.255.255.128 (/25)</option>
-                <option value="255.255.255.192" className="bg-blue-600">255.255.255.192 (/26)</option>
-                <option value="255.255.255.224" className="bg-blue-600">255.255.255.224 (/27)</option>
-                <option value="255.255.255.240" className="bg-blue-600">255.255.255.240 (/28)</option>
-                <option value="255.255.255.248" className="bg-blue-600">255.255.255.248 (/29)</option>
-                <option value="255.255.255.252" className="bg-blue-600">255.255.255.252 (/30)</option>
-                <option value="255.255.0.0" className="bg-blue-600">255.255.0.0 (/16)</option>
+                <option value="255.255.255.0" className="bg-blue-600">/24 • 256 total • 254 usable</option>
+                <option value="255.255.254.0" className="bg-blue-600">/23 • 512 total • 510 usable</option>
+                <option value="255.255.252.0" className="bg-blue-600">/22 • 1024 total • 1022 usable</option>
+                <option value="255.255.248.0" className="bg-blue-600">/21 • 2048 total • 2046 usable</option>
+                <option value="255.255.240.0" className="bg-blue-600">/20 • 4096 total • 4094 usable</option>
+                <option value="255.255.224.0" className="bg-blue-600">/19 • 8192 total • 8190 usable</option>
+                <option value="255.255.192.0" className="bg-blue-600">/18 • 16384 total • 16382 usable</option>
+                <option value="255.255.0.0" className="bg-blue-600">/16 • 65536 total • 65534 usable</option>
               </select>
             </div>
             <div className="grid grid-cols-3 gap-2">
@@ -324,10 +395,53 @@ const NetworkSettings: React.FC = () => {
                    )}
                  </div>
                </div>
-               <button onClick={() => deleteHotspot(hs.interface)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg font-black text-[8px] uppercase hover:bg-red-100 transition-opacity opacity-0 group-hover:opacity-100">Terminate</button>
+               <div className="flex items-center gap-2">
+                 <button onClick={() => startEdit(hs)} className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-black text-[8px] uppercase hover:bg-blue-100 transition-opacity opacity-0 group-hover:opacity-100">Edit</button>
+                 <button onClick={() => deleteHotspot(hs.interface)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg font-black text-[8px] uppercase hover:bg-red-100 transition-opacity opacity-0 group-hover:opacity-100">Terminate</button>
+               </div>
              </div>
           )) : (
             <div className="py-10 text-center border-2 border-dashed border-slate-200 rounded-xl text-slate-300 text-[10px] font-black uppercase">No Active Segments</div>
+          )}
+          {editHS && (
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Edit: {editHS.interface}</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">DHCP Start</label>
+                  <input type="text" value={editHS.dhcp_start || ''} onChange={e => setEditHS({ ...(editHS as any), dhcp_start: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono" />
+                </div>
+                <div>
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">DHCP End</label>
+                  <input type="text" value={editHS.dhcp_end || ''} onChange={e => setEditHS({ ...(editHS as any), dhcp_end: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono" />
+                </div>
+                <div>
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Gateway</label>
+                  <input type="text" value={editHS.dhcp_gateway || ''} onChange={e => setEditHS({ ...(editHS as any), dhcp_gateway: e.target.value, ip_address: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Bitmask</label>
+                <select
+                  value={editHS.netmask || '255.255.240.0'}
+                  onChange={e => handleEditNetmaskChange(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
+                >
+                  <option value="255.255.255.0">/24 • 256 total • 254 usable</option>
+                  <option value="255.255.254.0">/23 • 512 total • 510 usable</option>
+                  <option value="255.255.252.0">/22 • 1024 total • 1022 usable</option>
+                  <option value="255.255.248.0">/21 • 2048 total • 2046 usable</option>
+                  <option value="255.255.240.0">/20 • 4096 total • 4094 usable</option>
+                  <option value="255.255.224.0">/19 • 8192 total • 8190 usable</option>
+                  <option value="255.255.192.0">/18 • 16384 total • 16382 usable</option>
+                  <option value="255.255.0.0">/16 • 65536 total • 65534 usable</option>
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={saveHotspotEdit} disabled={loading} className="bg-slate-900 text-white px-3 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest">Save Changes</button>
+                <button onClick={cancelEdit} className="border border-slate-300 text-slate-600 px-3 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest">Cancel</button>
+              </div>
+            </div>
           )}
         </div>
       </section>

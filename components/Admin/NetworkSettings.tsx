@@ -19,10 +19,14 @@ const NetworkSettings: React.FC = () => {
   });
 
   // State for Hotspot Portal Setup
-  const [newHS, setNewHS] = useState<Partial<HotspotInstance>>({
+  const [newHS, setNewHS] = useState<Partial<HotspotInstance> & { netmask?: string; dhcp_start?: string; dhcp_end?: string; dhcp_gateway?: string }>({
     interface: '',
     ip_address: '10.0.10.1',
     dhcp_range: '10.0.10.50,10.0.10.250',
+    netmask: '255.255.255.0',
+    dhcp_start: '10.0.10.50',
+    dhcp_end: '10.0.10.250',
+    dhcp_gateway: '10.0.10.1',
     bandwidth_limit: 10
   });
 
@@ -84,10 +88,20 @@ const NetworkSettings: React.FC = () => {
   };
 
   const createHotspot = async () => {
-    if (!newHS.interface || !newHS.ip_address) return alert('Select interface and IP!');
+    if (!newHS.interface) return alert('Select interface!');
+    const gateway = newHS.dhcp_gateway || newHS.ip_address;
+    const start = newHS.dhcp_start || (newHS.dhcp_range ? String(newHS.dhcp_range).split(',')[0] : '');
+    const end = newHS.dhcp_end || (newHS.dhcp_range ? String(newHS.dhcp_range).split(',')[1] : '');
+    if (!gateway || !start || !end) return alert('Complete DHCP fields!');
     try {
       setLoading(true);
-      await apiClient.createHotspot(newHS);
+      await apiClient.createHotspot({
+        interface: newHS.interface,
+        ip_address: gateway,
+        dhcp_range: `${start},${end}`,
+        bandwidth_limit: newHS.bandwidth_limit || 10,
+        netmask: newHS.netmask
+      });
       await loadData();
       alert('Hotspot Portal Segment Deployed!');
     } catch (e) { alert('Failed to deploy Hotspot.'); }
@@ -258,8 +272,35 @@ const NetworkSettings: React.FC = () => {
               </select>
             </div>
             <div>
-              <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">Gateway</label>
-              <input type="text" value={newHS.ip_address} onChange={e => setNewHS({...newHS, ip_address: e.target.value})} className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono" />
+              <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">Bitmask</label>
+              <select
+                value={newHS.netmask}
+                onChange={e => setNewHS({ ...newHS, netmask: e.target.value })}
+                className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-bold text-white outline-none"
+              >
+                <option value="255.255.255.0" className="bg-blue-600">255.255.255.0 (/24)</option>
+                <option value="255.255.255.128" className="bg-blue-600">255.255.255.128 (/25)</option>
+                <option value="255.255.255.192" className="bg-blue-600">255.255.255.192 (/26)</option>
+                <option value="255.255.255.224" className="bg-blue-600">255.255.255.224 (/27)</option>
+                <option value="255.255.255.240" className="bg-blue-600">255.255.255.240 (/28)</option>
+                <option value="255.255.255.248" className="bg-blue-600">255.255.255.248 (/29)</option>
+                <option value="255.255.255.252" className="bg-blue-600">255.255.255.252 (/30)</option>
+                <option value="255.255.0.0" className="bg-blue-600">255.255.0.0 (/16)</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">DHCP Start</label>
+                <input type="text" value={newHS.dhcp_start || ''} onChange={e => setNewHS({...newHS, dhcp_start: e.target.value})} className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono" />
+              </div>
+              <div>
+                <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">DHCP End</label>
+                <input type="text" value={newHS.dhcp_end || ''} onChange={e => setNewHS({...newHS, dhcp_end: e.target.value})} className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono" />
+              </div>
+              <div>
+                <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">DHCP Gateway</label>
+                <input type="text" value={newHS.dhcp_gateway || ''} onChange={e => setNewHS({...newHS, dhcp_gateway: e.target.value})} className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono" />
+              </div>
             </div>
             <button onClick={createHotspot} disabled={loading} className="w-full bg-white text-blue-600 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest shadow-md hover:bg-slate-50 transition-all disabled:opacity-50">Commit Portal</button>
           </div>
@@ -274,8 +315,13 @@ const NetworkSettings: React.FC = () => {
                  <div>
                    <h5 className="font-black text-slate-900 text-[11px] uppercase">{hs.interface}</h5>
                    <p className="text-[9px] text-slate-500 font-mono">
-                     {hs.ip_address} • {hs.dhcp_range}
+                     GW: {(hs as any).dhcp_gateway || hs.ip_address} • DHCP: {hs.dhcp_range}
                    </p>
+                   {(hs as any).netmask && (
+                     <p className="text-[8px] text-slate-400 font-mono">
+                       Netmask: {(hs as any).netmask}
+                     </p>
+                   )}
                  </div>
                </div>
                <button onClick={() => deleteHotspot(hs.interface)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg font-black text-[8px] uppercase hover:bg-red-100 transition-opacity opacity-0 group-hover:opacity-100">Terminate</button>

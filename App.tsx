@@ -311,7 +311,12 @@ const App: React.FC = () => {
                   <>
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 bg-blue-600 rounded flex items-center justify-center font-black text-xs">AJC</div>
-                      <h1 className="text-lg font-bold tracking-tight text-slate-900">PISOWIFI</h1>
+                      <h1
+                        className="text-lg font-bold tracking-tight"
+                        style={{ color: '#111827' }}
+                      >
+                        PISOWIFI
+                      </h1>
                     </div>
                     <button onClick={() => setSidebarOpen(false)} className="p-1.5 hover:bg-white/10 rounded-md text-slate-400 md:hidden">
                       ✕

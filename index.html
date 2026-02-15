@@ -66,6 +66,8 @@
         --slate-900: var(--text-main);
         --slate-500: var(--text-muted);
         --slate-100: var(--bg);
+        --selection-bg: #dbeafe;
+        --selection-text: #0f172a;
       }
 
       :root[data-theme="dark"] {
@@ -82,6 +84,8 @@
         --slate-900: var(--text-main);
         --slate-500: var(--text-muted);
         --slate-100: var(--border);
+        --selection-bg: #38bdf8;
+        --selection-text: #000000;
       }
 
       :root[data-theme="eco"] {
@@ -98,6 +102,8 @@
         --slate-900: var(--text-main);
         --slate-500: var(--text-muted);
         --slate-100: var(--bg);
+        --selection-bg: #dcfce7;
+        --selection-text: #14532d;
       }
 
       :root[data-theme="terminal"] {
@@ -118,6 +124,8 @@
         --slate-900: var(--text-main);
         --slate-500: var(--text-muted);
         --slate-100: var(--bg-card); /* High contrast */
+        --selection-bg: #22c55e;
+        --selection-text: #000000;
       }
       
       * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -301,6 +309,67 @@
         max-width: 450px;
         border-radius: 48px;
         overflow: hidden;
+      }
+      
+      /* ADMIN LIGHT THEME FIXES AND PERFORMANCE TUNING */
+      :root[data-theme="default"],
+      :root[data-theme="eco"] {
+        /* Lighter shadows globally to reduce render cost */
+        --shadow-soft: 0 6px 20px rgba(0, 0, 0, 0.08);
+      }
+      :root[data-theme="default"] .shadow-2xl,
+      :root[data-theme="eco"] .shadow-2xl {
+        box-shadow: var(--shadow-soft) !important;
+      }
+      :root[data-theme="default"] .shadow-xl,
+      :root[data-theme="eco"] .shadow-xl {
+        box-shadow: var(--shadow-soft) !important;
+      }
+      :root[data-theme="default"] .shadow-lg,
+      :root[data-theme="eco"] .shadow-lg {
+        box-shadow: var(--shadow-soft) !important;
+      }
+      :root[data-theme="default"] * ,
+      :root[data-theme="eco"] * {
+        transition-duration: 150ms !important;
+      }
+      
+      /* Readability fixes: ensure text is visible on white/light backgrounds */
+      :root[data-theme="default"] .bg-white .text-white,
+      :root[data-theme="eco"] .bg-white .text-white,
+      :root[data-theme="default"] .bg-slate-50 .text-white,
+      :root[data-theme="eco"] .bg-slate-50 .text-white,
+      :root[data-theme="default"] .bg-slate-100 .text-white,
+      :root[data-theme="eco"] .bg-slate-100 .text-white {
+        color: var(--text-main) !important;
+      }
+      /* Preserve white text on dark/colored surfaces */
+      :root[data-theme="default"] .bg-slate-900 .text-white,
+      :root[data-theme="eco"] .bg-slate-900 .text-white,
+      :root[data-theme="default"] .bg-slate-800 .text-white,
+      :root[data-theme="eco"] .bg-slate-800 .text-white,
+      :root[data-theme="default"] .bg-blue-600 .text-white,
+      :root[data-theme="eco"] .bg-blue-600 .text-white,
+      :root[data-theme="default"] .bg-indigo-600 .text-white,
+      :root[data-theme="eco"] .bg-indigo-600 .text-white,
+      :root[data-theme="default"] .bg-emerald-600 .text-white,
+      :root[data-theme="eco"] .bg-emerald-600 .text-white,
+      :root[data-theme="default"] .bg-amber-600 .text-white,
+      :root[data-theme="eco"] .bg-amber-600 .text-white,
+      :root[data-theme="default"] .bg-orange-500 .text-white,
+      :root[data-theme="eco"] .bg-orange-500 .text-white,
+      :root[data-theme="default"] .bg-red-600 .text-white,
+      :root[data-theme="eco"] .bg-red-600 .text-white {
+        color: #ffffff !important;
+      }
+      
+      ::selection {
+        background: var(--selection-bg);
+        color: var(--selection-text);
+      }
+      ::-moz-selection {
+        background: var(--selection-bg);
+        color: var(--selection-text);
       }
     </style>
   <script type="importmap">

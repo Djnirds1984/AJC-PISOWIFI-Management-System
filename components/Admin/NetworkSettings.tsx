@@ -328,52 +328,52 @@ const NetworkSettings: React.FC = () => {
 
       {/* 3. Hotspot Server Manager */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-1 bg-blue-600 rounded-xl p-4 text-white shadow-lg shadow-blue-500/10">
-          <h3 className="text-[10px] font-black text-blue-100 uppercase tracking-widest mb-4">Portal Segment</h3>
+        <div className="lg:col-span-1 bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Portal Segment</h3>
           <div className="space-y-3">
             <div>
-              <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">Bind</label>
+              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Bind</label>
               <select 
                 value={newHS.interface}
                 onChange={e => setNewHS({...newHS, interface: e.target.value})}
-                className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-bold text-white outline-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-900"
               >
-                <option value="" className="bg-blue-600">Select Link...</option>
-                {interfaces.map(i => <option key={i.name} value={i.name} className="bg-blue-600">{i.name}</option>)}
+                <option value="">Select Link...</option>
+                {interfaces.map(i => <option key={i.name} value={i.name}>{i.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">Bitmask</label>
+              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Bitmask</label>
               <select
                 value={newHS.netmask}
                 onChange={e => handleNetmaskChange(e.target.value)}
-                className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-bold text-white outline-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-900"
               >
-                <option value="255.255.255.0" className="bg-blue-600">/24 • 256 total • 254 usable</option>
-                <option value="255.255.254.0" className="bg-blue-600">/23 • 512 total • 510 usable</option>
-                <option value="255.255.252.0" className="bg-blue-600">/22 • 1024 total • 1022 usable</option>
-                <option value="255.255.248.0" className="bg-blue-600">/21 • 2048 total • 2046 usable</option>
-                <option value="255.255.240.0" className="bg-blue-600">/20 • 4096 total • 4094 usable</option>
-                <option value="255.255.224.0" className="bg-blue-600">/19 • 8192 total • 8190 usable</option>
-                <option value="255.255.192.0" className="bg-blue-600">/18 • 16384 total • 16382 usable</option>
-                <option value="255.255.0.0" className="bg-blue-600">/16 • 65536 total • 65534 usable</option>
+                <option value="255.255.255.0">/24 • 256 total • 254 usable</option>
+                <option value="255.255.254.0">/23 • 512 total • 510 usable</option>
+                <option value="255.255.252.0">/22 • 1024 total • 1022 usable</option>
+                <option value="255.255.248.0">/21 • 2048 total • 2046 usable</option>
+                <option value="255.255.240.0">/20 • 4096 total • 4094 usable</option>
+                <option value="255.255.224.0">/19 • 8192 total • 8190 usable</option>
+                <option value="255.255.192.0">/18 • 16384 total • 16382 usable</option>
+                <option value="255.255.0.0">/16 • 65536 total • 65534 usable</option>
               </select>
             </div>
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">DHCP Start</label>
-                <input type="text" value={newHS.dhcp_start || ''} onChange={e => setNewHS({...newHS, dhcp_start: e.target.value})} className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono" />
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">DHCP Start</label>
+                <input type="text" value={newHS.dhcp_start || ''} onChange={e => setNewHS({...newHS, dhcp_start: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono" />
               </div>
               <div>
-                <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">DHCP End</label>
-                <input type="text" value={newHS.dhcp_end || ''} onChange={e => setNewHS({...newHS, dhcp_end: e.target.value})} className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono" />
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">DHCP End</label>
+                <input type="text" value={newHS.dhcp_end || ''} onChange={e => setNewHS({...newHS, dhcp_end: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono" />
               </div>
               <div>
-                <label className="text-[8px] font-black text-blue-200 uppercase tracking-widest mb-1 block">DHCP Gateway</label>
-                <input type="text" value={newHS.dhcp_gateway || ''} onChange={e => setNewHS({...newHS, dhcp_gateway: e.target.value})} className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xs font-mono" />
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">DHCP Gateway</label>
+                <input type="text" value={newHS.dhcp_gateway || ''} onChange={e => setNewHS({...newHS, dhcp_gateway: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono" />
               </div>
             </div>
-            <button onClick={createHotspot} disabled={loading} className="w-full bg-white text-blue-600 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest shadow-md hover:bg-slate-50 transition-all disabled:opacity-50">Commit Portal</button>
+            <button onClick={createHotspot} disabled={loading} className="w-full bg-slate-900 text-white py-2 rounded-lg font-black text-[9px] uppercase tracking-widest shadow-md hover:bg-black transition-all disabled:opacity-50">Commit Portal</button>
           </div>
         </div>
 

@@ -21,6 +21,7 @@ interface ThemeEditorState {
   textMain: string;
   textMuted: string;
   border: string;
+  sidebarBg: string;
 }
 
 const defaultEditorState: ThemeEditorState = {
@@ -32,7 +33,8 @@ const defaultEditorState: ThemeEditorState = {
   bgCard: '#ffffff',
   textMain: '#0f172a',
   textMuted: '#64748b',
-  border: '#e2e8f0'
+  border: '#e2e8f0',
+  sidebarBg: '#0f172a'
 };
 
 const ThemeSettings: React.FC = () => {
@@ -74,7 +76,8 @@ const ThemeSettings: React.FC = () => {
       bgCard: values.bgCard,
       textMain: values.textMain,
       textMuted: values.textMuted,
-      border: values.border
+      border: values.border,
+      sidebarBg: values.sidebarBg || '#0f172a'
     });
   };
 
@@ -91,7 +94,8 @@ const ThemeSettings: React.FC = () => {
       bgCard: editor.bgCard,
       textMain: editor.textMain,
       textMuted: editor.textMuted,
-      border: editor.border
+      border: editor.border,
+      sidebarBg: editor.sidebarBg
     };
     const payload: StoredCustomTheme = {
       id: editor.id,
@@ -306,7 +310,13 @@ const ThemeSettings: React.FC = () => {
                   <div className="mt-2 mb-4 text-xs font-semibold">
                     {editor.name || 'Custom Theme'}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div
+                      className="rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest"
+                      style={{ backgroundColor: editor.sidebarBg, color: '#ffffff' }}
+                    >
+                      Sidebar
+                    </div>
                     <div
                       className="rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest"
                       style={{ backgroundColor: editor.bgCard, color: editor.textMain }}
@@ -331,7 +341,8 @@ const ThemeSettings: React.FC = () => {
                     { key: 'bgCard', label: 'Card' },
                     { key: 'textMain', label: 'Text Main' },
                     { key: 'textMuted', label: 'Text Muted' },
-                    { key: 'border', label: 'Border' }
+                    { key: 'border', label: 'Border' },
+                    { key: 'sidebarBg', label: 'Sidebar' }
                   ].map(field => (
                     <label
                       key={field.key}

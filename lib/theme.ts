@@ -62,6 +62,7 @@ export interface CustomThemeValues {
   textMain: string;
   textMuted: string;
   border: string;
+  sidebarBg?: string;
 }
 
 export interface StoredCustomTheme {
@@ -95,6 +96,11 @@ function applyCustomThemeValues(values: CustomThemeValues) {
   rootStyle.setProperty('--text-main', values.textMain);
   rootStyle.setProperty('--text-muted', values.textMuted);
   rootStyle.setProperty('--border', values.border);
+  if (values.sidebarBg) {
+    rootStyle.setProperty('--sidebar-bg', values.sidebarBg);
+  } else {
+    rootStyle.removeProperty('--sidebar-bg');
+  }
 }
 
 function clearCustomThemeValues() {
@@ -106,6 +112,7 @@ function clearCustomThemeValues() {
   rootStyle.removeProperty('--text-main');
   rootStyle.removeProperty('--text-muted');
   rootStyle.removeProperty('--border');
+  rootStyle.removeProperty('--sidebar-bg');
 }
 
 export interface PortalConfig {
